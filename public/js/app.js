@@ -117,6 +117,19 @@ async function basla() {
     kip: kipOku(),
   });
   $('#harita').addEventListener('kip', (e) => kipDugmesiCiz(e.detail));
+  // Işık: gerçek saat (gece karanlık, alacakaranlık turuncu) ya da hep gündüz; tercih tarayıcıda saklanır
+  const isikCiz = (a) => { $('#isikDugme').textContent = a === 'gunduz' ? '☀️' : '🌗'; $('#isikDugme').title = a === 'gunduz' ? 'Işık: hep gündüz' : 'Işık: gerçek saat'; };
+  let isikTercihi = 'gercek';
+  try { isikTercihi = localStorage.getItem('st-isik') || 'gercek'; } catch { /* özel pencere */ }
+  durum.harita.isikAyari(isikTercihi);
+  isikCiz(isikTercihi);
+  $('#isikDugme').addEventListener('click', () => {
+    isikTercihi = isikTercihi === 'gunduz' ? 'gercek' : 'gunduz';
+    try { localStorage.setItem('st-isik', isikTercihi); } catch { /* yok say */ }
+    durum.harita.isikAyari(isikTercihi);
+    isikCiz(isikTercihi);
+    tost(isikTercihi === 'gunduz' ? '☀️ Harita hep gündüz' : '🌗 Harita ışığı gerçek saate göre');
+  });
   if (durum.ben) durum.harita.benimParsellerim(durum.ben.portfoy);
   ilIstatistikYenile();
 
@@ -205,7 +218,7 @@ function ilSec(plaka) {
 
 // ---------- 2B / 3B ----------
 function kipDugmesiCiz(kip) {
-  $$('#kipSecici button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.kip === kip)));
+  $$('#kipSecici [data-kip]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.kip === kip)));
   kipYaz(kip);
 }
 $('#kipSecici').addEventListener('click', (e) => {

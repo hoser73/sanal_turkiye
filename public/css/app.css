@@ -663,3 +663,8 @@ body.cevrimdisi .logo::after { content: '● çevrimdışı'; color: var(--vurgu
 .hesap-bolum .liste-oge .sag { margin-left: auto; }
 .hesap-bolum .liste-oge .dugme { white-space: normal; text-align: center; }
 .hesap-bolum a { overflow-wrap: anywhere; }
+
+/* ---------- Harita görselleri: yağış katmanı ve ışık düğmesi ---------- */
+.yagis-katmani { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; opacity: 0; transition: opacity 1.2s; }
+.yagis-katmani.acik { opacity: 1; }
+.kip-secici .isik-dugme { font-size: 15px; padding: 0 10px; }

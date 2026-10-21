@@ -5,6 +5,7 @@ import { stilOlustur, SIRA } from './stil.js';
 import * as G from './izgara.js';
 import { parselParcalari } from './modeller.js';
 import { gunesKonumu, isikRengi } from './gunes.js';
+import { simgeleriBagla, atmosferGuncelle, geceKatmani, isimaBaslat, yagisKur, yagisTuru, isikAyari } from './harita-gorsel.js';
 
 const TURKIYE_KUTU = [[25.6, 35.75], [44.85, 42.15]];
 const PARSEL_ZOOM = 14;          // imar hücreleri ve tıklanabilir parseller
@@ -91,6 +92,8 @@ export async function haritaKur(kap, { parselTik, ilTik, mahalleTik, belediyeTik
     hash: 'konum',                       // paylaşılabilir bağlantı: #konum=zoom/lat/lon/bearing/pitch
     attributionControl: { compact: true },
   });
+  simgeleriBagla(map);   // desenler ve renkli emoji simgeleri ilk çizimden önce hazır olsun
+  if (['localhost', '127.0.0.1'].includes(location.hostname)) window.__stHarita = map;   // yalnızca yerel geliştirmede hata ayıklama
   map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'bottom-left');
   map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
   map.addControl(new maplibregl.GeolocateControl({ positionOptions: { enableHighAccuracy: true }, fitBoundsOptions: { maxZoom: 16.5 } }), 'bottom-left');
@@ -124,7 +127,9 @@ export async function haritaKur(kap, { parselTik, ilTik, mahalleTik, belediyeTik
   // ---------- İmar hücreleri ve ızgara ----------
   map.addLayer({ id: 'imar-karo', type: 'raster', source: 'imar', minzoom: PARSEL_ZOOM, paint: {
     'raster-resampling': 'nearest', 'raster-fade-duration': 250,
-    'raster-opacity': ['interpolate', ['linear'], ['zoom'], PARSEL_ZOOM, 0, PARSEL_ZOOM + 0.4, 0.92, 18, 0.82],
+    // Altlığın dokusu (bina, ağaç, tarla) görünsün diye yarı saydam; yakınlaştıkça biraz daha belirgin
+    'raster-opacity': ['interpolate', ['linear'], ['zoom'], PARSEL_ZOOM, 0, PARSEL_ZOOM + 0.5, 0.5, 16.5, 0.62, 18, 0.58],
+    'raster-saturation': 0.15, 'raster-contrast': 0.05,
   } }, once(SIRA.imar));
   map.addLayer({ id: 'izgara', type: 'line', source: 'izgara', minzoom: IZGARA_ZOOM, paint: {
     'line-color': '#fffdf6', 'line-width': ['interpolate', ['linear'], ['zoom'], IZGARA_ZOOM, 0.4, 19, 1.4],
@@ -139,6 +144,9 @@ export async function haritaKur(kap, { parselTik, ilTik, mahalleTik, belediyeTik
   map.addLayer({ id: 'parsel-cerceve', type: 'line', source: 'parseller', filter: ['in', ['get', 's'], ['literal', [1, 2]]], paint: {
     'line-color': ['match', ['get', 's'], 1, '#d9a21b', '#3d4548'],
     'line-width': ['interpolate', ['linear'], ['zoom'], 13, 1, 18, ['match', ['get', 's'], 1, 4, 2.2]],
+  } }, once(SIRA.parsel));
+  map.addLayer({ id: 'benim-isik', type: 'line', source: 'parseller', filter: ['==', ['get', 's'], 1], minzoom: 13, paint: {
+    'line-color': '#ffd166', 'line-width': ['interpolate', ['linear'], ['zoom'], 13, 4, 18, 14], 'line-blur': ['interpolate', ['linear'], ['zoom'], 13, 3, 18, 9], 'line-opacity': 0.5,
   } }, once(SIRA.parsel));
   map.addLayer({ id: 'parsel-satilik', type: 'line', source: 'parseller', filter: ['==', ['get', 'l'], 1], paint: {
     'line-color': '#c8402e', 'line-dasharray': [1.4, 0.9], 'line-width': ['interpolate', ['linear'], ['zoom'], 13, 1.6, 18, 4],
@@ -163,6 +171,8 @@ export async function haritaKur(kap, { parselTik, ilTik, mahalleTik, belediyeTik
   map.addLayer({ id: 'secili', type: 'line', source: 'secili', paint: { 'line-color': '#1f2a2e', 'line-width': 2.6 } });
 
   // Arazilerim: ülke ölçeğinde de görünen işaretler
+  map.addLayer({ id: 'benim-hale', type: 'circle', source: 'benim', maxzoom: PARSEL_ZOOM, paint: {
+    'circle-radius': ['interpolate', ['linear'], ['zoom'], 5, 12, 13, 20], 'circle-color': '#ffd166', 'circle-blur': 1, 'circle-opacity': 0.55 } });
   map.addLayer({ id: 'benim', type: 'circle', source: 'benim', maxzoom: PARSEL_ZOOM, paint: {
     'circle-radius': ['interpolate', ['linear'], ['zoom'], 5, 5, 13, 8], 'circle-color': '#e7b53a', 'circle-stroke-color': '#7a5600', 'circle-stroke-width': 1.5,
   } });
@@ -198,17 +208,27 @@ export async function haritaKur(kap, { parselTik, ilTik, mahalleTik, belediyeTik
   // Simge parseller (miras alanları): ülke ölçeğinde simge, yakında ad
   map.addSource('simgeler', { type: 'geojson', data: '/api/simgeler' });
   map.addLayer({ id: 'simge-isaret', type: 'symbol', source: 'simgeler', minzoom: 6, layout: {
-    'text-field': ['step', ['zoom'], ['get', 'ikon'], 9, ['format', ['get', 'ikon'], { 'font-scale': 1.3 }, '\n', {}, ['get', 'ad'], { 'font-scale': 0.8 }]],
-    'text-font': ['Noto Sans Bold'], 'text-size': 14, 'text-allow-overlap': true, 'text-anchor': 'bottom',
+    'icon-image': ['concat', 'e:', ['get', 'ikon']], 'icon-size': ['interpolate', ['linear'], ['zoom'], 6, 0.75, 12, 1.05], 'icon-allow-overlap': true,
+    'text-field': ['step', ['zoom'], '', 9, ['get', 'ad']], 'text-font': ['Noto Sans Bold'], 'text-size': 11.5,
+    'text-offset': [0, 1.5], 'text-anchor': 'top', 'text-optional': true, 'symbol-sort-key': 1,
   }, paint: { 'text-color': '#6b3a12', 'text-halo-color': 'rgba(255,248,230,.95)', 'text-halo-width': 1.6 } });
 
   // Gerçek hava (il merkezleri): il adının altında simge ve sıcaklık
   map.addSource('hava', { type: 'geojson', data: bos(), attribution: '<a href="https://open-meteo.com/" target="_blank" rel="noopener">Hava: Open-Meteo.com</a>' });
-  map.addLayer({ id: 'il-hava', type: 'symbol', source: 'hava', maxzoom: IL_ZOOM, minzoom: 5.2, layout: {
-    'text-field': ['get', 'etiket'], 'text-font': ['Noto Sans Regular'], 'text-size': 11, 'text-offset': [0, 2.3], 'text-anchor': 'top',
-    'text-allow-overlap': false, 'text-optional': true,
-  }, paint: { 'text-color': '#33504a', 'text-halo-color': 'rgba(247,242,231,0.9)', 'text-halo-width': 1.2,
-    'text-opacity': ['interpolate', ['linear'], ['zoom'], 7.5, 1, IL_ZOOM, 0] } });
+  map.addLayer({ id: 'il-hava', type: 'symbol', source: 'hava', maxzoom: IL_ZOOM, minzoom: 5.8, layout: {
+    'icon-image': ['concat', 'ec:', ['get', 'ikon']], 'icon-size': ['interpolate', ['linear'], ['zoom'], 5.2, 0.6, 8, 0.8],
+    'icon-offset': [-10, 0], 'icon-anchor': 'top', 'text-field': ['concat', ['to-string', ['get', 'sicaklik']], '°'],
+    'text-font': ['Noto Sans Bold'], 'text-size': ['interpolate', ['linear'], ['zoom'], 5.2, 10, 8, 12], 'text-anchor': 'top', 'text-offset': [1.05, 0.55],
+    'symbol-placement': 'point', 'icon-padding': 0, 'text-padding': 0, 'icon-allow-overlap': false, 'text-optional': false,
+  }, paint: { 'text-color': ['case', ['<=', ['get', 'sicaklik'], 0], '#2a5d9b', ['>=', ['get', 'sicaklik'], 30], '#b5402a', '#3a4a45'],
+    'text-halo-color': 'rgba(247,242,231,0.95)', 'text-halo-width': 1.4,
+    'icon-opacity': ['interpolate', ['linear'], ['zoom'], 7.5, 1, IL_ZOOM, 0], 'text-opacity': ['interpolate', ['linear'], ['zoom'], 7.5, 1, IL_ZOOM, 0] } }, once('il-ad'));   // il adları yerleşimde öncelikli
+  // il-hava, il adının altında dursun: il etiketlerinin konumundan biraz güneye kaydırılmış noktalar havaGoster'de üretilir
+
+  // Gece örtüsü: zemini ve oyun dolgularını karartır; etiketler ve 3B yapılar üstte kalır
+  geceKatmani(map, once('yapi-3d'));   // ilk 3B katmandan önce: arazi kipinde de zemine işlesin
+  const yagisCizici = yagisKur(kap);
+  isimaBaslat(map);
 
   // ---------- Durum ipucu (yakınlaşma / yükleniyor) ----------
   const ipucu = document.createElement('div');
@@ -354,7 +374,8 @@ export async function haritaKur(kap, { parselTik, ilTik, mahalleTik, belediyeTik
     const uc = yeni === '3d';
     if (uc) map.setTerrain({ source: 'yukselti-arazi', exaggeration: 1.35 });
     else map.setTerrain(null);
-    if (map.getLayer('bina-3d')) map.setLayoutProperty('bina-3d', 'visibility', uc ? 'visible' : 'none');
+    for (const id of ['bina-3d', 'bina-3d-cati']) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', uc ? 'visible' : 'none');
+    if (map.getLayer('bina-golge')) map.setLayoutProperty('bina-golge', 'visibility', uc ? 'none' : 'visible');
     if (map.getLayer('bina')) map.setPaintProperty('bina', 'fill-opacity', uc ? 0 : ['interpolate', ['linear'], ['zoom'], 13.5, 0, 14.5, 1]);
     // Ülke ölçeğinde hafif eğim; mahalle ölçeğinde belirgin 3B
     const egim = map.getZoom() < 9 ? 35 : 58;
@@ -367,6 +388,19 @@ export async function haritaKur(kap, { parselTik, ilTik, mahalleTik, belediyeTik
     // Kullanıcı sağ tıkla / iki parmakla eğerse 3B kipine geç
     if (map.getPitch() > 15 && kip !== '3d') { kipAyarla('3d', { animasyon: false }); kap.dispatchEvent(new CustomEvent('kip', { detail: '3d' })); }
   });
+
+  // Yağış: haritanın ortasındaki ilin gerçek havası (il ölçeğinde ve yakınında)
+  let sonHava = [];
+  function yagisGuncelle() {
+    const z = map.getZoom();
+    if (z < 8.5 || !sonHava.length) return yagisCizici.ayarla(null);
+    const c = map.getCenter();
+    let en = null, enD = Infinity;
+    for (const h of sonHava) { const d = (h.lon - c.lng) ** 2 + (h.lat - c.lat) ** 2; if (d < enD) { enD = d; en = h; } }
+    const tur = enD < 1.2 ? yagisTuru(en) : null;
+    yagisCizici.ayarla(tur, Math.min(1.5, (en?.yagis || 0.5) / 2));
+  }
+  map.on('moveend', yagisGuncelle);
 
   ipucuGuncelle();
   gorunurAlaniYukle();
@@ -424,16 +458,23 @@ export async function haritaKur(kap, { parselTik, ilTik, mahalleTik, belediyeTik
       });
     },
     zamanTemizle() { map.getSource('zaman')?.setData(bos()); },
+    isikAyari(yeni) { const r = isikAyari(yeni); this.gunesGuncelle(); return r; },
+    yagisGuncelle: () => yagisGuncelle(),
     havaGoster(liste) {
+      sonHava = liste;
+      // İl adının altına: il etiketi noktasından biraz güneye
       map.getSource('hava')?.setData({ type: 'FeatureCollection', features: liste.map((h) => ({ type: 'Feature',
-        geometry: { type: 'Point', coordinates: [h.lon, h.lat] }, properties: { etiket: `${h.ikon} ${h.sicaklik}°` } })) });
+        geometry: { type: 'Point', coordinates: [h.lon, h.lat - 0.16] }, properties: { ikon: h.ikon, sicaklik: h.sicaklik } })) });
+      yagisGuncelle();
     },
     // 3B yapı ışığı: güneşin gerçek konumu (harita merkezine göre)
     gunesGuncelle(t = Date.now()) {
       const c = map.getCenter();
       const g = gunesKonumu(c.lng, c.lat, t);
       const i = isikRengi(g.yukseklik);
-      map.setLight({ anchor: 'map', color: i.renk, intensity: 0.25 + i.siddet * 0.35, position: [1.4, g.azimut, Math.min(85, Math.max(15, 90 - g.yukseklik))] });
+      const gece = isikAyari() === 'gunduz' ? { renk: '#fff3dc', siddet: 1 } : i;
+      map.setLight({ anchor: 'map', color: gece.renk, intensity: 0.25 + gece.siddet * 0.35, position: [1.4, g.azimut, Math.min(85, Math.max(15, 90 - g.yukseklik))] });
+      atmosferGuncelle(map, t);
       return g;
     },
     kip: () => kip,

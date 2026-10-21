@@ -132,7 +132,7 @@ function havaListesi() {
     mevsim: (({ kod, ad, ikon }) => ({ kod, ad, ikon }))(mevsim()),
     kaynak: 'Open-Meteo.com (CC BY 4.0)',
     afetler: sonAfetler(),
-    iller: kayitlar.map((h) => { const [ikon, durum] = WMO(h.kod); return { plaka: h.plaka, il: h.il, lon: h.lon, lat: h.lat, sicaklik: Math.round(h.sicaklik), yagis: h.yagis, ikon, durum, gunduz: !!h.gunduz, guncellendi: h.guncellendi }; }),
+    iller: kayitlar.map((h) => { const [ikon, durum] = WMO(h.kod); return { plaka: h.plaka, il: h.il, lon: h.lon, lat: h.lat, sicaklik: Math.round(h.sicaklik), yagis: h.yagis, kod: h.kod, ruzgar: h.ruzgar, ikon, durum, gunduz: !!h.gunduz, guncellendi: h.guncellendi }; }),
   };
 }
 const ilHavasi = (plaka) => {
