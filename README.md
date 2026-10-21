@@ -1,4 +1,4 @@
-# Sanal Türkiye — prototip (v0.7, ulusal)
+# Sanal Türkiye — prototip (v0.9, ulusal)
 
 Yaşayan dijital ülke simülasyonu. **81 ilin tamamı açık**: gerçek Türkiye haritası üzerinde herhangi bir köye, mahalleye yakınlaşıp parsel edinebilir, tarla ekip yapı kurabilir, oyuncular arası pazarda alım satım yapabilirsin. Harita 2B ve 3B görünümlüdür.
 
@@ -10,7 +10,7 @@ Yaşayan dijital ülke simülasyonu. **81 ilin tamamı açık**: gerçek Türkiy
 npm install
 npm start            # http://localhost:3400
 npm run dev          # geliştirme: dosya değişince yeniden başlar, seçim takvimi hızlı (aşağıya bakın)
-npm test             # kabul testleri (104; ağ ve gerçek yapay zekâ kullanmaz; PostgreSQL testi gömülü PGlite ile)
+npm test             # kabul testleri (114; ağ ve gerçek yapay zekâ kullanmaz; PostgreSQL testi gömülü PGlite ile)
 npm run rol -- e-posta ADMIN   # yetkili rolü ver (MODERATOR / DENETCI / ADMIN; panel için 2FA zorunlu)
 npm run yedek        # çevrimiçi yedek (data/yedekler, gzip, bütünlük denetimi, 14 yedek döndürme)
 npm run geri-yukle -- data/yedekler/<dosya>.db.gz [--onayla]   # sunucu durdurulmuşken
@@ -34,6 +34,49 @@ Ortam değişkenleri (v0.6 eklemeleri): `TABAN_URL` (e-posta bağlantıları; ü
 `npm run dev` seçimleri tek başına denemek için `SECIM_HIZI=1440 SECIM_MIN_SECMEN=1 BELEDIYE_MIN_SECMEN=1` ile çalışır (1 oyun günü = 1 dakika): muhtarlık seçimi ≈ 8 dakika, belediye seçimi ≈ 12 dakika, meclis oylaması 1 dakika, proje yapımı 2–4 dakika, muhtarlık dönemi 30, belediye dönemi 90 dakika; günlük devlet katkısı dakikada bir işler. `npm start` gerçek süreleri kullanır.
 
 > Not: v0.1–0.2'nin Meram ızgarası ulusal ızgarayla uyumsuz olduğundan eski `data/sanalturkiye.db` dosyası kullanılmaz (silinmedi).
+
+## v0.9 — çiftlik oyunu
+
+| Alan | Ne var | Nerede |
+|---|---|---|
+| İl → ilçe → mahalle | İle tıklayınca yakınlaşır ve ilçe sınırları renkli görünür; ilçeye tıklayınca mahalle ve köy alanları; mahalleye tıklayınca yakınlaşır, mahalle paneli açılır. Mahalle alanı oyunun kendi kuralıyla çıkarılır (hücre en yakın yerleşim noktasına, sınıf ağırlıklı uzaklıkla bağlanır), yani haritadaki sınır parsellerin gerçekten bağlandığı mahalleyle aynıdır | `server/harita/bolgeler.js`, `harita.js` |
+| Tarla geri bildirimi | Kendi parselinde süzülen baloncuklar: 🧺 hasat hazır, 💧 sulama bekliyor, 🥚 hayvan ürünü hazır. Ekimde fide, sulamada damla, hasatta ürün parçacıkları | `dunya-efekt.js` |
+| Hayvancılık | Kümes (sv 2, yumurta), inek ahırı (sv 3, süt), ağıl (sv 4, yün), mandıra (sv 5, peynir, tereyağı); yemle → bekle → topla; yem değirmende buğdaydan üretilir ya da eksikse satın alınır. Haritada ve parsel kartında hayvanlı 3B modeller | `server/ciftlik.js`, `modeller.js` |
+| Seviye | Eylemler tecrübe puanı (TP) kazandırır; seviye n için toplam TP = 20 × n × (n − 1). Yeni yapılar ve süsler seviyeyle açılır; her seviyede akçe ödülü | `rules.js` → `SEVIYE` |
+| Günlük ödül | Art arda gelinen günlerde artan akçe + TP (İstanbul tarihi) | `GUNLUK_ODUL` |
+| Sipariş panosu | Köylüler (Ayşe Teyze, Fırıncı Rıza…) yetiştirebildiğin ürünleri ister; teslim edince taban fiyatın üstünde akçe + TP; 20 dakikada bir yeni müşteri, en çok 4 açık sipariş | `SIPARIS` |
+| Köy yarışması | Mahallede bu hafta en çok TP kazanan üç oyuncu ödül alır (demo sakinler ödül almaz; dağıtım bir kez) | `YARISMA` |
+| Süsler | Çiçek tarhı, korkuluk, taş yol, bank, kuyu, odun yığını, yel değirmeni, çeşme; parsel kenarındaki 8 yuvaya yerleşir, haritada 3B görünür | `SUSLER` |
+| Ses | Web Audio ile anında üretilen efektler (hasat, sulama, para, seviye…) ve isteğe bağlı çiftlik ezgisi; ⚙️ menüsünden açılır/kapanır; ses dosyası yok | `ses.js` |
+| Telefon | Dokunmatik boyutlu düğmeler, çakışmasız üst düzen, alt çekmece panel | `css/ciftlik.css` |
+
+## v0.8 — çiftlik oyunu görünümü
+
+Haritanın varsayılan görünümü **Çiftlik**: tarayıcı çiftlik oyunlarının (ör. My Free Farm) sıcak, elle boyanmış havası.
+Dokular ve modeller kendi çizimimizdir (tuvalde üretilir); hiçbir oyunun görseli kullanılmaz. ⚙️ menüsünden eski
+**Harita** görünümüne dönülebilir (tercih `st-gorunum`).
+
+| Ne | Nasıl | Nerede |
+|---|---|---|
+| Boyanmış zemin | Yakında çiçekli çimen; tarlalar sürülmüş toprak / yeşil ekin / olgun buğday; orman tacı; köy aralarında aşınmış toprak; ara yollar toprak patika, ana yollar arnavut kaldırımı; boyanmış su ve kumsal kıyı. Uzakta yüksekliğe göre renk (kıyı yeşili → bozkır sarısı → dağ kahvesi → karlı zirve) | `ciftlik-doku.js`, `stil.js`, `tema.js` |
+| 3B dünya | Haritanın WebGL bağlamında three.js sahnesi (MapLibre özel katmanı); içerik OSM vektör karolarından | `dunya3d.js` |
+| Ağaçlar | Gür, yuvarlak, yumuşak gölgeli taçlar; yöreye göre tür, gerçek tarihe göre mevsim rengi; suya dikilmez | `dunya-bitki.js` |
+| Evler | OSM tabanlarından sıvalı, ahşap çerçeveli ve panjurlu, saksılı cepheler; kiremit dokulu kırma çatılar; gece yanan pencereler; güneşe göre gölge | `dunya-bina.js` |
+| Oyuncu parselleri | Çitle çevrili, hafif yükseltilmiş sürülmüş tarla (tarım) ya da çimenli avlu; kendi parselinin çiti bal rengi; yapılar ve ekinler parsel kartıyla aynı modeller | `dunya-bina.js`, `model3d.js` |
+| Hareketli öğeler | Araçlar, kuşlar, koyun ve inek sürüleri, gerçek havaya göre bulutlar; ⚙️ menüsünden kapatılabilir | `dunya-hayat.js`, `dunya-bulut.js` |
+| Arayüz | Ahşap üst çubuk ve sekmeler, parşömen panel ve kartlar, altın düğmeler, Baloo 2 başlıklar, çiftlik kartpostalı karşılama | `css/ciftlik.css` |
+| Sinema | Uzaydan giriş uçuşu (oturumda bir kez), 🎬 Türkiye turu | `sinematik.js` |
+| Grafik | ⚙️ Ultra / Yüksek / Dengeli / Hafif (Hafif: 3B dünya kapalı) | `dunya3d.js` → `GRAFIK` |
+
+**Akıcılık kuralları** (bozulursa harita takılır):
+- Harita boştayken baştan çizilmez. Hareketli öğeler varken ~20 kare/sn `triggerRepaint` (her karede değil), harita hareket
+  ederken hiç istenmez. Boya özelliğini sürekli canlandırmak (`setPaintProperty` döngüsü) geçiş başlatır ve haritayı her
+  karede çizdirir: yapılmaz.
+- Görünür alan değişince 3B katmanlar ayrı karelerde kurulur (her biri ~10–40 ms); yeni katman eski çizim kökenine göre
+  kaydırılmış grubunda doğru yerde görünür.
+- `stil.js`'deki görünmez "veri tutucu" katmanlar silinmemeli: MapLibre yakın ölçekte karoları dilimlerken yalnızca görünür
+  katmanların OSM katmanlarını saklar.
+- Sahne ölçeği MapLibre'nin ortalama Dünya yarıçapıyla (6 371 008,8 m) hesaplanır; WGS84 yarıçapı nesneleri ~%0,1 gömer.
 
 ## v0.7 — yaşayan nüfus ve yayına hazırlık
 

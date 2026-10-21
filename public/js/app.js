@@ -1,6 +1,8 @@
 import { api, esc, sayi, akce, sure, zamanOnce, tost, ApiHatasi, tamlayan } from './yardimci.js';
 import { haritaKur } from './harita.js';
 import { kaynaklariAyarla } from './stil.js';
+import { GRAFIK, varsayilanGrafik } from './dunya3d.js';
+import { girisOynayacakMi } from './sinematik.js';
 import { sahneKur } from './sahne3d.js';
 import { mahallePaneli as mahalleSekmesi, yenidenSayimHTML } from './secim-ui.js';
 import { belediyePaneli as belediyeSekmesi } from './belediye-ui.js';
@@ -11,6 +13,8 @@ import { sohbetKur, sohbetKanallariniYenile } from './sohbet-ui.js';
 import { ligPaneli } from './lig-ui.js';
 import { meslekBolumu, kooperatifBolumu, albumBolumu } from './topluluk-ui.js';
 import { paylas, zamanYolculugu } from './foto.js';
+import { hayvanSatiri, susBolumu, ciftlikBolumu } from './ciftlik-ui.js';
+import { ses, sesDurumu, sesAyarla, muzikAyarla } from './ses.js';
 
 const $ = (s, kok = document) => kok.querySelector(s);
 const $$ = (s, kok = document) => [...kok.querySelectorAll(s)];
@@ -91,6 +95,7 @@ const AKIS_METIN = {
 const secimAd = (a) => (a.after?.tur === 'BELEDIYE' ? 'Belediye' : 'Muhtarlık');
 const yapiAd = (t) => durum.kurallar?.yapilar[t]?.ad || t;
 const urunAd = (u) => durum.kurallar?.urunler[u]?.ad || u;
+const urunIkon = (u) => durum.kurallar?.urunler[u]?.ikon || '🧺';
 const sunucuSimdi = () => Date.now() + durum.saatFarki;
 const girisli = () => !!durum.ben;
 
@@ -109,15 +114,24 @@ async function basla() {
   kipDugmesiCiz(kipOku());
   if (tokenler.sifirla) { sifirlamaTokeni = tokenler.sifirla; authAc('sifirla'); }
   else if (durum.ikinciAdimBekleniyor) authAc('ikiAdim');
-  else if (!girisli()) $('#karsilama').showModal();   // harita yüklenirken karşılama hazır olsun
+  // Karşılama harita yüklenirken hazır olsun; giriş uçuşu oynayacaksa uçuştan sonra açılır
+  const karsilamaBekle = !girisli() && !tokenler.sifirla && !durum.ikinciAdimBekleniyor && gorunumTercihi() !== 'harita' && girisOynayacakMi();
+  if (!tokenler.sifirla && !durum.ikinciAdimBekleniyor && !girisli() && !karsilamaBekle) $('#karsilama').showModal();
   durum.harita = await haritaKur($('#harita'), {
     parselTik: parselSec,
     ilTik: ilSec,
+    ilceTik: ilceSec,
+    mahalleAlanTik: mahalleAlanSec,
     mahalleTik: mahalleAc,
     belediyeTik: belediyeAc,
     konumDegisti,
     kip: kipOku(),
+    tema: gorunumTercihi(),
+    grafik: tercihOku('st-grafik', varsayilanGrafik()),
   });
+  gorunumMenusuCiz();
+  const ucus = durum.harita.girisUcusu();
+  if (karsilamaBekle) (ucus || Promise.resolve()).then(() => { if (!girisli() && !$('#karsilama').open) $('#karsilama').showModal(); });
   $('#harita').addEventListener('kip', (e) => kipDugmesiCiz(e.detail));
   // Işık: gerçek saat (gece karanlık, alacakaranlık turuncu) ya da hep gündüz; tercih tarayıcıda saklanır
   const isikCiz = (a) => { $('#isikDugme').textContent = a === 'gunduz' ? '☀️' : '🌗'; $('#isikDugme').title = a === 'gunduz' ? 'Işık: hep gündüz' : 'Işık: gerçek saat'; };
@@ -213,10 +227,89 @@ $('#kirinti').addEventListener('click', (e) => {
     if (r) durum.harita.yereGit({ bbox: r.bbox, zoom: 13 });
   }
 });
+// İl → ilçeleri görünür, ilçe → mahalle alanları, mahalle → yakınlaş ve mahalle panelini aç
 function ilSec(plaka) {
   const il = durum.bolgeler.find((r) => r.type === 'IL' && r.plaka === plaka);
-  if (il) durum.harita.yereGit({ bbox: il.bbox, zoom: 11 });
+  if (!il) return;
+  durum.harita.yereGit({ bbox: il.bbox, zoom: 9.6 });
+  durum.harita.ilceleriGoster(plaka);
 }
+function ilceSec(id) {
+  const ilce = durum.bolgeler.find((r) => r.type === 'ILCE' && r.id === Number(id));
+  if (!ilce) return;
+  durum.harita.ilceleriGoster(ilce.plaka);
+  durum.harita.yereGit({ bbox: ilce.bbox, zoom: 12.6 });
+  durum.harita.mahalleleriGoster(ilce.id).then((bilgi) => { if (bilgi) tost(`📍 ${bilgi.ad}: ${bilgi.mahalleSayisi} mahalle ve köy`); });
+}
+async function mahalleAlanSec(ilceId, yerId, lngLat) {
+  try {
+    const r = await api(`/api/ilce/${ilceId}/mahalle`, { yerId });
+    durum.harita.yereGit({ merkez: [lngLat.lng, lngLat.lat], zoom: 14.6 });
+    mahalleAc(r.id);
+  } catch (e) { tost(e.message, 'hata'); }
+}
+
+// Düğme sesi (hafif tık)
+document.addEventListener('click', (e) => { if (e.target.closest('.dugme, .sekmeler button, .kip-secici button, .sus-oge')) ses('tik'); }, true);
+
+// ---------- Görünüm (tema, grafik) ve sinematik tur ----------
+function tercihOku(k, v) { try { return localStorage.getItem(k) || v; } catch { return v; } }
+// Görünüm: yalnızca çiftlik ya da harita (eski denemelerden kalan değerler çiftliğe döner)
+const gorunumTercihi = () => (tercihOku('st-gorunum', 'ciftlik') === 'harita' ? 'harita' : 'ciftlik');
+function tercihYaz(k, v) { try { localStorage.setItem(k, v); } catch { /* özel pencere */ } }
+function gorunumMenusuCiz() {
+  const tema = durum.harita?.tema() || gorunumTercihi();
+  const grafik = tercihOku('st-grafik', varsayilanGrafik());
+  $$('#gorunumMenu [data-tema]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.tema === tema)));
+  $$('#gorunumMenu [data-grafik]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.grafik === grafik)));
+  const sd = sesDurumu();
+  $$('#gorunumMenu [data-ses]').forEach((b) => b.setAttribute('aria-pressed', String((b.dataset.ses === 'acik') === sd.ses)));
+  $$('#gorunumMenu [data-muzik]').forEach((b) => b.setAttribute('aria-pressed', String((b.dataset.muzik === 'acik') === sd.muzik)));
+  const hareket = durum.harita?.hareketli() ?? true;
+  $$('#gorunumMenu [data-hareket]').forEach((b) => b.setAttribute('aria-pressed', String((b.dataset.hareket === 'acik') === hareket)));
+}
+function gorunumMenusu(ac) {
+  const m = $('#gorunumMenu');
+  m.hidden = !ac;
+  $('#ayarDugme').setAttribute('aria-expanded', String(ac));
+  if (ac) gorunumMenusuCiz();
+}
+$('#ayarDugme').addEventListener('click', (e) => { e.stopPropagation(); gorunumMenusu($('#gorunumMenu').hidden); });
+document.addEventListener('click', (e) => { if (!e.target.closest('#gorunumMenu, #ayarDugme')) gorunumMenusu(false); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#gorunumMenu').hidden) gorunumMenusu(false); });
+$('#gorunumMenu').addEventListener('click', (e) => {
+  const t = e.target.closest('[data-tema]'), g = e.target.closest('[data-grafik]'), h = e.target.closest('[data-hareket]');
+  const sb = e.target.closest('[data-ses]'), mb = e.target.closest('[data-muzik]');
+  if (sb) sesAyarla(sb.dataset.ses === 'acik');
+  if (mb) muzikAyarla(mb.dataset.muzik === 'acik');
+  if (h && durum.harita) {
+    durum.harita.hareketAyarla(h.dataset.hareket === 'acik');
+    tost(h.dataset.hareket === 'acik' ? '🚜 Araçlar, hayvanlar ve kuşlar açık' : '⏸ Hareketli öğeler kapalı');
+  }
+  if (!durum.harita) return;
+  if (t) {
+    tercihYaz('st-gorunum', t.dataset.tema);
+    durum.harita.temaAyarla(t.dataset.tema);
+    tost(t.dataset.tema === 'ciftlik' ? '🌾 Çiftlik görünümü' : '🗺️ Harita görünümü');
+  }
+  if (g) {
+    tercihYaz('st-grafik', g.dataset.grafik);
+    durum.harita.grafikAyarla(g.dataset.grafik);
+    tost(`Grafik: ${GRAFIK[g.dataset.grafik].ad}${g.dataset.grafik === 'hafif' ? ' — 3B dünya kapalı' : ''}`);
+  }
+  gorunumMenusuCiz();
+});
+let turuDurdur = null;
+$('#turDugme').addEventListener('click', (e) => {
+  e.stopPropagation();
+  if (!durum.harita) return;
+  if (turuDurdur) { turuDurdur(); return; }
+  if (durum.harita.tema() === 'harita') { durum.harita.temaAyarla('ciftlik'); tercihYaz('st-gorunum', 'ciftlik'); gorunumMenusuCiz(); }
+  $('#turDugme').textContent = '⏹';
+  $('#turDugme').title = 'Turu durdur';
+  turuDurdur = durum.harita.turBaslat(() => { turuDurdur = null; $('#turDugme').textContent = '🎬'; $('#turDugme').title = 'Sinematik Türkiye turu'; });
+  tost('🎬 Türkiye turu başladı — haritaya dokununca durur');
+});
 
 // ---------- 2B / 3B ----------
 function kipDugmesiCiz(kip) {
@@ -273,9 +366,16 @@ function ustCiz() {
   if (b) {
     $('#bakiyeDeger').textContent = sayi(b.bakiye);
     $('#kullaniciAd').textContent = b.kullanici.ad;
-    const kalan = b.gorevler.filter((g) => !g.tamam).length;
+    const kalan = b.gorevler.filter((g) => !g.tamam).length + (b.seviye?.odulBekleyen ? 1 : 0) + (b.gunlukOdul ? 1 : 0);
     $('#gorevRozet').hidden = !kalan;
     $('#gorevRozet').textContent = kalan;
+    if (b.seviye) {
+      $('#seviye').hidden = false;
+      $('#seviyeDeger').textContent = b.seviye.seviye;
+      const s = b.seviye;
+      $('#seviyeCubuk').style.width = `${s.sonraki ? Math.min(100, ((s.tp - s.esik) / (s.sonraki - s.esik)) * 100) : 100}%`;
+      $('#seviye').title = `Seviye ${s.seviye} · ${s.tp} TP${s.sonraki ? ` / ${s.sonraki}` : ''}`;
+    }
     const pz = b.pazar;
     $('#kilitli').hidden = !pz.kilitli;
     $('#kilitliDeger').textContent = sayi(pz.kilitli);
@@ -425,10 +525,14 @@ function parselPaneli() {
         ${y.durum === 'BUILDING'
           ? `<div class="kucuk">İnşaatta · <span data-bitis="${y.bitis}">${sure(y.bitis - sunucuSimdi())}</span></div>`
           : `<div class="kucuk">Sağlık %${y.saglik}${y.etkisiz ? ' · <b class="kirmizi-metin">bakımsız: etkisi durdu</b>' : ''}</div>
-             <div class="cubuk ince ${saglikRenk(y.saglik)}"><span style="width:${y.saglik}%"></span></div>`}</div></li>`).join('')}</ul>
+             <div class="cubuk ince ${saglikRenk(y.saglik)}"><span style="width:${y.saglik}%"></span></div>
+             ${hayvanSatiri(y, { ben, yem: (durum.ben?.envanter || []).find((i) => i.item_id === 'YEM')?.miktar || 0, simdi: sunucuSimdi })}`}</div></li>`).join('')}</ul>
       ${ben && k.bakim.toplam > 0 ? `<div class="satir" style="margin-top:8px"><span class="kucuk">Yapılar günde ${k.bakim.yipranma} puan yıpranır; %${k.bakim.esik} altında etkileri durur.</span>
         <button class="dugme ince" data-eylem="bakim" ${durum.ben.bakiye < k.bakim.toplam ? 'disabled' : ''}>🔧 Bakım yap (${akce(k.bakim.toplam)})</button></div>` : ''}`);
   }
+
+  // Çiftlik süsleri
+  if (k.susler?.length || (ben && k.susSecenekleri)) parcalar.push(susBolumu(k));
 
   // İnşaat atölyesi
   if (ben && k.insaatSecenekleri) {
@@ -623,11 +727,13 @@ async function cuzdanYukle() {
 }
 
 // ---------- Görevler ----------
-function gorevlerPaneli() {
-  if (!girisli()) return girisIste('İlk 10 dakika görevleri seni bekliyor');
+async function gorevlerPaneli() {
+  if (!girisli()) return girisIste('Seviye, günlük ödül, siparişler ve köy yarışması seni bekliyor');
+  let ciftlik = '';
+  try { ciftlik = ciftlikBolumu(await api('/api/ciftlik'), { simdi: sunucuSimdi }); } catch { /* bağlantı yoksa yalnızca görevler */ }
   const g = durum.ben.gorevler;
   const biten = g.filter((x) => x.tamam).length;
-  return `<h2 class="kart-baslik">İlk adımlar</h2>
+  return `<h2 class="kart-baslik">Çiftliğim</h2>${ciftlik}<h3 class="bolum">İlk adımlar</h3>
     <p class="alt-yazi">${biten} / ${g.length} görev · toplam ${akce(g.reduce((a, x) => a + x.odul, 0))} ödül</p>
     <div class="cubuk"><span style="width:${(biten / g.length) * 100}%"></span></div>
     <div style="margin-top:8px">${g.map((x) => `
@@ -871,19 +977,57 @@ $('#panelIcerik').addEventListener('click', async (e) => {
     case 'uretim-topla':
       b.disabled = true;
       return eylem(`/api/uretim/${b.dataset.id}/topla`, {}, (r) => `📦 ${sayi(r.miktar)} ${urunAd(r.urun)} depoya girdi`);
-    case 'ek':
+    case 'ek': {
       b.disabled = true;
-      return eylem(`/api/parsel/${id}/ek`, { urun: b.dataset.urun }, `🌱 ${urunAd(b.dataset.urun)} ekildi`);
-    case 'sula':
-      return eylem(`/api/parsel/${id}/sula`, null, '💧 Tarla sulandı');
+      const konum = durum.kart?.konum;
+      return eylem(`/api/parsel/${id}/ek`, { urun: b.dataset.urun }, `🌱 ${urunAd(b.dataset.urun)} ekildi`)
+        .then((r) => { if (r?.tamam !== false && r) { durum.harita.efekt('ek', konum, '🌱'); ses('ek'); } });
+    }
+    case 'sula': {
+      const konum = durum.kart?.konum;
+      return eylem(`/api/parsel/${id}/sula`, null, '💧 Tarla sulandı').then((r) => { if (r) { durum.harita.efekt('sula', konum); ses('sula'); } });
+    }
     case 'bakim':
       b.disabled = true;
       return eylem(`/api/parsel/${id}/bakim`, null, (r) => `🔧 ${r.adet} yapının bakımı yapıldı (${akce(r.tutar)})`);
     case 'emir-iptal':
       return eylem(`/api/borsa/emir/${b.dataset.id}/iptal`, null, 'Emir iptal edildi; kilitli tutar iade edildi');
-    case 'hasat':
+    case 'hasat': {
       b.disabled = true;
-      return eylem(`/api/parsel/${id}/hasat`, null, (r) => `🧺 ${sayi(r.miktar)} ${urunAd(r.urun)} hasat ettin`);
+      const konum = durum.kart?.konum;
+      return eylem(`/api/parsel/${id}/hasat`, null, (r) => `🧺 ${sayi(r.miktar)} ${urunAd(r.urun)} hasat ettin`)
+        .then((r) => { if (r?.urun) { durum.harita.efekt('hasat', konum, urunIkon(r.urun)); ses('hasat'); } });
+    }
+    // ---- Çiftlik: hayvanlar, süsler, ödüller, siparişler
+    case 'hayvan-besle': {
+      b.disabled = true;
+      const konum = durum.kart?.konum;
+      return eylem(`/api/yapi/${b.dataset.id}/besle`, null, (r) => `🌽 Hayvanlar yemlendi${r.yemSatin ? ` (${r.yemSatin} yem satın alındı: ${akce(r.odenen)})` : ''}`)
+        .then((r) => { if (r?.tamam) { durum.harita.efekt('ek', konum, '🌽'); ses('besle'); } });
+    }
+    case 'hayvan-topla': {
+      b.disabled = true;
+      const konum = durum.kart?.konum;
+      return eylem(`/api/yapi/${b.dataset.id}/topla`, null, (r) => `${urunIkon(r.urun)} ${sayi(r.miktar)} ${urunAd(r.urun)} toplandı`)
+        .then((r) => { if (r?.urun) { durum.harita.efekt('hasat', konum, urunIkon(r.urun)); ses('hasat'); } });
+    }
+    case 'sus-ekle':
+      b.disabled = true;
+      return eylem(`/api/parsel/${id}/sus`, { tur: b.dataset.tur }, '🌷 Süs yerleştirildi').then((r) => { if (r?.tamam) ses('para'); });
+    case 'sus-kaldir':
+      if (!confirm('Süsü kaldırmak istiyor musun? Bedeli iade edilmez.')) return;
+      return eylem(`/api/sus/${b.dataset.id}/kaldir`, null, 'Süs kaldırıldı');
+    case 'seviye-odul':
+      b.disabled = true;
+      return eylem('/api/seviye-odul', null, (r) => `🎁 Seviye ödülü: ${akce(r.tutar)}`).then((r) => { if (r?.tamam) ses('seviye'); });
+    case 'gunluk-odul':
+      b.disabled = true;
+      return eylem('/api/gunluk-odul', null, (r) => `🎁 ${r.seri}. gün ödülü: ${akce(r.akce)} + ${r.tp} TP`).then((r) => { if (r?.tamam) ses('para'); });
+    case 'siparis-teslim':
+      b.disabled = true;
+      return eylem(`/api/siparis/${b.dataset.id}/teslim`, null, (r) => `📦 ${r.musteri} siparişini aldı: ${akce(r.odul)} + ${r.tp} TP`).then((r) => { if (r?.tamam) ses('para'); });
+    case 'siparis-reddet':
+      return eylem(`/api/siparis/${b.dataset.id}/reddet`, null, 'Sipariş reddedildi; yakında yeni müşteri gelir');
     // ---- Pazar
     case 'pazar-alt':
       durum.pazarAlt = b.dataset.alt;
@@ -1240,7 +1384,7 @@ hesapKur({ yenile: () => benYenile({ sessiz: true }), cikti: cikisSonrasi, iller
 let olayZamanlayici = 0;
 canliDinle('bildirim', (m) => {
   tost(`🔔 ${m.metin}`);
-  if (durum.ben?.hesap?.ayarlar?.bildirimSesi) ses();
+  if (durum.ben?.hesap?.ayarlar?.bildirimSesi) ses('bildirim');
   benYenile({ sessiz: true });
 });
 canliDinle('olay', () => {
@@ -1252,13 +1396,6 @@ canliDinle('olay', () => {
   }, 1500);
 });
 canliDinle('durum', (d) => { document.body.classList.toggle('cevrimdisi', d !== 'acik'); });
-function ses() {
-  try {
-    const a = new AudioContext(), o = a.createOscillator(), g = a.createGain();
-    o.frequency.value = 880; g.gain.setValueAtTime(0.08, a.currentTime); g.gain.exponentialRampToValueAtTime(0.0001, a.currentTime + 0.35);
-    o.connect(g).connect(a.destination); o.start(); o.stop(a.currentTime + 0.35);
-  } catch { /* ses yok */ }
-}
 sohbetKur({
   kanallarFn: () => {
     const k = [];

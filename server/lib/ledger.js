@@ -77,7 +77,7 @@ function denetim({ anahtar = null, aktor = null, eylem, varlik = null, once = nu
     bolge, herkese ? 1 : 0);
   const olaylar = require('./olaylar');
   if (herkese) olaylar.yay('olay', { eylem, bolge, varlik });
-  if (aktor) olaylar.yay('eylem', { eylem, aktor });
+  if (aktor) olaylar.yay('eylem', { eylem, aktor, bolge, varlik });
 }
 
 module.exports = { OyunHatasi, yeniTx, hesap, bakiye, hesapBakiye, aktar, harca, odul, envanter, envanterMiktar, envanterDegis, denetim, yuvarla };

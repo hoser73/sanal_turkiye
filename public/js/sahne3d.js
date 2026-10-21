@@ -2,48 +2,25 @@
 // Modeller modeller.js'den gelir (haritadaki 3B katmanla aynı tanımlar). Sürükle → döndür, tekerlek/çimdik → yakınlaş.
 import * as THREE from '/vendor/three/three.module.js';
 import { parselParcalari, PALET } from './modeller.js';
+import { S, tohumlu, malzeme, kutu, yerel, parcaEkle } from './model3d.js';
+import { dokuCiz } from './ciftlik-doku.js';
 import { gunesKonumu, isikRengi } from './gunes.js';
 
-const S = 30;                 // bir hücre ≈ 30 m
 const TOPRAK = '#a9845a', TOPRAK_KOYU = '#7b5d3d';
 const ZEMIN = {
   KONUT: '#e6dccb', TICARET: '#e9d6d0', TARIM: '#b8c98a', SANAYI: '#d5d2da', TURIZM: '#cfe3df', KARMA: '#ead8c2',
   KORUMA: '#8fb07a', PARK: '#b9d6a0', SU: '#7fb6cc', YOL: '#9a958c', DIS: '#d9d2c4',
 };
 
-// Deterministik rastgele (komşu dekorları her açılışta aynı görünsün)
-function tohumlu(s) {
-  let h = 2166136261;
-  for (const ch of s) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
-  return () => { h = Math.imul(h ^ (h >>> 15), 2246822507); h = Math.imul(h ^ (h >>> 13), 3266489909); return ((h ^= h >>> 16) >>> 0) / 4294967296; };
-}
-
-const malzemeler = new Map();
-function malzeme(renk, { saydam = false, parlak = false } = {}) {
-  const k = `${renk}|${saydam}|${parlak}`;
-  if (!malzemeler.has(k)) {
-    malzemeler.set(k, new THREE.MeshStandardMaterial({
-      color: renk, roughness: parlak ? 0.25 : 0.82, metalness: parlak ? 0.15 : 0.02,
-      transparent: saydam, opacity: saydam ? 0.5 : 1, depthWrite: !saydam,
-    }));
+const dokular = new Map();
+function ciftlikDokusu(ad, tekrar) {
+  const k = `${ad}|${tekrar}`;
+  if (!dokular.has(k)) {
+    const t = new THREE.CanvasTexture(dokuCiz(ad, 2));
+    t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(tekrar, tekrar); t.colorSpace = THREE.SRGBColorSpace;
+    dokular.set(k, t);
   }
-  return malzemeler.get(k);
-}
-
-function tarlaDokusu(ekiliMi) {
-  const c = document.createElement('canvas');
-  c.width = c.height = 128;
-  const g = c.getContext('2d');
-  g.fillStyle = ekiliMi ? '#9a7550' : '#b8c98a';
-  g.fillRect(0, 0, 128, 128);
-  for (let i = 0; i < 16; i++) {
-    g.fillStyle = ekiliMi ? (i % 2 ? '#8a6744' : '#a67f58') : (i % 2 ? '#aebf80' : '#c2d297');
-    g.fillRect(0, i * 8, 128, 4);
-  }
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.magFilter = THREE.NearestFilter;
-  return t;
+  return dokular.get(k);
 }
 
 export function sahneKur() {
@@ -90,75 +67,6 @@ export function sahneKur() {
     kamera.lookAt(0, 3, 0);
   }
 
-  function kutu(w, h, d, renk, ops) {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), malzeme(renk, ops));
-    m.castShadow = true; m.receiveShadow = true;
-    return m;
-  }
-  const yerel = (ox, oz, u, v) => [ox + (u - 0.5) * S, oz + (v - 0.5) * S];
-
-  function parcaEkle(p, ox, oz, hedef) {
-    if (p.tur === 'silindir') {
-      const [x, z] = yerel(ox, oz, p.u, p.v);
-      const boy = p.tavan - p.taban;
-      // Ağaç tepeleri yumuşak alçak poligonlu küre; diğerleri silindir (gövde, depo, baca)
-      const geo = p.yaprak ? new THREE.IcosahedronGeometry(p.r * S * 1.15, 0) : new THREE.CylinderGeometry(p.r * S, p.r * S * 1.04, boy, p.r > 0.04 ? 12 : 7);
-      const m = new THREE.Mesh(geo, malzeme(p.renk));
-      if (p.yaprak) m.scale.y = boy / (p.r * S * 2.1);
-      m.position.set(x, p.taban + boy / 2, z);
-      m.castShadow = true; m.receiveShadow = true;
-      hedef.add(m);
-      return;
-    }
-    const [u0, v0, u1, v1] = p.alan;
-    const [x0, z0] = yerel(ox, oz, u0, v0), [x1, z1] = yerel(ox, oz, u1, v1);
-    const w = Math.max(0.15, x1 - x0), d = Math.max(0.15, z1 - z0), h = Math.max(0.05, p.tavan - p.taban);
-    const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
-    const m = kutu(w, h, d, p.renk, { saydam: !!p.saydam, parlak: !!p.saydam || p.renk === PALET.panel || p.renk === PALET.havuz });
-    m.position.set(cx, p.taban + h / 2, cz);
-    if (p.egim) m.rotation.x = -0.32;
-    hedef.add(m);
-    if (p.insaat) {
-      // İskele: yapının bitmiş hacmini gösteren tel kafes
-      const kenar = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(w, h * 2.4, d)), new THREE.LineBasicMaterial({ color: '#7a5c12' }));
-      kenar.position.set(cx, p.taban + h * 1.2, cz);
-      hedef.add(kenar);
-    }
-    if (p.cati === 'kirma') {
-      // Kırma çatı: 4 kenarlı koni 45° döndürülüp birim kareye oturtulur, kapsayıcı ölçekle dikdörtgene uyar
-      const koni = new THREE.Mesh(new THREE.ConeGeometry(Math.SQRT1_2, 1, 4, 1), malzeme(p.catiRenk, { saydam: !!p.saydam }));
-      koni.rotation.y = Math.PI / 4;
-      koni.castShadow = true;
-      const kapsayici = new THREE.Group();
-      kapsayici.position.set(cx, p.tavan + p.catiYuksek / 2, cz);
-      kapsayici.scale.set(w * 1.08, p.catiYuksek, d * 1.08);
-      kapsayici.add(koni);
-      hedef.add(kapsayici);
-    } else if (p.cati === 'duz') {
-      const cap = kutu(w * 0.94, 0.5, d * 0.94, p.catiRenk || '#9aa3a8');
-      cap.position.set(cx, p.tavan + 0.25, cz);
-      hedef.add(cap);
-    }
-    if (!p.insaat && [PALET.duvarSicak, PALET.duvarAcik, '#fbe9d0'].includes(p.renk)) pencereler(hedef, x0, z0, x1, z1, p.taban, p.tavan);
-  }
-
-  // Cephelere küçük pencereler (yalnızca güney ve doğu cephesi; ucuz ama canlı görünür)
-  function pencereler(hedef, x0, z0, x1, z1, taban, tavan) {
-    const cam = malzeme('#3b5566', { parlak: true });
-    for (let y = taban + 1.6; y < tavan - 0.8; y += 3.2) {
-      for (let x = x0 + 1.5; x < x1 - 1; x += 2.6) {
-        const p = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.3, 0.1), cam);
-        p.position.set(x + 0.5, y, z1 + 0.02);
-        hedef.add(p);
-      }
-      for (let z = z0 + 1.5; z < z1 - 1; z += 2.6) {
-        const p = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.3, 1.1), cam);
-        p.position.set(x1 + 0.02, y, z + 0.5);
-        hedef.add(p);
-      }
-    }
-  }
-
   function komsuDekoru(imar, ox, oz, tohum, hedef) {
     const r = tohumlu(tohum);
     if (imar === 'KORUMA' || imar === 'PARK') {
@@ -184,10 +92,11 @@ export function sahneKur() {
   function zemin(imar, ox, oz, merkezMi, ekili, hedef) {
     const renk = ZEMIN[imar] || ZEMIN.DIS;
     const kalinlik = merkezMi ? 0.6 : 0.3;
+    // Çiftlik dokuları: tarım parseli sürülmüş toprak, çevre çimenli; su ve yol düz renk
     let mat;
-    if (imar === 'TARIM' && merkezMi) {
-      mat = new THREE.MeshStandardMaterial({ map: tarlaDokusu(ekili), roughness: 0.95 });
-    } else mat = malzeme(renk, { parlak: imar === 'SU' });
+    if (imar === 'TARIM' && merkezMi) mat = new THREE.MeshStandardMaterial({ map: ciftlikDokusu(ekili ? 'doku-toprak' : 'doku-ekin', 4), roughness: 0.95 });
+    else if (imar === 'SU' || imar === 'YOL') mat = malzeme(renk, { parlak: imar === 'SU' });
+    else mat = new THREE.MeshStandardMaterial({ map: ciftlikDokusu(imar === 'KONUT' || imar === 'KARMA' || imar === 'TICARET' ? 'doku-avlu' : 'doku-cimen', 2), roughness: 0.95, color: merkezMi ? '#ffffff' : '#e6e6e6' });
     const z = new THREE.Mesh(new THREE.BoxGeometry(S - (merkezMi ? 0.4 : 0.8), kalinlik, S - (merkezMi ? 0.4 : 0.8)), mat);
     z.position.set(ox, kalinlik / 2 - (imar === 'SU' ? 0.25 : 0), oz);
     z.receiveShadow = true;
@@ -212,7 +121,7 @@ export function sahneKur() {
     // Önceki maketi temizle
     for (const c of [...grup.children]) {
       grup.remove(c);
-      c.traverse((o) => { o.geometry?.dispose(); if (o.material?.map) { o.material.map.dispose(); o.material.dispose(); } });
+      c.traverse((o) => { o.geometry?.dispose(); if (o.material?.map && ![...dokular.values()].includes(o.material.map)) { o.material.map.dispose(); o.material.dispose(); } });
     }
     dumanlar.length = 0;
 
@@ -241,7 +150,7 @@ export function sahneKur() {
     const ek = kart.ekin ? `${kart.ekin.tip}:${kart.ekin.ilerleme.toFixed(2)}` : '';
     const parsel = new THREE.Group();
     parsel.position.y = 0.6;
-    const parcalar = parselParcalari(imar, yp, ek, kart.kozmetik);
+    const parcalar = parselParcalari(imar, yp, ek, kart.kozmetik, (kart.susler || []).map((s) => `${s.tur}:${s.yuva}`).join(','));
     for (const p of parcalar) parcaEkle(p, 0, 0, parsel);
     grup.add(parsel);
     // Sahip çerçevesi (altın)
@@ -279,10 +188,10 @@ export function sahneKur() {
     // Sahne: +x doğu, -z kuzey
     gunes.position.set(Math.sin(az) * Math.cos(yk) * 90, Math.sin(yk) * 90, -Math.cos(az) * Math.cos(yk) * 90);
     gunes.color.set(i.renk);
-    gunes.intensity = 2.3 * i.siddet;
-    gok.color.set(i.gok);
-    gok.intensity = 0.55 + 0.6 * i.siddet;
-    renderer.toneMappingExposure = 0.8 + 0.25 * i.siddet;
+    gunes.intensity = 0.5 + 1.9 * i.siddet;
+    gok.color.set(i.siddet < 0.35 ? '#9fb3d9' : i.gok);
+    gok.intensity = 1.0 + 0.3 * i.siddet;   // gece ay ışığı: maket karanlıkta da okunur
+    renderer.toneMappingExposure = 0.95 + 0.15 * i.siddet;
   }
 
   function dongu(t) {

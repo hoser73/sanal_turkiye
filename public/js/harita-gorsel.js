@@ -2,6 +2,7 @@
 // sahip olunan ve seçili parsellerin ışıması, gerçek havaya göre yağmur ve kar efekti. Hepsi isteğe bağlı süslemedir;
 // hareket azaltma tercihi (prefers-reduced-motion) açıksa canlandırmalar durur.
 import { gunesKonumu } from './gunes.js';
+import { CIFTLIK_DOKULARI, dokuCiz } from './ciftlik-doku.js';
 
 const hareketAz = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const ORAN = Math.min(2, window.devicePixelRatio || 1);
@@ -68,6 +69,7 @@ export function simgeleriBagla(map) {
     if (map.hasImage(id)) return;
     let c = null;
     if (DESEN[id]) c = DESEN[id]();
+    else if (CIFTLIK_DOKULARI.includes(id)) c = dokuCiz(id, ORAN);
     else if (id.startsWith('e:')) c = emojiResmi(id.slice(2), 24, true);
     else if (id.startsWith('ec:')) c = emojiResmi(id.slice(3), 30, false);
     if (c) map.addImage(id, resimVerisi(c), { pixelRatio: ORAN });
@@ -83,30 +85,44 @@ const karistir = (a, b, t) => {
 // Güneş yüksekliğine göre gündüz (1) → gece (0) geçişi; alacakaranlık −8°…+8°
 const gunduzlukOrani = (yk) => Math.min(1, Math.max(0, (yk + 8) / 16));
 const GOK = {
-  gunduz: { gok: '#9ccbe6', ufuk: '#efe4cf', sis: '#efe9dc' },
-  aksam: { gok: '#f2a76b', ufuk: '#f6d7a8', sis: '#f1dcc0' },
-  gece: { gok: '#0f1c33', ufuk: '#2d3b5c', sis: '#1d2740' },
+  harita: {
+    gunduz: { gok: '#9ccbe6', ufuk: '#efe4cf', sis: '#efe9dc' },
+    aksam: { gok: '#f2a76b', ufuk: '#f6d7a8', sis: '#f1dcc0' },
+    gece: { gok: '#0f1c33', ufuk: '#2d3b5c', sis: '#1d2740' },
+  },
+  // Çiftlik: berrak yaz göğü, sıcak ufuk
+  ciftlik: {
+    gunduz: { gok: '#5aaee8', ufuk: '#dff0fb', sis: '#eef3e2' },
+    aksam: { gok: '#f59a5e', ufuk: '#ffd9a6', sis: '#f6dcbc' },
+    gece: { gok: '#0d1b38', ufuk: '#283f70', sis: '#1b2a4c' },
+  },
 };
 
 let ayar = 'gercek';   // gercek | gunduz
-let sonGece = -1;
+let tema = 'ciftlik';
+let sonGece = -1, sonDurum = { gece: 0, aksam: 0, gun: 1 };
 export function isikAyari(yeni) { if (yeni) ayar = yeni; return ayar; }
+export function gokTemasi(yeni) { if (yeni) { tema = yeni; sonGece = -1; } return tema; }
+// 3B dünya katmanı (dunya3d.js) ışığını bu durumdan okur
+export const isikDurumu = () => sonDurum;
 
 export function atmosferGuncelle(map, t = Date.now()) {
   const c = map.getCenter();
   const g = gunesKonumu(c.lng, c.lat, t);
   const gun = ayar === 'gunduz' ? 1 : gunduzlukOrani(g.yukseklik);
   const aksam = ayar === 'gunduz' ? 0 : Math.max(0, 1 - Math.abs(g.yukseklik - 2) / 10);   // gün doğumu/batımı turuncusu
+  const P = GOK[tema] || GOK.harita;
   const renk = (k) => {
-    const temel = karistir(GOK.gece[k], GOK.gunduz[k], gun);
-    return karistir(temel, GOK.aksam[k], aksam * 0.75);
+    const temel = karistir(P.gece[k], P.gunduz[k], gun);
+    return karistir(temel, P.aksam[k], aksam * 0.75);
   };
   try {
     map.setSky({ 'sky-color': renk('gok'), 'horizon-color': renk('ufuk'), 'fog-color': renk('sis'),
       'sky-horizon-blend': 0.55, 'horizon-fog-blend': 0.6, 'fog-ground-blend': 0.8, 'atmosphere-blend': ['interpolate', ['linear'], ['zoom'], 0, 1, 10, 1, 12, 0] });
   } catch { /* eski sürümlerde gökyüzü yok */ }
   const gece = 1 - gun;
-  if (map.getLayer('gece')) map.setPaintProperty('gece', 'fill-opacity', gece * 0.52);
+  sonDurum = { gece, aksam, gun, yukseklik: g.yukseklik, azimut: g.azimut, gok: renk('gok'), sis: renk('sis') };
+  if (map.getLayer('gece')) map.setPaintProperty('gece', 'fill-opacity', gece * 0.55);
   if (map.getLayer('sehir-isik')) map.setPaintProperty('sehir-isik', 'circle-opacity', gece * 0.6);
   if (map.getLayer('gece-yol')) map.setPaintProperty('gece-yol', 'line-opacity', gece * 0.85);
   if (map.getLayer('gece-yerlesim')) map.setPaintProperty('gece-yerlesim', 'fill-opacity', gece * 0.08);
@@ -143,20 +159,9 @@ export function geceKatmani(map, beforeId) {
       'line-blur': ['interpolate', ['linear'], ['zoom'], 8, 1, 16, 6], 'line-opacity': 0 } }, beforeId);
 }
 
-// ---------- Parsel ışıması (sahip olunan ve seçili parsel nefes alır)
-let isikKare = 0;
-export function isimaBaslat(map) {
-  cancelAnimationFrame(isikKare);
-  if (hareketAz()) return;
-  const dongu = (an) => {
-    isikKare = requestAnimationFrame(dongu);
-    if (document.hidden || map.getZoom() < 13) return;
-    const n = (Math.sin(an / 650) + 1) / 2;   // 0..1
-    if (map.getLayer('benim-isik')) map.setPaintProperty('benim-isik', 'line-opacity', 0.25 + n * 0.45);
-    if (map.getLayer('secili-isik')) map.setPaintProperty('secili-isik', 'line-width', 7 + n * 6);
-  };
-  isikKare = requestAnimationFrame(dongu);
-}
+// ---------- Parsel ışıması
+// Işıma durağandır: boya özelliğini canlandırmak geçiş başlatır ve haritayı her karede baştan çizdirir (takılma)
+export function isimaBaslat() {}
 
 // ---------- Yağış efekti (yağmur / kar), ilin gerçek havasına göre
 let yagis = null;

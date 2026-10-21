@@ -169,8 +169,11 @@ function parselKarti(id, userId, komsuImar = {}) {
   if (benim) {
     insaatSecenekleri = imar.parselDegil ? [] : Object.entries(YAPILAR)
       .filter(([, y]) => y.izin.includes(p.zoning_type))
-      .map(([tip, y]) => ({ tip, ad: y.ad, ikon: y.ikon, kategori: y.kategori, maliyet: y.maliyet, sureMs: y.sureMs,
-        taban: y.taban, kat: y.kat, etki: y.etki, ...insaatUygunluk(p, tip, yapilar) }));
+      .map(([tip, y]) => {
+        const kilit = y.minSeviye && require('./ciftlik').oyuncuSeviyesi(userId) < y.minSeviye;
+        return { tip, ad: y.ad, ikon: y.ikon, kategori: y.kategori, maliyet: y.maliyet, sureMs: y.sureMs, minSeviye: y.minSeviye || 1,
+          taban: y.taban, kat: y.kat, etki: y.etki, ...(kilit ? { uygun: false, sebep: `Seviye ${y.minSeviye}'te açılır`, kilitli: true } : insaatUygunluk(p, tip, yapilar)) };
+      });
   }
 
   return {
@@ -188,7 +191,10 @@ function parselKarti(id, userId, komsuImar = {}) {
     gelismislikSkoru: gelismislikSkoru(p, yapilar, ekin),
     yapilar: yapilar.map((s) => ({ id: s.id, tip: s.type, ad: YAPILAR[s.type]?.ad, ikon: YAPILAR[s.type]?.ikon,
       durum: s.status, bitis: s.completes_at, kalanMs: Math.max(0, s.completes_at - t),
-      saglik: saglik(s, t), bakimMaliyeti: bakimMaliyeti(s, t), etkisiz: s.status === 'ACTIVE' && saglik(s, t) < BAKIM.etkisizEsik })),
+      saglik: saglik(s, t), bakimMaliyeti: bakimMaliyeti(s, t), etkisiz: s.status === 'ACTIVE' && saglik(s, t) < BAKIM.etkisizEsik,
+      hayvan: require('./ciftlik').hayvanDurumu(s, t) })),
+    susler: require('./ciftlik').parselSusleri(id),
+    susSecenekleri: benim ? require('./ciftlik').susSecenekleri(userId) : null,
     bakim: { toplam: L.yuvarla(yapilar.reduce((a, s) => a + bakimMaliyeti(s, t), 0)), esik: BAKIM.etkisizEsik, yipranma: BAKIM.yipranmaGunluk },
     ekin: ekin && { ...ekinDurumu(ekin, yapilar, t),
       sulamaMaliyeti: sulamaBirimi(yapilar, hizmetler) * verimKati(p) },
@@ -253,6 +259,7 @@ const insaatBaslat = db.transaction((userId, id, tip) => {
   const u = insaatUygunluk(p, tip, yapilar);
   if (!u.uygun) throw new OyunHatasi(422, u.sebep, 'IMAR_IHLALI');
   const y = YAPILAR[tip];
+  require('./ciftlik').seviyeKontrol(userId, y.minSeviye, y.ad);
   const tx = L.yeniTx();
   L.harca(userId, y.maliyet, `İnşaat: ${y.ad} (${id})`, tx);   // kaynak ayrımı
   belediye.belediyePayi(p.ilce_id, y.maliyet, 'ruhsatPayi', 'ruhsat harcı', tx);
@@ -494,6 +501,8 @@ function oyuncuOzeti(userId) {
       gunlukBozulma: bozulma.oranlar[i.item_id] ?? 0 })),
     ambar: bozulma.ambar,
     gorevler: gorevler(userId),
+    seviye: (({ tp, seviye, esik, sonraki, odulBekleyen }) => ({ tp, seviye, esik, sonraki, odulBekleyen: odulBekleyen.length }))(require('./ciftlik').seviyeBilgisi(userId)),
+    gunlukOdul: require('./ciftlik').gunlukDurum(userId).alinabilir,
     limitler: { maxParsel: HESAP.maxParsel, maxParselMahalle: HESAP.maxParselMahalle },
     simdi: t,
   };
@@ -551,6 +560,11 @@ function haritaParselleri(userId, bbox) {
           y: yapilar.filter((x) => x.status === 'ACTIVE').length, i: yapilar.filter((x) => x.status === 'BUILDING').length,
           e: e ? (e.ready_at <= t ? 2 : 1) : 0,
           l: s.ilanda,
+          // çiftlik göstergeleri: su = sulanmayı bekliyor, hh = hayvan ürünü hazır, ss = süsler (tür:yuva)
+          su: e && e.ready_at > t && !yapilar.some((x) => x.type === 'SULAMA_HATTI' && x.status === 'ACTIVE')
+            && e.waterings < (URUNLER[e.crop_type]?.sulama || 0) && (!e.last_watered_at || t - e.last_watered_at > TARIM.sulamaAraligiMs) ? 1 : 0,
+          hh: s.owner_user_id ? (require('./ciftlik').parselHayvanHazir(s.id, t) ? 1 : 0) : 0,
+          ss: s.owner_user_id ? require('./ciftlik').susKodu(s.id) : '',
           // 3B sahne için yapı ve ekin özeti (istemci yapilar3d.js)
           yp: yapilar.map((x) => `${x.type}:${x.status === 'ACTIVE' ? 1 : 0}`).join(','),
           kz: s.owner_user_id && !s.is_npc ? kozmetikKodu(s.owner_user_id) : '',

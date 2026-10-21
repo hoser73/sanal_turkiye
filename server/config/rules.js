@@ -52,6 +52,11 @@ const YAPILAR = {
   DEGIRMEN:     { ad: 'Değirmen',       ikon: '🌬️', kategori: 'Üretim',            maliyet: 180, sure: 5, taban: 60,  kat: 1, emsal: true,  izin: ['TARIM','SANAYI'], tekil: true, etki: 'Buğdayı una çevirir' },
   FIRIN:        { ad: 'Fırın',          ikon: '🥖', kategori: 'Üretim',            maliyet: 200, sure: 5, taban: 70,  kat: 1, emsal: true,  izin: ['TICARET','KARMA'], tekil: true, etki: 'Undan ekmek ve simit' },
   PEYZAJ:       { ad: 'Peyzaj ve ağaç', ikon: '🌳', kategori: 'Estetik',           maliyet: 25,  sure: 1, taban: 0,   kat: 0, emsal: false, izin: ['KONUT','TICARET','TARIM','SANAYI','TURIZM','KARMA'], tekil: true, etki: 'Ziyaretçi ilgisi, kozmetik puan' },
+  // Hayvancılık (oyuncu seviyesiyle açılır): barınak yemlenince ürün verir (bkz. HAYVANLAR)
+  KUMES:        { ad: 'Kümes',          ikon: '🐔', kategori: 'Hayvancılık',       maliyet: 90,  sure: 2, taban: 20,  kat: 1, emsal: true,  izin: ['TARIM'], tekil: true, minSeviye: 2, etki: '6 tavuk: yemlenince yumurta' },
+  INEK_AHIRI:   { ad: 'İnek ahırı',     ikon: '🐄', kategori: 'Hayvancılık',       maliyet: 220, sure: 4, taban: 60,  kat: 1, emsal: true,  izin: ['TARIM'], tekil: true, minSeviye: 3, etki: '2 inek: yemlenince süt' },
+  AGIL:         { ad: 'Ağıl',           ikon: '🐑', kategori: 'Hayvancılık',       maliyet: 160, sure: 3, taban: 30,  kat: 1, emsal: true,  izin: ['TARIM'], tekil: true, minSeviye: 4, etki: '5 koyun: yemlenince yün' },
+  MANDIRA:      { ad: 'Mandıra',        ikon: '🧀', kategori: 'Üretim',            maliyet: 260, sure: 5, taban: 50,  kat: 1, emsal: true,  izin: ['TARIM','SANAYI'], tekil: true, minSeviye: 5, etki: 'Sütten peynir ve tereyağı' },
 };
 for (const y of Object.values(YAPILAR)) y.sureMs = dk(y.sure);
 
@@ -85,6 +90,14 @@ const URUNLER = {
   KUMAS:       { ad: 'Pamuklu kumaş',  ikon: '🧵', mamul: true, tabanFiyat: 5.5 },
   FINDIK_EZMESI: { ad: 'Fındık ezmesi', ikon: '🫙', mamul: true, tabanFiyat: 7.5 },
   PAKET_CAY:   { ad: 'Paket çay',      ikon: '🫖', mamul: true, tabanFiyat: 4.6 },
+  // Hayvansal ürünler ve yem (ekilmez: barınaktan toplanır ya da tesiste üretilir)
+  YEM:         { ad: 'Yem',            ikon: '🌽', mamul: true, tabanFiyat: 0.6 },
+  YUMURTA:     { ad: 'Yumurta',        ikon: '🥚', mamul: true, hayvansal: true, tabanFiyat: 0.8 },
+  SUT:         { ad: 'Süt',            ikon: '🥛', mamul: true, hayvansal: true, tabanFiyat: 1.5 },
+  YUN:         { ad: 'Yün',            ikon: '🧶', mamul: true, hayvansal: true, tabanFiyat: 2.2 },
+  PEYNIR:      { ad: 'Peynir',         ikon: '🧀', mamul: true, tabanFiyat: 5.5 },
+  TEREYAGI:    { ad: 'Tereyağı',       ikon: '🧈', mamul: true, tabanFiyat: 6.2 },
+  YUN_IPLIGI:  { ad: 'Yün ipliği',     ikon: '🪢', mamul: true, tabanFiyat: 6 },
 };
 for (const u of Object.values(URUNLER)) if (!u.mamul) u.sureMs = dk(u.sure);
 
@@ -99,6 +112,10 @@ const RECETELER = {
   KUMAS:         { tesis: 'FABRIKA',  girdi: { PAMUK: 6 }, cikti: 3, sure: 3, enerji: 8 },
   FINDIK_EZMESI: { tesis: 'FABRIKA',  girdi: { FINDIK: 6 }, cikti: 3, sure: 2, enerji: 5 },
   PAKET_CAY:     { tesis: 'FABRIKA',  girdi: { CAY: 6 }, cikti: 4, sure: 2, enerji: 4 },
+  YEM:           { tesis: 'DEGIRMEN', girdi: { BUGDAY: 4 }, cikti: 8, sure: 1, enerji: 1 },
+  PEYNIR:        { tesis: 'MANDIRA',  girdi: { SUT: 6 }, cikti: 3, sure: 2, enerji: 3 },
+  TEREYAGI:      { tesis: 'MANDIRA',  girdi: { SUT: 8 }, cikti: 2, sure: 2, enerji: 3 },
+  YUN_IPLIGI:    { tesis: 'FABRIKA',  girdi: { YUN: 6 }, cikti: 3, sure: 2, enerji: 4 },
 };
 for (const r of Object.values(RECETELER)) r.sureMs = dk(r.sure);
 
@@ -112,6 +129,46 @@ const MESLEKLER = {
 const MESLEK = { degisimBeklemeMs: 7 * 24 * 3600 * 1000, maxSeviye: 5, xpBasamak: 10 };   // seviye = 1 + ⌊√(xp / basamak)⌋
 
 // §7.5 kooperatifler: aynı ilde en fazla 12 üye; ortak kasa, eşit dağıtım; 3+ üyeli kooperatif tüccara ortak satışta fiyat primi alır
+// Hayvancılık: barınak yemlenir (yem envanterden düşer; yoksa yem fiyatından satın alınır), süre dolunca ürün toplanır
+const HAYVANLAR = {
+  KUMES:      { hayvan: 'Tavuk', ikon: '🐔', sayi: 6, urun: 'YUMURTA', miktar: 6, yem: 2, sure: 2 },
+  INEK_AHIRI: { hayvan: 'İnek',  ikon: '🐄', sayi: 2, urun: 'SUT',     miktar: 4, yem: 4, sure: 3 },
+  AGIL:       { hayvan: 'Koyun', ikon: '🐑', sayi: 5, urun: 'YUN',     miktar: 3, yem: 3, sure: 5 },
+};
+for (const h of Object.values(HAYVANLAR)) h.sureMs = dk(h.sure);
+const YEM_FIYATI = 1.2;   // envanterde yem yoksa birim başına
+
+// Oyuncu seviyesi: eylemler tecrübe puanı (TP) kazandırır. Seviye n için toplam TP = 20 × n × (n − 1) (açık formül)
+const SEVIYE = {
+  tp: { PARCEL_ACQUIRED: 10, CROP_PLANTED: 2, CROP_HARVESTED: 6, STRUCTURE_COMPLETED: 8, PRODUCTION_COLLECTED: 4, ANIMALS_FED: 1,
+    ANIMAL_PRODUCE_COLLECTED: 4, PARCEL_VISITED: 1, COMMODITY_TRADE: 2, TRADE_SETTLED: 5, DECORATION_PLACED: 2 },
+  katsayi: 20, maks: 60,
+  seviyeOdulu: (n) => 20 + n * 10,   // her yeni seviyede akçe
+};
+// Günlük giriş ödülü: art arda gelinen her gün artar (7. günden sonra sabit)
+const GUNLUK_ODUL = { akce: [10, 15, 20, 25, 30, 40, 60], tp: 5 };
+// Sipariş panosu: köylüler çiftlik ürünleri ister; teslim eden akçe ve TP kazanır
+const SIPARIS = {
+  acikMaks: 4, yenilemeMs: dk(20), sureMs: dk(24 * 60), reddetBeklemeMs: dk(5),
+  primOrani: 1.45, tpCarpani: 1.5, kalemMin: 1, kalemMaks: 3,
+  musteriler: ['Ayşe Teyze', 'Hasan Amca', 'Fadime Nine', 'Bakkal Mehmet', 'Fırıncı Rıza', 'Muhtar Kâzım', 'Öğretmen Zeynep', 'Lokantacı Yusuf',
+    'Pazarcı Emine', 'Çoban Ali', 'Kahveci İsmail', 'Doktor Elif'],
+};
+// Haftalık köy yarışması: mahallede bu hafta en çok TP kazanan üç oyuncu ödül alır (hafta pazartesi 00:00 UTC başlar)
+const YARISMA = { odul: [150, 90, 50], minTp: 20 };
+// Çiftlik süsleri: parselde 3B görünür; seviyeyle açılır; parsel başına en çok 8
+const SUSLER = {
+  CICEK_TARHI:   { ad: 'Çiçek tarhı',   ikon: '🌷', fiyat: 15, minSeviye: 1 },
+  KORKULUK:      { ad: 'Korkuluk',      ikon: '🎃', fiyat: 20, minSeviye: 1 },
+  TAS_YOL:       { ad: 'Taş yol',       ikon: '🪨', fiyat: 15, minSeviye: 1 },
+  BANK:          { ad: 'Bahçe bankı',   ikon: '🪑', fiyat: 25, minSeviye: 2 },
+  KUYU:          { ad: 'Kuyu',          ikon: '🪣', fiyat: 45, minSeviye: 3 },
+  ODUN_YIGINI:   { ad: 'Odun yığını',   ikon: '🪵', fiyat: 20, minSeviye: 3 },
+  YEL_DEGIRMENI: { ad: 'Yel değirmeni', ikon: '🌬️', fiyat: 120, minSeviye: 5 },
+  CESME:         { ad: 'Çeşme',         ikon: '⛲', fiyat: 90, minSeviye: 6 },
+};
+const SUS_MAKS = 8;
+
 const KOOPERATIF = { kurulusBedeli: 100, maxUye: 12, minAktifUye: 3, satisPrimi: 0.06, adMin: 3, adMax: 40 };
 
 
@@ -407,4 +464,4 @@ const NUFUS = {
   baslangicBakiye: 500,
 };
 
-module.exports = { NUFUS, LOJISTIK, KIRA, ORTAKLIK, AFET, REFERANDUM, KOZMETIK, RECETELER, MESLEKLER, MESLEK, KOOPERATIF, LIG, MEVSIMLER, HAVA, BOLGE, BOZULMA, BAKIM, BORSA, GOREVDEN_ALMA, MODERASYON, YASAL, ROLLER, BIRIM, OYUN_HIZI, IMAR, IMAR_KAYNAK_NOTU, IL_CEKICILIK, YERLESIM_CEKICILIK, YAPILAR, URUNLER, TARIM, NPC_PAZAR, PAZAR, SECIM, SECIM_HIZI, BELEDIYE, ITIBAR, HESAP, GOREVLER };
+module.exports = { HAYVANLAR, YEM_FIYATI, SEVIYE, GUNLUK_ODUL, SIPARIS, YARISMA, SUSLER, SUS_MAKS, NUFUS, LOJISTIK, KIRA, ORTAKLIK, AFET, REFERANDUM, KOZMETIK, RECETELER, MESLEKLER, MESLEK, KOOPERATIF, LIG, MEVSIMLER, HAVA, BOLGE, BOZULMA, BAKIM, BORSA, GOREVDEN_ALMA, MODERASYON, YASAL, ROLLER, BIRIM, OYUN_HIZI, IMAR, IMAR_KAYNAK_NOTU, IL_CEKICILIK, YERLESIM_CEKICILIK, YAPILAR, URUNLER, TARIM, NPC_PAZAR, PAZAR, SECIM, SECIM_HIZI, BELEDIYE, ITIBAR, HESAP, GOREVLER };

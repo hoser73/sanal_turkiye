@@ -98,4 +98,4 @@ async function hucreAra(lon, lat, imarlar, adet, aralik = 2) {
 
 const satilabilirMi = (imar) => !!IMAR[imar]?.satilik;
 
-module.exports = { parselHazirla, komsuImarlari, hucreAra, koordinatlar, satilabilirMi };
+module.exports = { parselHazirla, komsuImarlari, hucreAra, koordinatlar, satilabilirMi, mahalleBolgesi };

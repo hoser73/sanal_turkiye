@@ -5,14 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Sanal Türkiye</title>
   <meta name="description" content="Haritada bir yer seç, o yeri geliştir, komşularınla etkileşime gir, bölgeni yönet.">
-  <meta name="theme-color" content="#0e5e50">
+  <meta name="theme-color" content="#7c4c22">
   <link rel="manifest" href="/manifest.json">
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Baloo+2:wght@600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/vendor/maplibre/maplibre-gl.css">
   <link rel="stylesheet" href="/css/app.css">
+  <link rel="stylesheet" href="/css/ciftlik.css">
 </head>
 <body>
   <header class="ust">
@@ -28,6 +29,7 @@
       <ul class="arama-sonuc" id="aramaSonuc" role="listbox" hidden></ul>
     </div>
     <div class="ust-sag">
+      <div class="seviye" id="seviye" hidden><span class="yildiz">⭐</span><span id="seviyeDeger">1</span><span class="seviye-cubuk"><span id="seviyeCubuk"></span></span></div>
       <div class="bakiye" id="bakiye" hidden title="Akçe: nakde çevrilemeyen oyun puanı">
         <span class="sembol">₳</span><span id="bakiyeDeger">0</span>
       </div>
@@ -53,6 +55,35 @@
       <button type="button" data-kip="2d" aria-pressed="true">2B</button>
       <button type="button" data-kip="3d" aria-pressed="false">3B</button>
       <button type="button" id="isikDugme" class="isik-dugme" title="Işık: gerçek saat" aria-label="Harita ışığı: gerçek saat">🌗</button>
+      <button type="button" id="turDugme" class="isik-dugme" title="Sinematik Türkiye turu" aria-label="Sinematik Türkiye turu">🎬</button>
+      <button type="button" id="ayarDugme" class="isik-dugme" title="Görünüm ve grafik" aria-label="Görünüm ve grafik ayarları" aria-expanded="false" aria-controls="gorunumMenu">⚙️</button>
+    </div>
+    <div class="gorunum-menu" id="gorunumMenu" hidden>
+      <div class="gm-baslik">Görünüm</div>
+      <div class="gm-secenek" role="group" aria-label="Görünüm">
+        <button type="button" data-tema="ciftlik">🌾 Çiftlik</button>
+        <button type="button" data-tema="harita">🗺️ Harita</button>
+      </div>
+      <div class="gm-baslik">Grafik</div>
+      <div class="gm-secenek dort" role="group" aria-label="Grafik kalitesi">
+        <button type="button" data-grafik="ultra">Ultra</button>
+        <button type="button" data-grafik="yuksek">Yüksek</button>
+        <button type="button" data-grafik="dengeli">Dengeli</button>
+        <button type="button" data-grafik="hafif">Hafif</button>
+      </div>
+      <div class="gm-baslik">Hareketli öğeler</div>
+      <div class="gm-secenek" role="group" aria-label="Araç, hayvan ve kuşlar">
+        <button type="button" data-hareket="acik">🚜 Açık</button>
+        <button type="button" data-hareket="kapali">⏸ Kapalı</button>
+      </div>
+      <div class="gm-baslik">Ses</div>
+      <div class="gm-secenek dort" role="group" aria-label="Ses ve müzik">
+        <button type="button" data-ses="acik">🔊 Ses</button>
+        <button type="button" data-ses="kapali">🔇</button>
+        <button type="button" data-muzik="acik">🎵 Müzik</button>
+        <button type="button" data-muzik="kapali">⏹</button>
+      </div>
+      <p class="gm-not">Çiftlik görünümünde ağaçlar, çatılı binalar, araçlar, sürüler, kuşlar ve gerçek havaya göre bulutlar 3B çizilir. Ultra güçlü bir ekran kartı ister; telefonda Dengeli önerilir.</p>
     </div>
 
     <div class="lejant" id="lejant" aria-label="İmar türleri">
@@ -114,7 +145,11 @@
   </dialog>
 
   <dialog id="karsilama" class="modal">
-    <div class="karsilama-gorsel" aria-hidden="true"></div>
+    <div class="karsilama-gorsel" aria-hidden="true">
+      <span class="kg kg-gunes">☀️</span><span class="kg kg-bulut">☁️</span><span class="kg kg-ev">🏡</span><span class="kg kg-agac">🌳</span>
+      <span class="kg kg-agac2">🌲</span><span class="kg kg-traktor">🚜</span><span class="kg kg-inek">🐄</span><span class="kg kg-koyun">🐑</span>
+      <span class="kg kg-cicek">🌻</span><span class="kg kg-cicek2">🌷</span>
+    </div>
     <div class="modal-govde">
       <p class="ust-baslik">Yaşayan dijital ülke simülasyonu</p>
       <h1>Haritada bir yer seç, geliştir, bölgeni yönet.</h1>

@@ -34,6 +34,18 @@ export function stilOlustur({ altlik = true } = {}) {
   const sources = {};
   const layers = [{ id: 'arkaplan', type: 'background', paint: { 'background-color': RENK.kara } }];
 
+  // Çiftlik teması: yüksekliğe göre renk (renkler tema.js'de; kıyı yeşili → bozkır sarısı → dağ kahvesi → karlı zirve).
+  // Arazi örtüsü olmayan yerlerde (bozkır, dağ) görünür; tarla, orman ve yerleşim dolguları üstte kalır.
+  layers.push({ id: 'yukseklik-renk', type: 'color-relief', source: 'yukselti', layout: { visibility: 'none' }, paint: {
+    'color-relief-color': ['interpolate', ['linear'], ['elevation'],
+      -50, '#79cc58', 0, '#86d05c', 300, '#98d566', 700, '#b3d870', 1050, '#cdd47e', 1400, '#dcc787', 1800, '#d6b27a',
+      2300, '#c39a6e', 2800, '#ad9c8e', 3200, '#e9edf1', 3600, '#ffffff'],
+    'color-relief-opacity': 1 } });
+  // Çiftlik teması: yakın ölçekte elle boyanmış çiçekli çimen zemin (dünya poligonu; arazi kipinde de çizilir)
+  sources['zemin-kare'] = { type: 'geojson', data: { type: 'Feature', properties: {},
+    geometry: { type: 'Polygon', coordinates: [[[-179, -84], [-179, 84], [179, 84], [179, -84], [-179, -84]]] } } };
+  layers.push({ id: 'ciftlik-zemin', type: 'fill', source: 'zemin-kare', minzoom: 11.5, layout: { visibility: 'none' },
+    paint: { 'fill-pattern': 'doku-cimen', 'fill-opacity': dogrusal(11.5, 0, 12.5, 1) } });
   sources.yukselti = { type: 'raster-dem', tiles: [KAYNAK.yukselti], tileSize: 256, maxzoom: 14, encoding: 'terrarium',
     attribution: '<a href="https://registry.opendata.aws/terrain-tiles/" target="_blank" rel="noopener">AWS Terrain Tiles</a>' };
   const { attribution: _, ...araziKaynagi } = sources.yukselti;   // atıf tek kez görünsün
@@ -57,12 +69,28 @@ export function stilOlustur({ altlik = true } = {}) {
       v('kullanim-yerlesim-kenar', 'landuse', { type: 'line', minzoom: 12, filter: sinif('residential', 'suburb', 'quarter', 'neighbourhood'),
         paint: { 'line-color': RENK.yerlesimKenar, 'line-width': dogrusal(12, 0.4, 16, 1.2), 'line-opacity': 0.7 } }),
       v('park', 'park', { type: 'fill', paint: { 'fill-color': RENK.park, 'fill-opacity': dogrusal(6, 0.4, 13, 0.75) } }),
+      // Çiftlik teması: tarlalar sürülmüş toprak / yeşil ekin / olgun buğday (özellik kimliğine göre), orman tacı, avlu
+      v('ciftlik-tarla', 'landcover', { type: 'fill', filter: sinif('farmland'), minzoom: 12, layout: { visibility: 'none' }, paint: {
+        'fill-pattern': ['match', ['%', ['to-number', ['coalesce', ['id'], 0]], 3], 0, 'doku-toprak', 1, 'doku-ekin', 'doku-bugday'],
+        'fill-opacity': dogrusal(12, 0, 13, 1) } }),
+      v('ciftlik-orman', 'landcover', { type: 'fill', filter: sinif('wood', 'forest'), minzoom: 11, layout: { visibility: 'none' },
+        paint: { 'fill-pattern': 'doku-orman', 'fill-opacity': dogrusal(11, 0, 12, 1) } }),
+      v('ciftlik-avlu', 'landuse', { type: 'fill', filter: sinif('residential', 'suburb', 'quarter', 'neighbourhood', 'commercial', 'retail'), minzoom: 13,
+        layout: { visibility: 'none' }, paint: { 'fill-pattern': 'doku-avlu', 'fill-opacity': dogrusal(13, 0, 14, 0.92) } }),
       // Yakın ölçekte doku: tarla sıraları, ağaç taçları, çayır benekleri (desenler harita-gorsel.js'de çizilir)
       v('desen-tarla', 'landcover', { type: 'fill', filter: sinif('farmland'), minzoom: 12.5, paint: { 'fill-pattern': 'desen-tarla', 'fill-opacity': dogrusal(12.5, 0, 14, 0.55) } }),
       v('desen-orman', 'landcover', { type: 'fill', filter: sinif('wood'), minzoom: 11.5, paint: { 'fill-pattern': 'desen-orman', 'fill-opacity': dogrusal(11.5, 0, 13, 0.8) } }),
       v('desen-cayir', 'landcover', { type: 'fill', filter: sinif('grass'), minzoom: 13, paint: { 'fill-pattern': 'desen-cayir', 'fill-opacity': dogrusal(13, 0, 14.5, 0.6) } }),
       v('desen-park', 'park', { type: 'fill', minzoom: 13, paint: { 'fill-pattern': 'desen-orman', 'fill-opacity': dogrusal(13, 0, 14.5, 0.55) } }),
     );
+  }
+
+  // 3B dünya katmanının veri tutucuları: görünmez (opaklık 0) ama "görünür" katmanlar. MapLibre yakın ölçekte karoları
+  // dilimlerken yalnızca görünür katmanların kullandığı OSM katmanlarını saklar; düz binalar ya da arazi dolguları
+  // gizlendiğinde ağaç ve bina verisi kaybolmasın diye.
+  if (altlik) {
+    const veri = (id, katman) => ({ id, type: 'fill', source: 'omt', 'source-layer': katman, minzoom: 12.5, paint: { 'fill-opacity': 0 } });
+    layers.push(veri('veri-bina', 'building'), veri('veri-ortu', 'landcover'), veri('veri-park', 'park'), veri('veri-kullanim', 'landuse'), veri('veri-su', 'water'));
   }
 
   // Rölyef: Anadolu platosu, Toroslar ve Karadeniz dağları her ölçekte okunsun
@@ -83,6 +111,9 @@ export function stilOlustur({ altlik = true } = {}) {
       v('su-kiyi', 'water', { type: 'line', filter: ['!=', ['get', 'brunnel'], 'tunnel'], paint: {
         'line-color': RENK.suAcik, 'line-width': ustel(1.5, 4, 1.5, 10, 7, 16, 22), 'line-blur': ustel(1.5, 4, 1.5, 10, 6, 16, 18),
         'line-opacity': dogrusal(4, 0.55, 14, 0.75), 'line-offset': ustel(1.5, 4, 0.6, 10, 3, 16, 10) } }),
+      // Çiftlik teması: boyanmış su (dalgacıklar harita-gorsel.js'de kayar)
+      v('ciftlik-su', 'water', { type: 'fill', filter: ['!=', ['get', 'brunnel'], 'tunnel'], minzoom: 9.5, layout: { visibility: 'none' },
+        paint: { 'fill-pattern': 'doku-su', 'fill-opacity': dogrusal(9.5, 0, 11, 1) } }),
       v('akarsu', 'waterway', { type: 'line', paint: { 'line-color': RENK.su, 'line-width': ustel(1.3, 8, 0.5, 18, 6) } }),
       v('havalimani', 'aeroway', { type: 'fill', filter: ['==', ['geometry-type'], 'Polygon'], paint: { 'fill-color': '#e7e1d4' } }),
       v('bina-golge', 'building', { type: 'fill', minzoom: 14, paint: { 'fill-color': '#6b5640', 'fill-opacity': dogrusal(14, 0, 15, 0.22),
@@ -105,6 +136,13 @@ export function stilOlustur({ altlik = true } = {}) {
           'line-color': ['match', ['get', 'class'], ['motorway', 'trunk'], RENK.otoyol, 'primary', RENK.yolAna, RENK.yol],
           'line-width': ustel(1.4, 5, ['match', ['get', 'class'], ['motorway', 'trunk'], 0.8, 0.3], 12, 2, 16, 11, 19, 34),
         } }),
+      // Çiftlik teması: ara yollar toprak patika, ana yollar arnavut kaldırımı
+      v('ciftlik-patika', 'transportation', { type: 'line', filter: sinif('minor', 'service', 'track', 'path'), minzoom: 14,
+        layout: { visibility: 'none', 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-pattern': 'doku-patika', 'line-width': ustel(1.5, 14, 3, 16, 9, 19, 34), 'line-opacity': dogrusal(14, 0, 14.6, 1) } }),
+      v('ciftlik-yol', 'transportation', { type: 'line', filter: sinif('motorway', 'trunk', 'primary', 'secondary', 'tertiary'), minzoom: 14,
+        layout: { visibility: 'none', 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-pattern': 'doku-kaldirim', 'line-width': ustel(1.4, 14, 5, 16, 14, 19, 44), 'line-opacity': dogrusal(14, 0, 14.6, 1) } }),
       v('demiryolu', 'transportation', { type: 'line', filter: sinif('rail'), minzoom: 9,
         paint: { 'line-color': RENK.demiryolu, 'line-width': dogrusal(9, 0.6, 16, 2), 'line-dasharray': [3, 2] } }),
       v('sinir-ilce', 'boundary', { type: 'line', filter: ['==', ['get', 'admin_level'], 6], minzoom: 9,

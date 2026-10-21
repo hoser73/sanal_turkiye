@@ -673,3 +673,47 @@ body.cevrimdisi .logo::after { content: '● çevrimdışı'; color: var(--vurgu
 .demo-rozet { display: inline-block; font-size: 9.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #6b5a2e;
   background: #f3e7c4; border: 1px solid #e3d29e; border-radius: 6px; padding: 0 5px; vertical-align: 1px; }
 .doldurma-notu { background: #fbf4e2; border-radius: 10px; padding: 8px 10px; margin: 8px 0; }
+
+/* ---------- Görünüm menüsü, sinematik yazı, uzay arka planı ---------- */
+.gorunum-menu {
+  position: absolute; right: calc(var(--panel-genislik) + 12px); top: 58px; z-index: 6; width: 260px; padding: 12px 12px 10px;
+  background: rgba(255,253,248,.97); border: 1px solid var(--cizgi); border-radius: 14px; box-shadow: var(--golge);
+}
+.gm-baslik { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--soluk); margin: 2px 2px 6px; }
+.gm-secenek { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 10px; }
+.gm-secenek.dort { grid-template-columns: repeat(4, 1fr); }
+.gm-secenek button { border: 1px solid var(--cizgi); background: #fff; border-radius: 9px; padding: 7px 4px; font-weight: 700; font-size: 12.5px; color: var(--metin, #1f2a2e); cursor: pointer; }
+.gm-secenek button[aria-pressed="true"] { background: var(--birincil); border-color: var(--birincil); color: #fff; }
+.gm-not { font-size: 11.5px; line-height: 1.45; color: var(--soluk); margin: 0; }
+@media (max-width: 700px) { .gorunum-menu { right: 8px; top: 52px; width: min(280px, calc(100vw - 16px)); } }
+
+/* Uzay: küre görünümünde dünyanın çevresi (harita tuvali saydamken görünür) */
+#harita.tema-ciftlik {
+  background-color: #02050c;
+  background-image:
+    radial-gradient(1px 1px at 12% 18%, rgba(255,255,255,.9), transparent 60%), radial-gradient(1px 1px at 72% 12%, rgba(255,255,255,.75), transparent 60%),
+    radial-gradient(1.5px 1.5px at 38% 72%, rgba(255,255,255,.85), transparent 60%), radial-gradient(1px 1px at 88% 64%, rgba(200,220,255,.8), transparent 60%),
+    radial-gradient(1px 1px at 22% 88%, rgba(255,255,255,.7), transparent 60%), radial-gradient(1.2px 1.2px at 56% 36%, rgba(255,240,220,.8), transparent 60%),
+    radial-gradient(1px 1px at 92% 28%, rgba(255,255,255,.65), transparent 60%), radial-gradient(1px 1px at 6% 52%, rgba(220,230,255,.8), transparent 60%),
+    radial-gradient(ellipse at 50% 120%, rgba(40,70,140,.35), transparent 60%);
+  background-size: 260px 260px, 340px 340px, 420px 420px, 300px 300px, 380px 380px, 460px 460px, 240px 240px, 520px 520px, 100% 100%;
+}
+
+/* Sinematik alt yazı */
+.sinema-yazi {
+  position: absolute; left: 50%; bottom: 13%; transform: translate(-50%, 12px); z-index: 5; pointer-events: none; text-align: center;
+  color: #fff; opacity: 0; transition: opacity .9s ease, transform .9s ease; text-shadow: 0 2px 18px rgba(0,0,0,.65), 0 1px 3px rgba(0,0,0,.6);
+}
+.sinema-yazi.acik { opacity: 1; transform: translate(-50%, 0); }
+.sinema-yazi strong { display: block; font-family: Georgia, 'Times New Roman', serif; font-size: clamp(26px, 4.4vw, 52px); letter-spacing: .06em; font-weight: 700; }
+.sinema-yazi span { display: block; font-size: clamp(13px, 1.5vw, 17px); letter-spacing: .12em; text-transform: uppercase; margin-top: 4px; opacity: .92; }
+.tur-oynuyor::after, .giris-oynuyor::after {
+  /* Sinema şeritleri */
+  content: ''; position: absolute; inset: 0; z-index: 4; pointer-events: none;
+  background: linear-gradient(#000 0 0) top / 100% 7% no-repeat, linear-gradient(#000 0 0) bottom / 100% 7% no-repeat;
+  opacity: .85; animation: serit 1.2s ease;
+}
+@keyframes serit { from { opacity: 0; } to { opacity: .85; } }
+@media (prefers-reduced-motion: reduce) { .sinema-yazi { transition: none; } .tur-oynuyor::after, .giris-oynuyor::after { animation: none; } }
+body.sinema .lejant, body.sinema .harita-ipucu { opacity: 0; pointer-events: none; transition: opacity .6s ease; }
+.il-karti small { display: block; grid-column: 1 / -1; margin-top: 4px; font-size: 11.5px; color: var(--soluk); font-weight: 500; }

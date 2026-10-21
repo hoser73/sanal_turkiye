@@ -137,13 +137,30 @@ referandum.rotalar(app, { h, auth });
 if (process.env.NODE_ENV !== 'production') app.get('/api/gelistirici/posta', h(() => posta.gelistirmeKutusu()));
 
 // ---- Statik oyun verisi
-app.get('/api/kurallar', h(() => ({ haritaKaynak: HARITA_KAYNAK, receteler: RECETELER, meslekler: MESLEKLER, mevsimler: MEVSIMLER, lig: LIG, bozulma: BOZULMA, bakim: BAKIM, borsa: { ucretOrani: BORSA.ucretOrani, sureler: BORSA.sureler, minTutar: BORSA.minTutar }, birim: BIRIM, imar: IMAR, imarKaynakNotu: IMAR_KAYNAK_NOTU, yapilar: YAPILAR, urunler: URUNLER, hesap: HESAP,
+app.get('/api/kurallar', h(() => ({ haritaKaynak: HARITA_KAYNAK, hayvanlar: require('./config/rules').HAYVANLAR, susler: require('./config/rules').SUSLER, receteler: RECETELER, meslekler: MESLEKLER, mevsimler: MEVSIMLER, lig: LIG, bozulma: BOZULMA, bakim: BAKIM, borsa: { ucretOrani: BORSA.ucretOrani, sureler: BORSA.sureler, minTutar: BORSA.minTutar }, birim: BIRIM, imar: IMAR, imarKaynakNotu: IMAR_KAYNAK_NOTU, yapilar: YAPILAR, urunler: URUNLER, hesap: HESAP,
   belediye: { projeler: BELEDIYE.projeler, gelir: BELEDIYE.gelir },
   pazar: { ucretOrani: PAZAR.ucretOrani, minUcret: PAZAR.minUcret, maxFiyat: PAZAR.maxFiyat, ilanSureleri: PAZAR.ilanSureleri,
     aliciKosullari: Object.fromEntries(Object.entries(PAZAR.aliciKosullari).map(([k, v]) => [k, v.ad])) } })));
 
 // ---- Harita
 app.get('/api/bolgeler', h(() => oyun.bolgeler()));
+// İl → ilçe → mahalle gezintisi (sınırlar ve oyun kuralıyla çıkarılan mahalle alanları)
+const bolgeHaritasi = require('./harita/bolgeler');
+app.get('/api/il/:plaka/ilceler', h((req, res) => { res.set('cache-control', 'public, max-age=3600'); return bolgeHaritasi.ilIlceleri(String(req.params.plaka)); }));
+app.get('/api/ilce/:id/mahalleler', h((req) => bolgeHaritasi.ilceMahalleleri(req.params.id)));
+app.post('/api/ilce/:id/mahalle', h((req) => bolgeHaritasi.mahalleBolgesiAc(req.params.id, req.body?.yerId)));
+// Çiftlik: hayvancılık, seviye, günlük ödül, siparişler, köy yarışması, süsler
+const ciftlik = require('./ciftlik');
+app.get('/api/ciftlik', auth.girisGerekli, h((req) => ciftlik.ozet(uid(req))));
+app.post('/api/yapi/:id/besle', auth.girisGerekli, h((req) => ciftlik.besle(uid(req), req.params.id)));
+app.post('/api/yapi/:id/topla', auth.girisGerekli, h((req) => ciftlik.topla(uid(req), req.params.id)));
+app.post('/api/seviye-odul', auth.girisGerekli, h((req) => ciftlik.seviyeOdulAl(uid(req))));
+app.post('/api/gunluk-odul', auth.girisGerekli, h((req) => ciftlik.gunlukAl(uid(req))));
+app.post('/api/siparis/:id/teslim', auth.girisGerekli, h((req) => ciftlik.siparisTeslim(uid(req), req.params.id)));
+app.post('/api/siparis/:id/reddet', auth.girisGerekli, h((req) => ciftlik.siparisReddet(uid(req), req.params.id)));
+app.get('/api/yarisma/:mahalleId', h((req) => ciftlik.yarisma(Number(req.params.mahalleId), req.kullanici?.id ?? null)));
+app.post('/api/parsel/:id/sus', auth.girisGerekli, hazir((req) => ciftlik.susEkle(uid(req), parselId(req), String(req.body?.tur || ''))));
+app.post('/api/sus/:id/kaldir', auth.girisGerekli, h((req) => ciftlik.susKaldir(uid(req), req.params.id)));
 app.get('/api/istatistik/iller', h(() => oyun.ilIstatistikleri()));
 app.get('/api/ara', h((req) => arama.ara(req.query.q)));
 app.get('/api/konum', h((req) => arama.konum(Number(req.query.lon), Number(req.query.lat))));

@@ -327,4 +327,4 @@ function normalize(s) {
     .normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
-module.exports = { K, KOD_AD, IMAR_SURUM, karoSiniflandir, hucreImari, mahalleBul, imarPng, normalize, sahteImar };
+module.exports = { K, KOD_AD, IMAR_SURUM, karoSiniflandir, hucreImari, mahalleBul, imarPng, normalize, sahteImar, yerleriTopla, MAHALLE_AGIRLIK };
