@@ -1,0 +1,24 @@
+# systemd birimi (Docker kullanmayan kurulum). /etc/systemd/system/sanalturkiye.service olarak kopyalayın.
+[Unit]
+Description=Sanal Türkiye
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sanalturkiye
+WorkingDirectory=/opt/sanalturkiye
+EnvironmentFile=/etc/sanalturkiye.env
+ExecStart=/usr/bin/node server/index.js
+Restart=on-failure
+RestartSec=5
+# Sertleştirme
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/sanalturkiye
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

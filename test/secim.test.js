@@ -256,5 +256,6 @@ test('az sakinli mahallede seçim açılmaz; gerekçe gösterilir', async () => 
   secim.secimBakim({ zorla: true });
   const m = (await P(`/api/mahalle/${mid}`)).veri;
   assert.equal(m.secim, null);
-  assert.match(m.yeniSecim, /en az 3 oyuncu/);
+  // Yaşayan nüfus açıkken demo sakinler yerleşince seçim kendiliğinden açılır; kapalıyken eşik açıklanır
+  assert.match(m.yeniSecim, /Demo sakinler yerleştikçe|en az 3 oyuncu/);
 });

@@ -40,9 +40,9 @@ export async function belediyePaneli({ ben, belediyeId, sunucuSimdi, makbuzlar, 
   if (v.baskan) {
     p.push(`<div class="muhtar-karti">
       <span class="avatar altin">${bas(v.baskan.ad)}</span>
-      <div><div class="kucuk">Belediye başkanı · meclis başkanı</div><b>${esc(v.baskan.ad)}${v.baskan.ben ? ' (sen)' : ''}</b>
+      <div><div class="kucuk">Belediye başkanı · meclis başkanı</div><b>${esc(v.baskan.ad)}${v.baskan.ben ? ' (sen)' : ''}</b>${v.baskan.demo ? ' <span class="demo-rozet" title="Oyunun canlandırdığı demo sakin">demo</span>' : ''}
         <div class="kucuk">Görev süresinin bitmesine <span data-bitis="${v.baskan.bitis}">${sure(v.baskan.bitis - sunucuSimdi())}</span></div></div></div>
-      <div class="meclis-sirasi">${v.meclis.length ? v.meclis.map((m) => `<span class="meclis-uye" title="Meclis üyesi"><span class="avatar">${bas(m.ad)}</span>${esc(m.ad)}${m.ben ? ' (sen)' : ''}</span>`).join('')
+      <div class="meclis-sirasi">${v.meclis.length ? v.meclis.map((m) => `<span class="meclis-uye" title="Meclis üyesi"><span class="avatar">${bas(m.ad)}</span>${esc(m.ad)}${m.ben ? ' (sen)' : ''}${m.demo ? ' <span class="demo-rozet" title="Oyunun canlandırdığı demo sakin">demo</span>' : ''}</span>`).join('')
         : '<span class="kucuk">Mecliste seçilmiş üye yok; kararları başkan tek başına alır.</span>'}</div>`);
     if (v.baskan.vaatler.length) {
       p.push(`<details class="acilir"><summary>Başkanın vaatleri (${v.baskan.vaatler.length})</summary><ul class="madde">${v.baskan.vaatler.map((x) => `<li>${esc(x.metin)}</li>`).join('')}</ul></details>`);

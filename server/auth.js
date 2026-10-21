@@ -138,7 +138,9 @@ function dogrulamaPostasi(u) {
   const token = tokenUret(u.id, 'DOGRULA', HESAP.dogrulamaSaat * 60);
   return posta.gonder(u.email, 'Sanal Türkiye — e-posta adresini doğrula',
     `Merhaba ${u.display_name},\n\nHesabını doğrulamak için bağlantıya tıkla (${HESAP.dogrulamaSaat} saat geçerli):\n` +
-    `${TABAN_URL()}/?dogrula=${token}\n\nBu hesabı sen açmadıysan bu iletiyi yok sayabilirsin.`);
+    `${TABAN_URL()}/?dogrula=${token}\n\nBu hesabı sen açmadıysan bu iletiyi yok sayabilirsin.`,
+    { baslik: 'E-posta adresini doğrula', paragraflar: [`Merhaba ${u.display_name},`, `Sanal Türkiye hesabını etkinleştirmek için aşağıdaki düğmeye tıkla. Bağlantı ${HESAP.dogrulamaSaat} saat geçerlidir.`],
+      dugme: { metin: 'Adresimi doğrula', url: `${TABAN_URL()}/?dogrula=${token}` }, not: 'Bu hesabı sen açmadıysan bu iletiyi yok sayabilirsin.' }).catch(() => {});
 }
 
 // ---------- Kayıt / giriş
@@ -267,7 +269,9 @@ function sifreUnuttum(req) {
     const token = tokenUret(u.id, 'SIFIRLA', HESAP.sifirlamaDakika);
     posta.gonder(u.email, 'Sanal Türkiye — parola sıfırlama',
       `Merhaba ${u.display_name},\n\nParolanı sıfırlamak için (${HESAP.sifirlamaDakika} dakika geçerli):\n${TABAN_URL()}/?sifirla=${token}\n\n` +
-      'Bu isteği sen yapmadıysan parolan değişmedi; bu iletiyi yok sayabilirsin.');
+      'Bu isteği sen yapmadıysan parolan değişmedi; bu iletiyi yok sayabilirsin.',
+      { baslik: 'Parolanı sıfırla', paragraflar: [`Merhaba ${u.display_name},`, `Parola sıfırlama isteği aldık. Yeni parolanı belirlemek için düğmeye tıkla. Bağlantı ${HESAP.sifirlamaDakika} dakika geçerlidir ve bir kez kullanılabilir.`],
+        dugme: { metin: 'Yeni parola belirle', url: `${TABAN_URL()}/?sifirla=${token}` }, not: 'Bu isteği sen yapmadıysan parolan değişmedi; bu iletiyi yok sayabilirsin.' }).catch(() => {});
     L.denetim({ aktor: u.id, eylem: 'PASSWORD_RESET_REQUESTED', herkese: false });
   }
   return { tamam: true, mesaj: 'Bu adrese kayıtlı bir hesap varsa sıfırlama bağlantısı gönderildi.' };
@@ -284,7 +288,8 @@ function sifreSifirla(req) {
     L.denetim({ aktor: userId, eylem: 'PASSWORD_RESET', herkese: false });
   })();
   const u = q.kullanici.get(userId);
-  posta.gonder(u.email, 'Sanal Türkiye — parolan değişti', 'Parolan az önce sıfırlandı ve tüm oturumların kapatıldı. Bunu sen yapmadıysan hemen bizimle iletişime geç.');
+  posta.gonder(u.email, 'Sanal Türkiye — parolan değişti', 'Parolan az önce sıfırlandı ve tüm oturumların kapatıldı. Bunu sen yapmadıysan hemen bizimle iletişime geç.',
+    { baslik: 'Parolan değişti', paragraflar: ['Parolan az önce sıfırlandı ve tüm cihazlardaki oturumların kapatıldı.', 'Bunu sen yapmadıysan hemen destek ekibimizle iletişime geç.'] }).catch(() => {});
   return { tamam: true };
 }
 function sifreDegistir(req) {

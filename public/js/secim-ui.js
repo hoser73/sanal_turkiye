@@ -25,14 +25,18 @@ export async function mahallePaneli({ ben, mahalleId, sunucuSimdi, makbuzlar }) 
   const p = [secici];
   p.push(`<p class="ust-baslik-kucuk">Mahalle</p>
     <h2 class="kart-baslik">${esc(v.mahalle.ad)}</h2>
-    <p class="alt-yazi">${esc(v.mahalle.ilce)} · ${esc(v.mahalle.il)} · ${v.sakinSayisi} oyuncu sakin
+    <p class="alt-yazi">${esc(v.mahalle.ilce)} · ${esc(v.mahalle.il)} · ${v.sakinSayisi} oyuncu sakin${v.demoSakin ? ` + ${v.demoSakin} demo sakin` : ''}
       <button type="button" class="bag" data-eylem="yere-git" data-lon="${v.mahalle.merkez[0]}" data-lat="${v.mahalle.merkez[1]}">haritada göster</button></p>`);
+
+  if (v.doldurma && v.demoSakin) {
+    p.push(`<p class="kucuk doldurma-notu">🧑‍🌾 Bu mahallede gerçek oyuncu az; oyunun canlandırdığı <b>demo sakinler</b> seçimlere aday ve seçmen olarak katılıyor. Mahallede ${v.minSecmen} gerçek oyuncu olunca yalnızca gerçek oyuncular oy kullanır; demo sakinler de zamanla taşınır.</p>`);
+  }
 
   // Muhtar
   if (v.muhtar) {
     p.push(`<div class="muhtar-karti">
       <span class="avatar altin">${bas(v.muhtar.ad)}</span>
-      <div><div class="kucuk">Mahalle muhtarı (oyun içi)</div><b>${esc(v.muhtar.ad)}${v.muhtar.ben ? ' (sen)' : ''}</b>
+      <div><div class="kucuk">Mahalle muhtarı (oyun içi)</div><b>${esc(v.muhtar.ad)}${v.muhtar.ben ? ' (sen)' : ''}</b>${v.muhtar.demo ? ' <span class="demo-rozet" title="Oyunun canlandırdığı demo sakin">demo</span>' : ''}
         <div class="kucuk">Görev süresinin bitmesine <span data-bitis="${v.muhtar.bitis}">${sure(v.muhtar.bitis - sunucuSimdi())}</span></div></div>
     </div>`);
   } else {
@@ -102,7 +106,7 @@ function adayKarti(a, { secilebilir = false, kazanan = false, toplam = 0, grup =
     <label ${secilebilir ? `for="aday${a.id}"` : ''}>
       <span class="avatar">${bas(a.ad)}</span>
       <span class="aday-govde">
-        <b>${esc(a.ad)}${a.ben ? ' (sen)' : ''}${kazanan ? ' 🏅' : ''}</b>
+        <b>${esc(a.ad)}${a.ben ? ' (sen)' : ''}${kazanan ? ' 🏅' : ''}${a.demo ? ' <span class="demo-rozet" title="Oyunun canlandırdığı demo sakin">demo</span>' : ''}</b>
         <span class="kucuk">İtibar ${a.itibar}${a.butce != null ? ` · tahmini bütçe ${akce(a.butce)}` : ''}${a.durum === 'CEKILDI' ? ' · çekildi' : a.durum === 'DUSTU' ? ' · kütükte yer almadığı için düştü' : ''}</span>
         <span class="manifesto">${esc(a.manifesto)}</span>
         ${a.vaatler.length ? `<ul class="vaatler">${a.vaatler.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}

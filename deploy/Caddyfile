@@ -1,0 +1,11 @@
+# Caddy: Let's Encrypt ile otomatik HTTPS, sıkıştırma, WebSocket (/canli) dahil tüm istekleri uygulamaya iletir
+{$ALAN_ADI} {
+	encode zstd gzip
+	reverse_proxy uygulama:3400 {
+		header_up X-Forwarded-Proto {scheme}
+	}
+	log {
+		output stdout
+		format json
+	}
+}

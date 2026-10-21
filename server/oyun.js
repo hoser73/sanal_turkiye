@@ -14,6 +14,7 @@ const PARSEL_SEC = `SELECT p.*, r.name AS mahalle, r.attractiveness, r.code AS m
 const q = {
   parsel: db.prepare(`${PARSEL_SEC} WHERE p.id = ?`),
   kullanici: db.prepare(`SELECT id, display_name, is_npc FROM users WHERE id = ?`),
+  npcKisilik: db.prepare(`SELECT npc_kisilik FROM users WHERE id = ?`),
   yapilar: db.prepare(`SELECT * FROM structures WHERE parcel_id = ? ORDER BY id`),
   ekin: db.prepare(`SELECT * FROM crops WHERE parcel_id = ? AND status = 'GROWING'`),
   parselSayisi: db.prepare(`SELECT COUNT(*) AS c FROM parcels WHERE owner_user_id = ?`),
@@ -181,7 +182,7 @@ function parselKarti(id, userId, komsuImar = {}) {
     alan: p.area_m2, durum: p.status, geomVersiyon: p.geom_version,
     imar: { tip: p.zoning_type, ...imar },
     imarKullanimi: imarKullanimi(p, yapilar),
-    sahip: sahip ? { ad: sahip.display_name, npc: !!sahip.is_npc, ben: benim, unvan: sahip.is_npc ? null : require('./kozmetik').secili(sahip.id).unvan?.ad || null } : null,
+    sahip: sahip ? { ad: sahip.display_name, npc: !!sahip.is_npc, demoSakin: !!sahip.is_npc && !!q.npcKisilik.get(sahip.id)?.npc_kisilik, ben: benim, unvan: sahip.is_npc ? null : require('./kozmetik').secili(sahip.id).unvan?.ad || null } : null,
     kozmetik: sahip && !sahip.is_npc ? require('./kozmetik').haritaKodu(sahip.id) : '',
     birincilBedel: !p.owner_user_id && imar.satilik ? birincilBedel(p) : null,
     gelismislikSkoru: gelismislikSkoru(p, yapilar, ekin),

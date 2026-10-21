@@ -28,6 +28,7 @@ const zaman = require('./zaman');
 const lojistik = require('./lojistik');
 const kira = require('./kira');
 const referandum = require('./referandum');
+const nufus = require('./nufus');
 const posta = require('./posta');
 const imar = require('./harita/imar');
 const { parselHazirla, komsuImarlari, koordinatlar } = require('./harita/parsel');
@@ -86,7 +87,9 @@ app.use(auth.kimlik);
 app.use('/api/', (req, _res, next) => {
   if (req.path.startsWith('/karo/')) return next();
   try { oyun.bekleyenleriIsle(); pazar.pazarBakim(); secim.secimBakim(); belediye.belediyeBakim(); moderasyon.gorevdenAlmaBakim(); ekonomi.borsaBakim(); dunya.sezonBakim(); dunya.havaBakim();
-    lojistik.lojistikBakim(); kira.kiraBakim(); referandum.referandumBakim(); next(); } catch (e) { next(e); }
+    lojistik.lojistikBakim(); kira.kiraBakim(); referandum.referandumBakim();
+    posta.postaBakim().catch(() => {});   // başarısız e-postaları arka planda yeniden dene
+    next(); } catch (e) { next(e); }
 });
 
 // Sync ve async işleyicilerin hatalarını tek yerde toplayan sarmalayıcı
@@ -236,7 +239,9 @@ app.post('/api/istemci-hata', rateLimit({ windowMs: 60_000, limit: 20, standardH
     satir: Number(b.satir) || null, yigin: String(b.yigin || '').slice(0, 1500), surum: String(b.surum || '').slice(0, 20), kullanici: req.kullanici?.id });
   return { tamam: true };
 }));
+app.get('/api/yonetim/posta', auth.rolGerekli('MODERATOR', 'DENETCI', 'ADMIN'), h(() => posta.kuyrukDurumu()));
 app.get('/api/yonetim/hatalar', auth.rolGerekli('MODERATOR', 'DENETCI', 'ADMIN'), h(() => sonHatalar(80)));
+app.get('/api/mahalle/:id/nufus', h((req) => nufus.mahalleNufusu(req.params.id)));
 app.get('/api/saglik', h(() => ({ durum: 'iyi', surum: require('../package.json').version, calisma: Math.round(process.uptime()), bellekMb: Math.round(process.memoryUsage().rss / 1e6),
   canliBaglanti: canli.baglantiSayisi() })));
 
@@ -265,10 +270,27 @@ app.hazir = npcSeedEt({ sessiz: !!process.env.SESSIZ }).catch((e) => console.war
 const PORT = Number(process.env.PORT || 3400);
 app.canliBagla = canli.bagla;
 if (require.main === module) {
+  // Üretimde eksik/güvensiz ayarla açılmaz; uyarılar günlüğe yazılır
+  const denetim = require('./yapilandirma').uretimDenetimi();
+  for (const u of denetim.uyarilar) gunluk.warn('yapılandırma uyarısı', { uyari: u });
+  if (denetim.hatalar.length) {
+    for (const h of denetim.hatalar) gunluk.error('yapılandırma hatası', { hataIletisi: h });
+    process.stderr.write(`\nSunucu başlatılmadı: ${denetim.hatalar.length} yapılandırma hatası (bkz. .env.ornek, docs/yayina-alma.md)\n`);
+    process.exit(1);
+  }
   const sunucu = app.listen(PORT, () => gunluk.info(`Sanal Türkiye → http://localhost:${PORT}`, { port: PORT, surum: require('../package.json').version }));
   process.on('unhandledRejection', (e) => gunluk.error('yakalanmamış söz reddi', { hata: e }));
   // Tutarsız durumda çalışmaya devam etmemek için kaydedip çık; süreç yöneticisi (systemd/pm2) yeniden başlatır
   process.on('uncaughtException', (e) => { gunluk.error('yakalanmamış istisna', { hata: e }); setTimeout(() => process.exit(1), 200); });
   canli.bagla(sunucu);
+  nufus.baslat();   // yaşayan nüfus: gerçek oyuncusu az mahallelerde demo sakinler
+  // Düzenli kapanış (docker stop / systemd): yeni bağlantıları kes, veritabanını kapat
+  const kapat = (sinyal) => {
+    gunluk.info('kapanıyor', { sinyal });
+    sunucu.close(() => { try { require('./db').close(); } catch { /* zaten kapalı */ } process.exit(0); });
+    setTimeout(() => process.exit(0), 8000).unref();
+  };
+  process.on('SIGTERM', () => kapat('SIGTERM'));
+  process.on('SIGINT', () => kapat('SIGINT'));
 }
 module.exports = app;

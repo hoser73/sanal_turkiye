@@ -13,7 +13,7 @@
 // edilir ve yenilenir. İtiraz aşaması sonunda bağımsız yeniden sayım yapılır.
 const crypto = require('crypto');
 const db = require('./db');
-const { SECIM, ITIBAR, BELEDIYE, HESAP } = require('./config/rules');
+const { SECIM, ITIBAR, BELEDIYE, HESAP, NUFUS } = require('./config/rules');
 const L = require('./lib/ledger');
 const { OyunHatasi } = L;
 
@@ -52,7 +52,7 @@ const q = {
   secim: db.prepare(`SELECT * FROM secimler WHERE id = ?`),
   aktifSecim: db.prepare(`SELECT * FROM secimler WHERE region_id = ? AND asama IN ${AKTIF_SQL}`),
   sonSecim: db.prepare(`SELECT * FROM secimler WHERE region_id = ? ORDER BY id DESC LIMIT 1`),
-  adaylar: db.prepare(`SELECT a.*, u.display_name AS ad FROM adaylar a JOIN users u ON u.id = a.user_id WHERE a.secim_id = ? ORDER BY a.id`),
+  adaylar: db.prepare(`SELECT a.*, u.display_name AS ad, u.is_npc AS npc FROM adaylar a JOIN users u ON u.id = a.user_id WHERE a.secim_id = ? ORDER BY a.id`),
   aktifAdaylar: db.prepare(`SELECT * FROM adaylar WHERE secim_id = ? AND durum = 'AKTIF'`),
   kutukte: db.prepare(`SELECT 1 FROM secmen_kutugu WHERE secim_id = ? AND user_id = ?`),
   kutukSayisi: db.prepare(`SELECT COUNT(*) AS c FROM secmen_kutugu WHERE secim_id = ?`),
@@ -77,6 +77,17 @@ const sakinMiSorgu = {
   ilce_id: db.prepare(`SELECT 1 FROM parcels p JOIN users u ON u.id = p.owner_user_id WHERE p.ilce_id = ? AND p.owner_user_id = ? AND u.is_npc = 0 LIMIT 1`),
 };
 const sakinler = (tur, regionId) => sakinSorgu[tur.sakinKolonu].all(regionId);
+// Yaşayan nüfus: demo sakinler (NPC) yalnızca "doldurma kipi"nde seçmen ve aday olur — bölgedeki gerçek oyuncu eşiğin altındayken
+const demoSorgu = {
+  region_id: db.prepare(`SELECT DISTINCT u.id, u.created_at FROM parcels p JOIN users u ON u.id = p.owner_user_id
+                         WHERE p.region_id = ? AND u.is_npc = 1 AND u.npc_kisilik IS NOT NULL AND u.npc_durum = 'AKTIF'`),
+  ilce_id: db.prepare(`SELECT DISTINCT u.id, u.created_at FROM parcels p JOIN users u ON u.id = p.owner_user_id
+                       WHERE p.ilce_id = ? AND u.is_npc = 1 AND u.npc_kisilik IS NOT NULL AND u.npc_durum = 'AKTIF'`),
+};
+const demoSakinler = (tur, regionId) => demoSorgu[tur.sakinKolonu].all(regionId);
+const doldurmaKipi = (tur, regionId) => NUFUS.etkin && sakinler(tur, regionId).length < tur.minSecmen;
+// Seçmen adayları: gerçek sakinler + (doldurma kipinde) demo sakinler
+const secmenler = (tur, regionId) => (doldurmaKipi(tur, regionId) ? [...sakinler(tur, regionId), ...demoSakinler(tur, regionId)] : sakinler(tur, regionId));
 const sakinMi = (tur, regionId, userId) => !!sakinMiSorgu[tur.sakinKolonu].get(regionId, userId);
 
 // ---------- Oyun içi itibar ve etkinlik (açık formül) ----------
@@ -102,8 +113,15 @@ function adayUygunlugu(userId, secim, makam) {
   const tur = TUR(secim);
   const kosul = tur.makamlar[makam].aday;
   const sebepler = [];
-  const u = db.prepare(`SELECT created_at, status, is_npc, dogum_yili FROM users WHERE id = ?`).get(userId);
-  if (!u || u.status !== 'ACTIVE' || u.is_npc) sebepler.push('Hesap aday olamaz');
+  const u = db.prepare(`SELECT created_at, status, is_npc, dogum_yili, npc_kisilik, npc_durum FROM users WHERE id = ?`).get(userId);
+  if (u?.is_npc) {
+    // Demo sakin: yalnızca doldurma kipinde, bölgede oturuyorsa ve taşınmıyorsa; itibar/hesap yaşı koşulları aranmaz (iskele rolü)
+    if (!u.npc_kisilik || u.npc_durum !== 'AKTIF') sebepler.push('Demo komşular aday olamaz');
+    else if (!doldurmaKipi(tur, secim.region_id)) sebepler.push('Bölgede yeterli gerçek oyuncu var; demo sakinler seçime katılmaz');
+    else if (!demoSakinler(tur, secim.region_id).some((d) => d.id === userId)) sebepler.push('Bu bölgede oturmuyor');
+    return { uygun: !sebepler.length, sebepler, itibar: 0, itibarParcalari: {}, etkinlik: 0 };
+  }
+  if (!u || u.status !== 'ACTIVE') sebepler.push('Hesap aday olamaz');
   if (u?.dogum_yili && new Date().getUTCFullYear() - u.dogum_yili < HESAP.yetiskinYas) sebepler.push(`Aday olmak için ${HESAP.yetiskinYas} yaşını doldurmuş olmalısın`);
   if (!sakinMi(tur, secim.region_id, userId)) sebepler.push(tur.bolge === 'ILCE' ? 'Bu ilçede parselin olmalı' : 'Bu mahallede parselin olmalı');
   if (simdi() - sqlMs(u.created_at) < kosul.minHesapYasiMs) sebepler.push(`Hesabın en az ${Math.round(kosul.minHesapYasiMs / SECIM.gunMs)} günlük olmalı`);
@@ -146,9 +164,13 @@ function secimAc(regionId, turKod = 'MUHTAR', bas = simdi()) {
 // Yeterli oyuncu sakini olan, aktif seçimi ve görevdeki yönetimi olmayan bölgelerde seçim aç
 function yeniSecimleriAc(t) {
   for (const [kod, tur] of Object.entries(SECIM.turler)) {
+    // Gerçek oyuncu eşiği ya da (yaşayan nüfus açıksa) en az bir gerçek oyuncu + demo sakinlerle eşik
     const bolgeler = db.prepare(`
-      SELECT p.${tur.sakinKolonu} AS r, COUNT(DISTINCT p.owner_user_id) AS c FROM parcels p JOIN users u ON u.id = p.owner_user_id
-      WHERE u.is_npc = 0 GROUP BY p.${tur.sakinKolonu} HAVING c >= ?`).all(tur.minSecmen);
+      SELECT p.${tur.sakinKolonu} AS r,
+        COUNT(DISTINCT CASE WHEN u.is_npc = 0 AND u.status = 'ACTIVE' THEN u.id END) AS gercek,
+        COUNT(DISTINCT CASE WHEN u.is_npc = 0 AND u.status = 'ACTIVE' OR (u.is_npc = 1 AND u.npc_kisilik IS NOT NULL AND u.npc_durum = 'AKTIF') THEN u.id END) AS toplam
+      FROM parcels p JOIN users u ON u.id = p.owner_user_id GROUP BY p.${tur.sakinKolonu}
+      HAVING gercek >= ? OR (? AND gercek >= 1 AND toplam >= ?)`).all(tur.minSecmen, NUFUS.etkin ? 1 : 0, tur.minSecmen);
     for (const { r } of bolgeler) {
       if (q.aktifSecim.get(r)) continue;
       const bitis = gorevBitisi(tur, r, t);
@@ -240,6 +262,11 @@ function gecis(s, sonraki, t) {
     const esik = s.kampanya_at - SECIM.secmenMinHesapYasiMs;
     const ekle = db.prepare(`INSERT OR IGNORE INTO secmen_kutugu (secim_id, user_id) VALUES (?, ?)`);
     for (const k of sakinler(tur, r)) if (sqlMs(k.created_at) <= esik) ekle.run(s.id, k.id);
+    // Doldurma kipi: demo sakinler (hesap yaşı aranmadan) kütüğe girer; seçim kaydında işaretlenir
+    if (doldurmaKipi(tur, r)) {
+      for (const d of demoSakinler(tur, r)) ekle.run(s.id, d.id);
+      db.prepare(`UPDATE secimler SET doldurma = 1 WHERE id = ?`).run(s.id);
+    }
     for (const a of q.aktifAdaylar.all(s.id)) {
       if (!q.kutukte.get(s.id, a.user_id)) db.prepare(`UPDATE adaylar SET durum = 'DUSTU' WHERE id = ?`).run(a.id);
     }
@@ -272,6 +299,7 @@ function gecis(s, sonraki, t) {
       katilimOrani: kutuk ? denetim.katilim / kutuk : 0,
       kazananlar: Object.fromEntries(Object.entries(k).map(([m, x]) => [m, x.kazananlar])),
       marj: marjlar.length ? Math.min(...marjlar) : 0,
+      demoKatilim: db.prepare(`SELECT COUNT(*) c FROM secim_katilim k JOIN users u ON u.id = k.user_id WHERE k.secim_id = ? AND u.is_npc = 1`).get(s.id).c,
       kura: Object.values(k).some((x) => x.kura),
       denetim,
     };
@@ -516,7 +544,7 @@ function vaatGuncelle(userId, vaatId, govde) {
 function adayListesi(s, userId, sonucGorunur, sonuc) {
   return q.adaylar.all(s.id)
     .map((a) => ({
-      id: a.id, ad: a.ad, makam: a.makam || 'MUHTAR', ben: a.user_id === userId, durum: a.durum, manifesto: a.manifesto, vaatler: JSON.parse(a.vaatler), butce: a.butce,
+      id: a.id, ad: a.ad, demo: !!a.npc, makam: a.makam || 'MUHTAR', ben: a.user_id === userId, durum: a.durum, manifesto: a.manifesto, vaatler: JSON.parse(a.vaatler), butce: a.butce,
       itibar: itibar(a.user_id).toplam, oy: sonucGorunur ? (sonuc.oylar[a.id] || 0) : null, sira: sha(`${userId || 'misafir'}:${a.id}`),
     }))
     .sort((a, b) => (sonucGorunur ? b.oy - a.oy : 0) || a.sira.localeCompare(b.sira))
@@ -545,6 +573,8 @@ function secimDetayi(s, userId) {
     takvim: tur.asamalar.map((a) => ({ kod: a.kod, ad: a.ad, bas: s[`${a.kod.toLowerCase()}_at`] })).concat([{ kod: 'SONUC', ad: 'Sonuç ve devir', bas: s.bitis_at }]),
     adaylar: adayListesi(s, userId, sonucGorunur, sonuc),
     kutukSayisi: q.kutukSayisi.get(s.id).c,
+    doldurma: !!s.doldurma,
+    demoKutuk: db.prepare(`SELECT COUNT(*) c FROM secmen_kutugu k JOIN users u ON u.id = k.user_id WHERE k.secim_id = ? AND u.is_npc = 1`).get(s.id).c,
     katilimSayisi: ['OYLAMA', 'ITIRAZ', 'SONUCLANDI', 'IPTAL'].includes(s.asama) ? q.katilimSayisi.get(s.id).c : null,
     sonuc: sonuc && { ...sonuc, ozetHash: s.ozet_hash, kazananAdayId: s.kazanan_aday_id, denetim: { supheli: sonuc.denetim.supheli, bulgular: sonuc.denetim.bulgular } },
     itirazlar: db.prepare(`SELECT sebep, durum, yanit, created_at FROM itirazlar WHERE secim_id = ? ORDER BY id`).all(s.id),
@@ -576,10 +606,12 @@ function mahalleBilgisi(regionId, userId) {
   return {
     mahalle: { id: r.id, ad: r.name, ilce: r.ilce, ilceId: r.ilce_id, il: r.il, ilId: r.il_id, sinif: r.place_class, merkez: [r.center_lon, r.center_lat] },
     sakinSayisi: sakin.length,
+    demoSakin: demoSakinler(tur, r.id).length,
+    doldurma: doldurmaKipi(tur, r.id),
     benSakinim: !!userId && sakin.some((k) => k.id === userId),
     minSecmen: tur.minSecmen,
     muhtar: m ? {
-      id: m.id, userId: m.user_id, ad: m.ad, ben: m.user_id === userId, baslangic: m.baslangic, bitis: m.bitis,
+      id: m.id, userId: m.user_id, ad: m.ad, demo: !!db.prepare(`SELECT is_npc FROM users WHERE id = ?`).get(m.user_id)?.is_npc, ben: m.user_id === userId, baslangic: m.baslangic, bitis: m.bitis,
       vaatler: db.prepare(`SELECT id, sira, metin, durum, aciklama, updated_at FROM vaat_takip WHERE muhtar_id = ? ORDER BY sira`).all(m.id),
     } : null,
     duyurular: db.prepare(`SELECT d.id, d.metin, d.created_at, u.display_name AS ad FROM mahalle_duyurulari d JOIN users u ON u.id = d.user_id
@@ -589,7 +621,9 @@ function mahalleBilgisi(regionId, userId) {
     gecmis: gecmisSecimler(r.id),
     hizmetler: [...require('./belediye').mahalleHizmetleri(r.id)].map((k) => ({ kod: k, ...BELEDIYE.projeler[k] })),
     hizmetTurleri: BELEDIYE.projeler,
-    yeniSecim: !aktif && sakin.length < tur.minSecmen ? `Seçim için mahallede en az ${tur.minSecmen} oyuncu sakin gerekir (şu an ${sakin.length}). O zamana dek geçici yönetim sürer.` : null,
+    yeniSecim: !aktif && sakin.length < tur.minSecmen
+      ? (NUFUS.etkin && sakin.length >= 1 ? 'Demo sakinler yerleştikçe seçim takvimi kendiliğinden açılır.'
+        : `Seçim için mahallede en az ${tur.minSecmen} oyuncu sakin gerekir (şu an ${sakin.length}). O zamana dek geçici yönetim sürer.`) : null,
   };
 }
 
@@ -623,5 +657,6 @@ function haritaSecimleri([w, s, e, n]) {
 module.exports = {
   secimBakim, secimAc, adayOl, adaylikGeriCek, oyVer, makbuzDogrula, itirazEt, yenidenSay, duyuruYap, vaatGuncelle,
   mahalleBilgisi, mahallelerim, haritaSecimleri, cihazOzeti, itibar, adayUygunlugu, bolgeSecimi, gecmisSecimler, sakinler, sakinMi,
+  demoSakinler, doldurmaKipi, secmenler,
   ASAMA_AD, metin,
 };

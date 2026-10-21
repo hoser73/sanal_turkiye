@@ -69,7 +69,7 @@ function ciz(asagi) {
   const v = veri[aktif];
   if (!v) return;
   const liste = v.mesajlar.length ? v.mesajlar.map((m) => `<li class="${m.ben ? 'ben' : ''}">
-      <div class="balon"><b>${esc(m.ad)}</b> ${esc(m.metin)}</div>
+      <div class="balon"><b>${esc(m.ad)}${m.demo ? ' <span class="demo-rozet" title="Oyunun canlandırdığı demo sakin">demo</span>' : ''}</b> ${esc(m.metin)}</div>
       <span class="kucuk">${esc(zamanOnce(m.zaman))}${m.ben ? '' : ` · <button type="button" class="bag sessiz" data-s="bildir" data-id="${m.id}" data-ad="${esc(m.ad)}">bildir</button>`}</span></li>`).join('')
     : '<li class="bos kucuk">Henüz mesaj yok. İlk merhabayı sen de!</li>';
   $('#sohbetCekmece').innerHTML = cerceve(`${sekmeler()}

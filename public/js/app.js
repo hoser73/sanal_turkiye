@@ -42,6 +42,8 @@ const kipYaz = (k) => { try { localStorage.setItem('st-kip', k); } catch { /* ö
 const IMAR_IKON = { KONUT: '🏠', TICARET: '🏪', TARIM: '🌾', SANAYI: '🏭', TURIZM: '🏨', KARMA: '🏙️', KORUMA: '🌲', PARK: '⛲', SU: '🌊', YOL: '🛣️' };
 // Konum, akışta ayrı satırda gösterilir (mahalle · ilçe, il)
 const AKIS_METIN = {
+  DEMO_RESIDENT_ARRIVED: (a) => ['🧳', `Mahalleye yeni bir demo sakin geldi: <b>${esc(a.after?.ad)}</b>`],
+  DEMO_RESIDENT_LEAVING: (a) => ['🚚', `<b>${esc(a.after?.ad)}</b> (demo sakin) mahalleden taşınıyor; parselleri satışta`],
   WEATHER_EVENT: (a) => [{ FIRTINA: '🌪️', SAGANAK: '🌊', DOLU: '🧊', SICAK: '🔥' }[a.after?.tur] || '⚠️', `<b>${esc(a.after?.il)}</b>: ${esc(a.after?.ad)} (${a.after?.etkilenen} varlık etkilendi)`],
   SHIPMENT_SENT: (a) => ['🚚', `<b>${esc(a.aktor)}</b> ${esc(urunAd(a.after?.urun))} sevkiyatı yola çıkardı`],
   SHIPMENT_DELIVERED: (a) => ['📦', `<b>${esc(a.aktor)}</b> ${a.after?.miktar} ${esc(urunAd(a.after?.urun))} teslim etti`],
@@ -388,7 +390,7 @@ function parselPaneli() {
     parcalar.push(`<div class="kutu vurgulu"><b>Bu parselin kullanım hakkı sende</b>
       <p class="kucuk">${esc(imar.aciklama)}</p></div>`);
   } else {
-    parcalar.push(`<div class="kutu"><div class="satir"><div><div class="kucuk">Kullanım hakkı</div><b>${esc(k.sahip.ad)}</b>${k.sahip.npc ? ' <span class="kucuk">(demo komşu)</span>' : ''}</div>
+    parcalar.push(`<div class="kutu"><div class="satir"><div><div class="kucuk">Kullanım hakkı</div><b>${esc(k.sahip.ad)}</b>${k.sahip.unvan ? ` <span class="kucuk">· ${esc(k.sahip.unvan)}</span>` : ''}${k.sahip.demoSakin ? ' <span class="demo-rozet" title="Oyunun canlandırdığı demo sakin">demo</span>' : k.sahip.npc ? ' <span class="kucuk">(demo komşu)</span>' : ''}</div>
       ${girisli() ? `<div class="satir-dugmeler"><button class="dugme ince" data-eylem="ziyaret">👋 Ziyaret et</button>
         ${k.sahip.npc ? '' : `<button type="button" class="bag sessiz" data-eylem="sikayet" data-tur="PARSEL" data-id="${esc(k.id)}" data-baslik="Parsel ${esc(k.id)}">bildir</button>`}</div>` : ''}</div>
       ${k.durum === 'FROZEN' ? '<p class="kucuk uyari-metin">❄️ Bu parsel moderasyon incelemesi süresince dondurulmuştur.</p>' : ''}</div>`);

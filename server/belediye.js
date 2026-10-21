@@ -279,7 +279,7 @@ function belediyeBilgisi(ilceId, userId) {
   const tur = SECIM.turler.BELEDIYE;
   const sakin = secim.sakinler(tur, ilce.id);
   const aktifSecim = db.prepare(`SELECT 1 FROM secimler WHERE region_id = ? AND asama IN ('DUYURU','ADAYLIK','KAMPANYA','OYLAMA','ITIRAZ')`).get(ilce.id);
-  const uyeOzet = (u) => ({ id: u.id, userId: u.user_id, ad: u.ad, makam: u.makam, ben: u.user_id === userId, bitis: u.bitis,
+  const uyeOzet = (u) => ({ id: u.id, userId: u.user_id, ad: u.ad, demo: !!db.prepare(`SELECT is_npc FROM users WHERE id = ?`).get(u.user_id)?.is_npc, makam: u.makam, ben: u.user_id === userId, bitis: u.bitis,
     vaatler: db.prepare(`SELECT id, sira, metin, durum, aciklama FROM gorev_vaatleri WHERE uye_id = ? ORDER BY sira`).all(u.id) });
   const mahalleler = db.prepare(`
     SELECT r.id, r.name AS ad, COUNT(DISTINCT p.owner_user_id) AS sakin,
@@ -299,6 +299,7 @@ function belediyeBilgisi(ilceId, userId) {
   return {
     ilce: { id: ilce.id, ad: ilce.name, il: ilce.il, ilId: ilce.il_id, plaka: ilce.plaka, merkez: [ilce.center_lon, ilce.center_lat] },
     sakinSayisi: sakin.length, minSecmen: tur.minSecmen,
+    demoSakin: secim.demoSakinler(tur, ilce.id).length, doldurma: secim.doldurmaKipi(tur, ilce.id),
     baskan: baskan ? uyeOzet(baskan) : null,
     meclis: uyeListe.filter((u) => u.makam === 'MECLIS').map(uyeOzet),
     ben: userId ? { sakin: sakin.some((s) => s.id === userId), baskan: baskan?.user_id === userId, uye: uyeListe.some((u) => u.user_id === userId),

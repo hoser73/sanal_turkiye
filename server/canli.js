@@ -79,7 +79,7 @@ yol.on('olay', (o) => {
 });
 yol.on('sohbet', ({ kanal, mesaj }) => {
   for (const ws of istemciler) {
-    if (ws.kanallar.has(kanal)) gonder(ws, { tip: 'sohbet', kanal, mesaj: { id: mesaj.id, metin: mesaj.metin, ad: mesaj.ad, zaman: mesaj.zaman, ben: ws.kullanici?.id === mesaj.userId } });
+    if (ws.kanallar.has(kanal)) gonder(ws, { tip: 'sohbet', kanal, mesaj: { id: mesaj.id, metin: mesaj.metin, ad: mesaj.ad, zaman: mesaj.zaman, ben: ws.kullanici?.id === mesaj.userId, demo: !!mesaj.demo } });
   }
 });
 

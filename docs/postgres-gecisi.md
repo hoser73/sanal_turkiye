@@ -11,8 +11,13 @@ Prototip tek dosya SQLite (WAL) üzerinde çalışır ve tek sunucu için yeterl
 - `npm run postgres-aktar -- --disa-aktar data/postgres-aktarim` → her tablo için CSV, parsel geometrileri (WKT) ve
   `yukle.sql`. Yükleme: `psql "$DATABASE_URL" -f data/postgres-aktarim/yukle.sql`.
 
-**Uyarı:** Bu betikler bu ortamda bir PostgreSQL sunucusuna karşı çalıştırılmadı; ilk denemeyi bir hazırlık veritabanında
-yapın ve `SELECT * FROM defter_dengesiz` ile defterin dengeli geldiğini doğrulayın.
+**Doğrulama:** `test/postgres.test.js`, üretilen `sema.sql` ve `yukle.sql`'i gerçek bir **PostgreSQL 18.6 + PostGIS 3.6**
+motorunda (PGlite, WASM; geliştirme bağımlılığı) adım adım çalıştırır: bütün tablolar ve satır sayıları, defter dengesi
+(`defter_dengesiz` boş), değiştirilemez denetim kaydı (tetikleyici), benzersizlik ve yabancı anahtarlar, kimlik dizileri,
+parsel geometrilerinin geçerliliği ve alanı (`ST_Area(geography)` oyun alanıyla %3 içinde) ve `ST_DWithin` sorgusu denetlenir.
+Bu test sırasında bulunup düzeltilenler: para kolonları `NUMERIC(14,2)`, ikili kolonlar `BYTEA` (hex), yabancı anahtarlar
+`DEFERRABLE INITIALLY DEFERRED` (yükleme sırasından bağımsız). Gerçek bir sunucuda `psql -f yukle.sql` ile son bir prova yine
+önerilir (psql'in `\copy` komutu testte eşdeğer `COPY … FROM` ile taklit edilir).
 
 ## Kalan iş (uygulama katmanı)
 

@@ -573,7 +573,12 @@ kolonEkle('crops', 'yagmur_at', 'INTEGER');               // son yağmur sulamas
 kolonEkle('crops', 'mevsim', 'TEXT');
 kolonEkle('crops', 'afet_kati', 'REAL NOT NULL DEFAULT 1');   // sağanak/dolu verim çarpanı
 kolonEkle('users', 'meslek', 'TEXT');
-kolonEkle('users', 'kozmetik', "TEXT NOT NULL DEFAULT '{}'");   // seçili kozmetikler {cati, bayrak, unvan}
+kolonEkle('users', 'kozmetik', "TEXT NOT NULL DEFAULT '{}'");
+kolonEkle('users', 'npc_kisilik', 'TEXT');            // demo sakin kişiliği (yaşayan nüfus)
+kolonEkle('users', 'npc_mahalle', 'INTEGER');          // demo sakinin yerleştiği mahalle
+kolonEkle('users', 'npc_durum', 'TEXT');               // AKTIF / TASINIYOR / TASINDI
+kolonEkle('users', 'npc_sonraki', 'INTEGER');          // bir sonraki eylem zamanı
+kolonEkle('secimler', 'doldurma', 'INTEGER NOT NULL DEFAULT 0');   // demo sakinler kütükte mi   // seçili kozmetikler {cati, bayrak, unvan}
 kolonEkle('users', 'meslek_xp', 'INTEGER NOT NULL DEFAULT 0');
 kolonEkle('users', 'meslek_at', 'INTEGER');
 db.exec(`

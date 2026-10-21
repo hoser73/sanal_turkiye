@@ -177,8 +177,8 @@ const HESAP = {
 
 // KVKK ve sözleşme metinleri: sürüm değişince oyuncudan yeniden onay istenir
 const YASAL = {
-  KOSULLAR:  { surum: '2026-10-taslak', ad: 'Kullanım Koşulları', yol: '/yasal/kullanim-kosullari.html', zorunlu: true },
-  KVKK:      { surum: '2026-10-taslak', ad: 'KVKK Aydınlatma Metni', yol: '/yasal/kvkk.html', zorunlu: true },
+  KOSULLAR:  { surum: '2026-10-taslak-2', ad: 'Kullanım Koşulları', yol: '/yasal/kullanim-kosullari.html', zorunlu: true },
+  KVKK:      { surum: '2026-10-taslak-2', ad: 'KVKK Aydınlatma Metni', yol: '/yasal/kvkk.html', zorunlu: true },
   PAZARLAMA: { surum: '2026-10-taslak', ad: 'Ticari elektronik ileti izni', yol: '/yasal/kvkk.html#iletiler', zorunlu: false },
 };
 const ROLLER = { OYUNCU: 'Oyuncu', MODERATOR: 'Moderatör', DENETCI: 'Denetçi', ADMIN: 'Yönetici' };
@@ -389,4 +389,22 @@ const AFET = {
 // §6.6 referandum: ilçe sakinlerinin gizli oyla danışma oylaması (başkan ya da sakinlerin %25'inin imzasıyla açılır)
 const REFERANDUM = { sureMs: gun(3), imzaOrani: 0.25, minImza: 2, nisapOrani: 0.3, soruMin: 15, soruMax: 200, aciklamaMax: 600 };
 
-module.exports = { LOJISTIK, KIRA, ORTAKLIK, AFET, REFERANDUM, KOZMETIK, RECETELER, MESLEKLER, MESLEK, KOOPERATIF, LIG, MEVSIMLER, HAVA, BOLGE, BOZULMA, BAKIM, BORSA, GOREVDEN_ALMA, MODERASYON, YASAL, ROLLER, BIRIM, OYUN_HIZI, IMAR, IMAR_KAYNAK_NOTU, IL_CEKICILIK, YERLESIM_CEKICILIK, YAPILAR, URUNLER, TARIM, NPC_PAZAR, PAZAR, SECIM, SECIM_HIZI, BELEDIYE, ITIBAR, HESAP, GOREVLER };
+// §7.7 yaşayan nüfus: gerçek oyuncusu az olan mahallelerde boşluğu dolduran, açıkça "demo sakin" etiketli simüle vatandaşlar.
+// Aynı kurallarla oynarlar; mahallede gerçek oyuncu çoğaldıkça taşınırlar. Seçimlere yalnızca "doldurma kipi"nde katılırlar:
+// bölgedeki gerçek oyuncu sayısı seçim eşiğinin altındayken. Eşiğe ulaşılınca yalnızca gerçek oyuncular aday olur ve oy kullanır.
+const NUFUS = {
+  etkin: process.env.NUFUS !== 'kapali',
+  mahalleHedef: 4,             // gerçek oyuncusu olan mahallede hedef sakin sayısı (gerçek + demo)
+  cekilmeEsigi: 4,             // bu kadar gerçek oyuncu olunca demo sakinler taşınmaya başlar
+  maxToplam: 400,              // Türkiye geneli demo sakin üst sınırı
+  dongüMs: 30_000,             // nüfus döngüsü (yerleştirme, eylemler, taşınma)
+  eylemAraligiMs: dk(15),      // bir demo sakinin iki eylemi arası (oyun hızıyla ölçeklenir)
+  turBasinaEylem: 12,          // bir döngüde en çok kaç demo sakin eylem yapar
+  tasinmaMs: dk(3 * 24 * 60),  // taşınma kararından sonra satılamayan parseller devlete döner
+  sohbetYanitMs: [3000, 9000], // gerçek oyuncunun mesajına yanıt gecikmesi
+  sohbetYanitAraligiMs: 60_000,          // mahalle başına en sık yanıt
+  sohbetKendiliginden: dk(120),          // mahalle başına kendiliğinden sohbet aralığı
+  baslangicBakiye: 500,
+};
+
+module.exports = { NUFUS, LOJISTIK, KIRA, ORTAKLIK, AFET, REFERANDUM, KOZMETIK, RECETELER, MESLEKLER, MESLEK, KOOPERATIF, LIG, MEVSIMLER, HAVA, BOLGE, BOZULMA, BAKIM, BORSA, GOREVDEN_ALMA, MODERASYON, YASAL, ROLLER, BIRIM, OYUN_HIZI, IMAR, IMAR_KAYNAK_NOTU, IL_CEKICILIK, YERLESIM_CEKICILIK, YAPILAR, URUNLER, TARIM, NPC_PAZAR, PAZAR, SECIM, SECIM_HIZI, BELEDIYE, ITIBAR, HESAP, GOREVLER };

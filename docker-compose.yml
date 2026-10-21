@@ -1,0 +1,28 @@
+# Tek sunucu kurulumu: uygulama + Caddy (otomatik HTTPS, WebSocket vekili). Kullanım: docs/yayina-alma.md
+services:
+  uygulama:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - veri:/veri
+    expose:
+      - "3400"
+  caddy:
+    image: caddy:2.8
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      ALAN_ADI: ${ALAN_ADI:?ALAN_ADI tanımlı olmalı}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_veri:/data
+      - caddy_ayar:/config
+    depends_on:
+      - uygulama
+volumes:
+  veri:
+  caddy_veri:
+  caddy_ayar:

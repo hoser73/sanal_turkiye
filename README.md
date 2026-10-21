@@ -1,4 +1,4 @@
-# Sanal Türkiye — prototip (v0.6, ulusal)
+# Sanal Türkiye — prototip (v0.7, ulusal)
 
 Yaşayan dijital ülke simülasyonu. **81 ilin tamamı açık**: gerçek Türkiye haritası üzerinde herhangi bir köye, mahalleye yakınlaşıp parsel edinebilir, tarla ekip yapı kurabilir, oyuncular arası pazarda alım satım yapabilirsin. Harita 2B ve 3B görünümlüdür.
 
@@ -10,12 +10,13 @@ Yaşayan dijital ülke simülasyonu. **81 ilin tamamı açık**: gerçek Türkiy
 npm install
 npm start            # http://localhost:3400
 npm run dev          # geliştirme: dosya değişince yeniden başlar, seçim takvimi hızlı (aşağıya bakın)
-npm test             # kabul testleri (90; ağ ve gerçek yapay zekâ kullanmaz)
+npm test             # kabul testleri (104; ağ ve gerçek yapay zekâ kullanmaz; PostgreSQL testi gömülü PGlite ile)
 npm run rol -- e-posta ADMIN   # yetkili rolü ver (MODERATOR / DENETCI / ADMIN; panel için 2FA zorunlu)
 npm run yedek        # çevrimiçi yedek (data/yedekler, gzip, bütünlük denetimi, 14 yedek döndürme)
 npm run geri-yukle -- data/yedekler/<dosya>.db.gz [--onayla]   # sunucu durdurulmuşken
 npm run yuk-testi -- --taban http://localhost:3400 --es 20 --sure 20
 npm run postgres-aktar -- --sema | --disa-aktar <dizin>        # PostgreSQL + PostGIS geçişi (docs/postgres-gecisi.md)
+npm run posta-dene -- adres@ornek.com   # SMTP ile HTML deneme e-postası
 npm run veri         # il/ilçe sınır verisini yeniden hazırla (server/veri/kaynak → server/veri, public/veri)
 npm run reset-db     # oyun veritabanını sıfırla (karo önbelleği korunur)
 ```
@@ -24,6 +25,8 @@ npm run reset-db     # oyun veritabanını sıfırla (karo önbelleği korunur)
 
 **Yerel test hesabı** (yalnızca `NODE_ENV` production değilken): `demo@sanalturkiye.test` / `demo1234`
 
+Ortam değişkenleri (v0.7 eklemeleri): `NUFUS=kapali` (demo sakinleri kapatır), `SMTP_URL` artık gerçek gönderim + yeniden deneme kuyruğu; `NODE_ENV=production` iken eksik/güvensiz ayarla sunucu başlamaz (`server/yapilandirma.js`).
+
 Ortam değişkenleri (v0.6 eklemeleri): `TABAN_URL` (e-posta bağlantıları; üretimde zorunlu), `SMTP_URL` (yoksa iletiler geliştirme posta kutusuna düşer: `/gelistirici/posta.html`), `POSTA_GONDEREN`, `SIFRELEME_ANAHTARI` (64 hex; 2FA sırlarını şifreler, üretimde zorunlu), `OTOMATIK_DOGRULA=1` (yalnız geliştirme), `YONETICI_2FA_ZORUNLU` (varsayılan açık), `KIMLIK_HIZ_CARPANI`, `API_HIZ_SINIRI` (dakikada IP başı, 600), `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_KONU` (web push; yoksa geliştirmede üretilir), `HAVA_KAYNAGI` (open-meteo / sahte / kapali), `LIG_HIZI`, `ANTHROPIC_API_KEY` + `YAPAY_ZEKA` (kapali ile devre dışı) + `YZ_MODEL` (varsayılan claude-opus-5-5), `VEKTOR_TILEJSON` / `YUKSELTI_KARO` / `HARF_KARO` / `EK_KARO_KOKENLERI` (kendi karo sunucusu: docs/karo-sunucusu.md), `GUNLUK_DUZEYI`.
 
 Önceki ortam değişkenleri: `PORT` (3400), `OYUN_HIZI` (1 = tasarım süreleri), `SECIM_HIZI` (1 = gerçek seçim takvimi; 1440 = 1 gün 1 dakika), `SECIM_MIN_SECMEN` (muhtarlık seçimi için en az oyuncu sakin, varsayılan 3), `BELEDIYE_MIN_SECMEN` (belediye seçimi için ilçede en az oyuncu sakin, varsayılan 5), `VERI_DIZINI`, `KARO_KAYNAGI=sahte` (ağsız geliştirme/test: imar deseni deterministik, sınırlar gerçek), `NODE_ENV`.
@@ -31,6 +34,19 @@ Ortam değişkenleri (v0.6 eklemeleri): `TABAN_URL` (e-posta bağlantıları; ü
 `npm run dev` seçimleri tek başına denemek için `SECIM_HIZI=1440 SECIM_MIN_SECMEN=1 BELEDIYE_MIN_SECMEN=1` ile çalışır (1 oyun günü = 1 dakika): muhtarlık seçimi ≈ 8 dakika, belediye seçimi ≈ 12 dakika, meclis oylaması 1 dakika, proje yapımı 2–4 dakika, muhtarlık dönemi 30, belediye dönemi 90 dakika; günlük devlet katkısı dakikada bir işler. `npm start` gerçek süreleri kullanır.
 
 > Not: v0.1–0.2'nin Meram ızgarası ulusal ızgarayla uyumsuz olduğundan eski `data/sanalturkiye.db` dosyası kullanılmaz (silinmedi).
+
+## v0.7 — yaşayan nüfus ve yayına hazırlık
+
+| Alan | Ne var | Nerede |
+|---|---|---|
+| Yaşayan nüfus | Gerçek oyuncu olan mahallelerde 4'e kadar **demo sakin** (çiftçi, bahçıvan, emekli öğretmen, tüccar, girişimci, nine). Aynı kurallarla oynarlar: parsel edinir, eker, sular, hasat eder, yapı kurar, pazarda ve borsada satar, komşuyu ziyaret eder. Her yerde **DEMO** rozetiyle işaretlidir; kendini insan gibi tanıtmaz. Mahalle sohbetinde komşuya yanıt verir (Claude, saatte en çok 30 çağrı; anahtar yoksa şablon). Gerçek sakin sayısı 4'e ulaşınca ilanla parsellerini satıp **taşınırlar**; satılmayan parsel devlete döner, görevleri boşalır | `server/nufus.js`, `server/config/rules.js` → `NUFUS` |
+| Doldurma kipi | Gerçek sakin `SECIM_MIN_SECMEN` altındayken demo sakinler seçmen ve aday sayılır; böyle bir seçim `doldurma` olarak işaretlenir ve arayüzde açıkça yazılır. Her demo kendi cihaz izini kullanır (ortak cihaz şüphesi doğmaz). Demo muhtar duyuru yapar, demo başkan proje önerir, demo meclis üyesi oy verir | `server/secim.js`, `server/belediye.js` |
+| E-posta | nodemailer ile gerçek SMTP, düz metin + HTML şablon (kaçışlı), başarısız iletiler için kuyruk (1 dk / 5 dk / 30 dk / 2 sa, sonra HATA), `npm run posta-dene`, yönetim panelinde kuyruk durumu | `server/posta.js` |
+| Yayına alma | Üretim yapılandırma denetimi (https `TABAN_URL`, `SIFRELEME_ANAHTARI`, `SMTP_URL`, geliştirme kısayolları kapalı), SIGTERM ile düzgün kapanma, Dockerfile (root olmayan kullanıcı, sağlık denetimi), docker-compose + Caddy (otomatik HTTPS, WebSocket), systemd birimi, yedek cron | `Dockerfile`, `docker-compose.yml`, `deploy/*`, `docs/yayina-alma.md` |
+| PostgreSQL | Dışa aktarım gerçek PostgreSQL 18 + PostGIS 3.6 üzerinde (PGlite) test edilir: şema, yükleme, defter dengesi, değiştirilemez denetim kaydı, uzamsal sorgu. Para sütunları `NUMERIC(14,2)`, ikili veri `BYTEA`, yabancı anahtarlar ertelenebilir. Uygulamanın kendisi hâlâ SQLite'ta çalışır | `scripts/postgres-aktar.js`, `test/postgres.test.js` |
+| Hukuk | Koşullar ve KVKK taslak-2 (demo sakinler §4a, yurt dışı aktarım tablosu); sürüm değiştiği için oyunculardan yeniden onay istenir. Hukukçu için kontrol listesi | `public/yasal/*`, `docs/hukuk-kontrol-listesi.md` |
+
+> `npm run dev` `SECIM_MIN_SECMEN=1` kullandığından tek gerçek oyuncu eşiği zaten karşılar; doldurma kipini görmek için `SECIM_MIN_SECMEN=3` ile başlatın.
 
 ## v0.6 — hepsi bir arada
 
@@ -167,8 +183,8 @@ public/js/
 
 ## Sonraki adımlar
 
-1. **Hukuk**: yasal metinlerin (koşullar, KVKK, çerez) hukukçu incelemesi; VERBİS ve yurt dışı aktarım (Anthropic, Open-Meteo, push servisleri) dayanakları; OSM türetilmiş veri lisansı.
-2. **PostgreSQL'e geçiş**: uygulama katmanının `pg`'ye taşınması, çok sunuculu WebSocket köprüsü (LISTEN/NOTIFY), tembel bakım işleri için danışma kilidi (docs/postgres-gecisi.md).
+1. **Hukuk**: yasal metinlerin hukukçu incelemesi (docs/hukuk-kontrol-listesi.md): veri sorumlusu bilgileri, VERBİS, yurt dışı aktarım dayanakları, demo sakinlerin bilgilendirmesi, OSM türetilmiş veri lisansı.
+2. **PostgreSQL'e geçiş (çalışma zamanı)**: şema ve veri aktarımı doğrulandı; kalan iş uygulama katmanının eşzamanlı better-sqlite3'ten `pg`'ye taşınması, çok sunuculu WebSocket köprüsü (LISTEN/NOTIFY), tembel bakım işleri için danışma kilidi (docs/postgres-gecisi.md).
 3. **İmar değişikliği önerileri** (§3.4) ve bağlayıcı referandum türleri; **parsel birleştirme**.
 4. Kendi karo sunucumuz (PMTiles, docs/karo-sunucusu.md) ve Open-Meteo ticari aboneliği.
 5. Dolu dünyada yük testi; yavaş sorgular için indeks gözden geçirmesi.

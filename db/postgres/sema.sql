@@ -101,6 +101,11 @@ CREATE TABLE IF NOT EXISTS "giden_postalar" (
   "konu" TEXT NOT NULL,
   "govde" TEXT NOT NULL,
   "created_at" TEXT NOT NULL,
+  "html" TEXT,
+  "durum" TEXT NOT NULL DEFAULT 'GELISTIRME',
+  "deneme" BIGINT NOT NULL DEFAULT 0,
+  "sonraki" BIGINT,
+  "hata" TEXT,
   PRIMARY KEY ("id")
 );
 CREATE TABLE IF NOT EXISTS "gorev_vaatleri" (
@@ -304,7 +309,7 @@ CREATE TABLE IF NOT EXISTS "parcel_ownership" (
   "start_at" TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
   "end_at" TEXT,
   "reason" TEXT NOT NULL,
-  "price" DOUBLE PRECISION,
+  "price" NUMERIC(14,2),
   PRIMARY KEY ("id")
 );
 CREATE TABLE IF NOT EXISTS "parcels" (
@@ -462,6 +467,7 @@ CREATE TABLE IF NOT EXISTS "secimler" (
   "kazanan_aday_id" BIGINT,
   "iptal_sebebi" TEXT,
   "created_at" BIGINT NOT NULL,
+  "doldurma" BIGINT NOT NULL DEFAULT 0,
   PRIMARY KEY ("id")
 );
 CREATE TABLE IF NOT EXISTS "secmen_kutugu" (
@@ -490,11 +496,11 @@ CREATE TABLE IF NOT EXISTS "sevkiyatlar" (
   "hedef_plaka" TEXT NOT NULL,
   "mod" TEXT NOT NULL,
   "km" DOUBLE PRECISION NOT NULL,
-  "maliyet" DOUBLE PRECISION NOT NULL,
+  "maliyet" NUMERIC(14,2) NOT NULL,
   "cikis" BIGINT NOT NULL,
   "varis" BIGINT NOT NULL,
   "durum" TEXT NOT NULL DEFAULT 'YOLDA',
-  "gelir" DOUBLE PRECISION,
+  "gelir" NUMERIC(14,2),
   "notlar" TEXT,
   PRIMARY KEY ("id")
 );
@@ -566,8 +572,8 @@ CREATE TABLE IF NOT EXISTS "trades" (
   "parcel_id" TEXT NOT NULL,
   "seller_id" BIGINT NOT NULL,
   "buyer_id" BIGINT NOT NULL,
-  "price" BIGINT NOT NULL,
-  "fee" BIGINT NOT NULL,
+  "price" NUMERIC(14,2) NOT NULL,
+  "fee" NUMERIC(14,2) NOT NULL,
   "via" TEXT NOT NULL,
   "asset_snapshot" TEXT NOT NULL,
   "flags" TEXT NOT NULL DEFAULT '[]',
@@ -593,7 +599,7 @@ CREATE TABLE IF NOT EXISTS "urun_emirleri" (
   "user_id" BIGINT NOT NULL,
   "urun" TEXT NOT NULL,
   "yon" TEXT NOT NULL,
-  "fiyat" DOUBLE PRECISION NOT NULL,
+  "fiyat" NUMERIC(14,2) NOT NULL,
   "miktar" BIGINT NOT NULL,
   "kalan" BIGINT NOT NULL,
   "durum" TEXT NOT NULL DEFAULT 'ACIK',
@@ -609,9 +615,9 @@ CREATE TABLE IF NOT EXISTS "urun_islemleri" (
   "satis_emri" BIGINT NOT NULL,
   "alici_id" BIGINT NOT NULL,
   "satici_id" BIGINT NOT NULL,
-  "fiyat" DOUBLE PRECISION NOT NULL,
+  "fiyat" NUMERIC(14,2) NOT NULL,
   "miktar" BIGINT NOT NULL,
-  "ucret" DOUBLE PRECISION NOT NULL,
+  "ucret" NUMERIC(14,2) NOT NULL,
   "created_at" BIGINT NOT NULL,
   PRIMARY KEY ("id")
 );
@@ -640,6 +646,10 @@ CREATE TABLE IF NOT EXISTS "users" (
   "meslek_xp" BIGINT NOT NULL DEFAULT 0,
   "meslek_at" BIGINT,
   "kozmetik" TEXT NOT NULL DEFAULT '{}',
+  "npc_kisilik" TEXT,
+  "npc_mahalle" BIGINT,
+  "npc_durum" TEXT,
+  "npc_sonraki" BIGINT,
   PRIMARY KEY ("id"),
   UNIQUE ("email")
 );
@@ -666,8 +676,8 @@ CREATE TABLE IF NOT EXISTS "wallet_ledger" (
   "account" TEXT NOT NULL,
   "user_id" BIGINT,
   "unit" TEXT NOT NULL DEFAULT 'AKCE',
-  "debit" DOUBLE PRECISION NOT NULL DEFAULT 0,
-  "credit" DOUBLE PRECISION NOT NULL DEFAULT 0,
+  "debit" NUMERIC(14,2) NOT NULL DEFAULT 0,
+  "credit" NUMERIC(14,2) NOT NULL DEFAULT 0,
   "tx_group" TEXT NOT NULL,
   "reason" TEXT NOT NULL,
   "created_at" TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
@@ -709,107 +719,107 @@ CREATE TABLE IF NOT EXISTS "yz_onbellek" (
   "created_at" BIGINT NOT NULL,
   PRIMARY KEY ("anahtar")
 );
-ALTER TABLE "adaylar" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") NOT VALID;
-ALTER TABLE "adaylar" ADD FOREIGN KEY ("secim_id") REFERENCES "secimler"("id") NOT VALID;
-ALTER TABLE "belediye_uyeleri" ADD FOREIGN KEY ("aday_id") REFERENCES "adaylar"("id") NOT VALID;
-ALTER TABLE "belediye_uyeleri" ADD FOREIGN KEY ("secim_id") REFERENCES "secimler"("id") NOT VALID;
-ALTER TABLE "belediye_uyeleri" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") NOT VALID;
-ALTER TABLE "belediye_uyeleri" ADD FOREIGN KEY ("region_id") REFERENCES "regions"("id") NOT VALID;
-ALTER TABLE "bids" ADD FOREIGN KEY ("buyer_id") REFERENCES "users"("id") NOT VALID;
-ALTER TABLE "bids" ADD FOREIGN KEY ("listing_id") REFERENCES "listings"("id") NOT VALID;
-ALTER TABLE "crops" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") NOT VALID;
-ALTER TABLE "crops" ADD FOREIGN KEY ("parcel_id") REFERENCES "parcels"("id") NOT VALID;
-ALTER TABLE "eposta_tokenlari" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") NOT VALID;
-ALTER TABLE "gorev_vaatleri" ADD FOREIGN KEY ("uye_id") REFERENCES "belediye_uyeleri"("id") NOT VALID;
-ALTER TABLE "gorevden_alma" ADD FOREIGN KEY ("baslatan_id") REFERENCES "users"("id") NOT VALID;
-ALTER TABLE "gorevden_alma" ADD FOREIGN KEY ("hedef_id") REFERENCES "users"("id") NOT VALID;
-ALTER TABLE "gorevden_alma" ADD FOREIGN KEY ("region_id") REFERENCES "regions"("id") NOT VALID;
-ALTER TABLE "gorevden_alma_imzalar" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") NOT VALID;
-ALTER TABLE "gorevden_alma_imzalar" ADD FOREIGN KEY ("dilekce_id") REFERENCES "gorevden_alma"("id") NOT VALID;
-ALTER TABLE "inventory_ledger" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") NOT VALID;
-ALTER TABLE "itirazlar" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") NOT VALID;
-ALTER TABLE "itirazlar" ADD FOREIGN KEY ("secim_id") REFERENCES "secimler"("id") NOT VALID;
-ALTER TABLE "kiralar" ADD FOREIGN KEY ("kiraci_id") REFERENCES "users"("id") NOT VALID;
-ALTER TABLE "kiralar" ADD FOREIGN KEY ("sahip_id") REFERENCES "users"("id") NOT VALID;
-ALTER TABLE "kiralar" ADD FOREIGN KEY ("parcel_id") REFERENCES "parcels"("id") NOT VALID;
-ALTER TABLE "koleksiyon" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") NOT VALID;
-ALTER TABLE "kooperatif_uyeleri" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") NOT VALID;
-ALTER TABLE "kooperatif_uyeleri" ADD FOREIGN KEY ("koop_id") REFERENCES "kooperatifler"("id") NOT VALID;
-ALTER TABLE "kooperatifler" ADD FOREIGN KEY ("baskan_id") REFERENCES "users"("id") NOT VALID;
-ALTER TABLE "kooperatifler" ADD FOREIGN KEY ("il_id") REFERENCES "regions"("id") NOT VALID;
-ALTER TABLE "kozmetikler" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") NOT VALID;
-ALTER TABLE "listings" ADD FOREIGN KEY ("seller_id") REFERENCES "users"("id") NOT VALID;
-ALTER TABLE "listings" ADD FOREIGN KEY ("parcel_id") REFERENCES "parcels"("id") NOT VALID;
-ALTER TABLE "mahalle_duyurulari" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") NOT VALID;
-ALTER TABLE "mahalle_duyurulari" ADD FOREIGN KEY ("region_id") REFERENCES "regions"("id") NOT VALID;
-ALTER TABLE "moderasyon_islemleri" ADD FOREIGN KEY ("onaylayan_id") REFERENCES "users"("id") NOT VALID;
-ALTER TABLE "moderasyon_islemleri" ADD FOREIGN KEY ("oneren_id") REFERENCES "users"("id") NOT VALID;
-ALTER TABLE "moderasyon_islemleri" ADD FOREIGN KEY ("sikayet_id") REFERENCES "sikayetler"("id") NOT VALID;
-ALTER TABLE "muhtarlar" ADD FOREIGN KEY ("aday_id") REFERENCES "adaylar"("id") NOT VALID;
-ALTER TABLE "muhtarlar" ADD FOREIGN KEY ("secim_id") REFERENCES "secimler"("id") NOT VALID;
-ALTER TABLE "muhtarlar" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") NOT VALID;
-ALTER TABLE "muhtarlar" ADD FOREIGN KEY ("region_id") REFERENCES "regions"("id") NOT VALID;
-ALTER TABLE "notifications" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") NOT VALID;
-ALTER TABLE "ortaklar" ADD FOREIGN KEY ("ortak_id") REFERENCES "users"("id") NOT VALID;
-ALTER TABLE "ortaklar" ADD FOREIGN KEY ("sahip_id") REFERENCES "users"("id") NOT VALID;
-ALTER TABLE "ortaklar" ADD FOREIGN KEY ("parcel_id") REFERENCES "parcels"("id") NOT VALID;
-ALTER TABLE "parcel_ownership" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") NOT VALID;
-ALTER TABLE "parcel_ownership" ADD FOREIGN KEY ("parcel_id") REFERENCES "parcels"("id") NOT VALID;
-ALTER TABLE "parcels" ADD FOREIGN KEY ("owner_user_id") REFERENCES "users"("id") NOT VALID;
-ALTER TABLE "parcels" ADD FOREIGN KEY ("il_id") REFERENCES "regions"("id") NOT VALID;
-ALTER TABLE "parcels" ADD FOREIGN KEY ("ilce_id") REFERENCES "regions"("id") NOT VALID;
-ALTER TABLE "parcels" ADD FOREIGN KEY ("region_id") REFERENCES "regions"("id") NOT VALID;
-ALTER TABLE "proje_oylari" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") NOT VALID;
-ALTER TABLE "proje_oylari" ADD FOREIGN KEY ("proje_id") REFERENCES "projeler"("id") NOT VALID;
-ALTER TABLE "projeler" ADD FOREIGN KEY ("teklif_eden_id") REFERENCES "users"("id") NOT VALID;
-ALTER TABLE "projeler" ADD FOREIGN KEY ("hedef_region_id") REFERENCES "regions"("id") NOT VALID;
-ALTER TABLE "projeler" ADD FOREIGN KEY ("region_id") REFERENCES "regions"("id") NOT VALID;
-ALTER TABLE "push_abonelikleri" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") NOT VALID;
-ALTER TABLE "quest_progress" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") NOT VALID;
-ALTER TABLE "referandum_imzalar" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") NOT VALID;
-ALTER TABLE "referandum_imzalar" ADD FOREIGN KEY ("ref_id") REFERENCES "referandumlar"("id") NOT VALID;
-ALTER TABLE "referandum_katilim" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") NOT VALID;
-ALTER TABLE "referandum_katilim" ADD FOREIGN KEY ("ref_id") REFERENCES "referandumlar"("id") NOT VALID;
-ALTER TABLE "referandum_oylari" ADD FOREIGN KEY ("ref_id") REFERENCES "referandumlar"("id") NOT VALID;
-ALTER TABLE "referandumlar" ADD FOREIGN KEY ("baslatan_id") REFERENCES "users"("id") NOT VALID;
-ALTER TABLE "referandumlar" ADD FOREIGN KEY ("region_id") REFERENCES "regions"("id") NOT VALID;
-ALTER TABLE "regions" ADD FOREIGN KEY ("parent_id") REFERENCES "regions"("id") NOT VALID;
-ALTER TABLE "rozetler" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") NOT VALID;
-ALTER TABLE "secim_katilim" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") NOT VALID;
-ALTER TABLE "secim_katilim" ADD FOREIGN KEY ("secim_id") REFERENCES "secimler"("id") NOT VALID;
-ALTER TABLE "secim_oylari" ADD FOREIGN KEY ("aday_id") REFERENCES "adaylar"("id") NOT VALID;
-ALTER TABLE "secim_oylari" ADD FOREIGN KEY ("secim_id") REFERENCES "secimler"("id") NOT VALID;
-ALTER TABLE "secimler" ADD FOREIGN KEY ("region_id") REFERENCES "regions"("id") NOT VALID;
-ALTER TABLE "secmen_kutugu" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") NOT VALID;
-ALTER TABLE "secmen_kutugu" ADD FOREIGN KEY ("secim_id") REFERENCES "secimler"("id") NOT VALID;
-ALTER TABLE "sessions" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE NOT VALID;
-ALTER TABLE "sevkiyatlar" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") NOT VALID;
-ALTER TABLE "sezon_sonuclari" ADD FOREIGN KEY ("il_id") REFERENCES "regions"("id") NOT VALID;
-ALTER TABLE "sikayetler" ADD FOREIGN KEY ("karar_veren") REFERENCES "users"("id") NOT VALID;
-ALTER TABLE "sikayetler" ADD FOREIGN KEY ("sikayetci_id") REFERENCES "users"("id") NOT VALID;
-ALTER TABLE "sohbet_mesajlari" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") NOT VALID;
-ALTER TABLE "structures" ADD FOREIGN KEY ("owner_user_id") REFERENCES "users"("id") NOT VALID;
-ALTER TABLE "structures" ADD FOREIGN KEY ("parcel_id") REFERENCES "parcels"("id") NOT VALID;
-ALTER TABLE "talepler" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") NOT VALID;
-ALTER TABLE "talepler" ADD FOREIGN KEY ("ilce_id") REFERENCES "regions"("id") NOT VALID;
-ALTER TABLE "talepler" ADD FOREIGN KEY ("mahalle_id") REFERENCES "regions"("id") NOT VALID;
-ALTER TABLE "trades" ADD FOREIGN KEY ("buyer_id") REFERENCES "users"("id") NOT VALID;
-ALTER TABLE "trades" ADD FOREIGN KEY ("seller_id") REFERENCES "users"("id") NOT VALID;
-ALTER TABLE "trades" ADD FOREIGN KEY ("parcel_id") REFERENCES "parcels"("id") NOT VALID;
-ALTER TABLE "trades" ADD FOREIGN KEY ("listing_id") REFERENCES "listings"("id") NOT VALID;
-ALTER TABLE "uretimler" ADD FOREIGN KEY ("structure_id") REFERENCES "structures"("id") NOT VALID;
-ALTER TABLE "uretimler" ADD FOREIGN KEY ("parcel_id") REFERENCES "parcels"("id") NOT VALID;
-ALTER TABLE "uretimler" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") NOT VALID;
-ALTER TABLE "urun_emirleri" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") NOT VALID;
-ALTER TABLE "urun_islemleri" ADD FOREIGN KEY ("satici_id") REFERENCES "users"("id") NOT VALID;
-ALTER TABLE "urun_islemleri" ADD FOREIGN KEY ("alici_id") REFERENCES "users"("id") NOT VALID;
-ALTER TABLE "urun_islemleri" ADD FOREIGN KEY ("satis_emri") REFERENCES "urun_emirleri"("id") NOT VALID;
-ALTER TABLE "urun_islemleri" ADD FOREIGN KEY ("alis_emri") REFERENCES "urun_emirleri"("id") NOT VALID;
-ALTER TABLE "vaat_takip" ADD FOREIGN KEY ("muhtar_id") REFERENCES "muhtarlar"("id") NOT VALID;
-ALTER TABLE "visits" ADD FOREIGN KEY ("parcel_id") REFERENCES "parcels"("id") NOT VALID;
-ALTER TABLE "visits" ADD FOREIGN KEY ("visitor_id") REFERENCES "users"("id") NOT VALID;
-ALTER TABLE "wallet_ledger" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") NOT VALID;
-ALTER TABLE "yasal_onaylar" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") NOT VALID;
+ALTER TABLE "adaylar" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "adaylar" ADD FOREIGN KEY ("secim_id") REFERENCES "secimler"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "belediye_uyeleri" ADD FOREIGN KEY ("aday_id") REFERENCES "adaylar"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "belediye_uyeleri" ADD FOREIGN KEY ("secim_id") REFERENCES "secimler"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "belediye_uyeleri" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "belediye_uyeleri" ADD FOREIGN KEY ("region_id") REFERENCES "regions"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "bids" ADD FOREIGN KEY ("buyer_id") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "bids" ADD FOREIGN KEY ("listing_id") REFERENCES "listings"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "crops" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "crops" ADD FOREIGN KEY ("parcel_id") REFERENCES "parcels"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "eposta_tokenlari" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "gorev_vaatleri" ADD FOREIGN KEY ("uye_id") REFERENCES "belediye_uyeleri"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "gorevden_alma" ADD FOREIGN KEY ("baslatan_id") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "gorevden_alma" ADD FOREIGN KEY ("hedef_id") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "gorevden_alma" ADD FOREIGN KEY ("region_id") REFERENCES "regions"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "gorevden_alma_imzalar" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "gorevden_alma_imzalar" ADD FOREIGN KEY ("dilekce_id") REFERENCES "gorevden_alma"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "inventory_ledger" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "itirazlar" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "itirazlar" ADD FOREIGN KEY ("secim_id") REFERENCES "secimler"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "kiralar" ADD FOREIGN KEY ("kiraci_id") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "kiralar" ADD FOREIGN KEY ("sahip_id") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "kiralar" ADD FOREIGN KEY ("parcel_id") REFERENCES "parcels"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "koleksiyon" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "kooperatif_uyeleri" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "kooperatif_uyeleri" ADD FOREIGN KEY ("koop_id") REFERENCES "kooperatifler"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "kooperatifler" ADD FOREIGN KEY ("baskan_id") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "kooperatifler" ADD FOREIGN KEY ("il_id") REFERENCES "regions"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "kozmetikler" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "listings" ADD FOREIGN KEY ("seller_id") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "listings" ADD FOREIGN KEY ("parcel_id") REFERENCES "parcels"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "mahalle_duyurulari" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "mahalle_duyurulari" ADD FOREIGN KEY ("region_id") REFERENCES "regions"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "moderasyon_islemleri" ADD FOREIGN KEY ("onaylayan_id") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "moderasyon_islemleri" ADD FOREIGN KEY ("oneren_id") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "moderasyon_islemleri" ADD FOREIGN KEY ("sikayet_id") REFERENCES "sikayetler"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "muhtarlar" ADD FOREIGN KEY ("aday_id") REFERENCES "adaylar"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "muhtarlar" ADD FOREIGN KEY ("secim_id") REFERENCES "secimler"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "muhtarlar" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "muhtarlar" ADD FOREIGN KEY ("region_id") REFERENCES "regions"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "notifications" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "ortaklar" ADD FOREIGN KEY ("ortak_id") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "ortaklar" ADD FOREIGN KEY ("sahip_id") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "ortaklar" ADD FOREIGN KEY ("parcel_id") REFERENCES "parcels"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "parcel_ownership" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "parcel_ownership" ADD FOREIGN KEY ("parcel_id") REFERENCES "parcels"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "parcels" ADD FOREIGN KEY ("owner_user_id") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "parcels" ADD FOREIGN KEY ("il_id") REFERENCES "regions"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "parcels" ADD FOREIGN KEY ("ilce_id") REFERENCES "regions"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "parcels" ADD FOREIGN KEY ("region_id") REFERENCES "regions"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "proje_oylari" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "proje_oylari" ADD FOREIGN KEY ("proje_id") REFERENCES "projeler"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "projeler" ADD FOREIGN KEY ("teklif_eden_id") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "projeler" ADD FOREIGN KEY ("hedef_region_id") REFERENCES "regions"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "projeler" ADD FOREIGN KEY ("region_id") REFERENCES "regions"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "push_abonelikleri" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "quest_progress" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "referandum_imzalar" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "referandum_imzalar" ADD FOREIGN KEY ("ref_id") REFERENCES "referandumlar"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "referandum_katilim" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "referandum_katilim" ADD FOREIGN KEY ("ref_id") REFERENCES "referandumlar"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "referandum_oylari" ADD FOREIGN KEY ("ref_id") REFERENCES "referandumlar"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "referandumlar" ADD FOREIGN KEY ("baslatan_id") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "referandumlar" ADD FOREIGN KEY ("region_id") REFERENCES "regions"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "regions" ADD FOREIGN KEY ("parent_id") REFERENCES "regions"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "rozetler" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "secim_katilim" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "secim_katilim" ADD FOREIGN KEY ("secim_id") REFERENCES "secimler"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "secim_oylari" ADD FOREIGN KEY ("aday_id") REFERENCES "adaylar"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "secim_oylari" ADD FOREIGN KEY ("secim_id") REFERENCES "secimler"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "secimler" ADD FOREIGN KEY ("region_id") REFERENCES "regions"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "secmen_kutugu" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "secmen_kutugu" ADD FOREIGN KEY ("secim_id") REFERENCES "secimler"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "sessions" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "sevkiyatlar" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "sezon_sonuclari" ADD FOREIGN KEY ("il_id") REFERENCES "regions"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "sikayetler" ADD FOREIGN KEY ("karar_veren") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "sikayetler" ADD FOREIGN KEY ("sikayetci_id") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "sohbet_mesajlari" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "structures" ADD FOREIGN KEY ("owner_user_id") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "structures" ADD FOREIGN KEY ("parcel_id") REFERENCES "parcels"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "talepler" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "talepler" ADD FOREIGN KEY ("ilce_id") REFERENCES "regions"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "talepler" ADD FOREIGN KEY ("mahalle_id") REFERENCES "regions"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "trades" ADD FOREIGN KEY ("buyer_id") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "trades" ADD FOREIGN KEY ("seller_id") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "trades" ADD FOREIGN KEY ("parcel_id") REFERENCES "parcels"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "trades" ADD FOREIGN KEY ("listing_id") REFERENCES "listings"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "uretimler" ADD FOREIGN KEY ("structure_id") REFERENCES "structures"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "uretimler" ADD FOREIGN KEY ("parcel_id") REFERENCES "parcels"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "uretimler" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "urun_emirleri" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "urun_islemleri" ADD FOREIGN KEY ("satici_id") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "urun_islemleri" ADD FOREIGN KEY ("alici_id") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "urun_islemleri" ADD FOREIGN KEY ("satis_emri") REFERENCES "urun_emirleri"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "urun_islemleri" ADD FOREIGN KEY ("alis_emri") REFERENCES "urun_emirleri"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "vaat_takip" ADD FOREIGN KEY ("muhtar_id") REFERENCES "muhtarlar"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "visits" ADD FOREIGN KEY ("parcel_id") REFERENCES "parcels"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "visits" ADD FOREIGN KEY ("visitor_id") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "wallet_ledger" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE "yasal_onaylar" ADD FOREIGN KEY ("user_id") REFERENCES "users"("id") DEFERRABLE INITIALLY DEFERRED;
 CREATE INDEX ix_regions_parent ON regions(parent_id);
 CREATE INDEX ix_regions_type ON regions(type);
 CREATE INDEX ix_parcels_owner  ON parcels(owner_user_id);
@@ -869,5 +879,5 @@ CREATE OR REPLACE FUNCTION audit_degismez() RETURNS trigger LANGUAGE plpgsql AS 
 DROP TRIGGER IF EXISTS audit_no_update ON audit_events;
 CREATE TRIGGER audit_no_update BEFORE UPDATE OR DELETE ON audit_events FOR EACH ROW EXECUTE FUNCTION audit_degismez();
 -- Defter bütünlüğü: her işlem grubu dengeli olmalı (raporlama görünümü)
-CREATE OR REPLACE VIEW defter_dengesiz AS SELECT tx_group, round(sum(debit) - sum(credit), 2) AS fark FROM wallet_ledger GROUP BY tx_group HAVING round(sum(debit) - sum(credit), 2) <> 0;
+CREATE OR REPLACE VIEW defter_dengesiz AS SELECT tx_group, round((sum(debit) - sum(credit))::numeric, 2) AS fark FROM wallet_ledger GROUP BY tx_group HAVING round((sum(debit) - sum(credit))::numeric, 2) <> 0;
 COMMIT;

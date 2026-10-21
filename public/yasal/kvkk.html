@@ -3,7 +3,7 @@
 <title>KVKK Aydınlatma Metni · Sanal Türkiye</title><link rel="stylesheet" href="/css/sayfa.css"><link rel="icon" href="/icon.svg"></head>
 <body><header class="sayfa-ust"><a class="logo" href="/"><img src="/icon.svg" alt="" width="24" height="24"> Sanal Türkiye</a></header>
 <main class="metin">
-<p class="taslak"><b>TASLAK (sürüm 2026-10-taslak).</b> 6698 sayılı KVKK m.10 kapsamında hazırlanmış çalışma taslağıdır. Veri sorumlusunun unvanı, adresi, VERBİS kaydı, KEP adresi ve yurt dışı aktarım dayanakları yayından önce hukukçu tarafından tamamlanmalıdır.</p>
+<p class="taslak"><b>TASLAK (sürüm 2026-10-taslak-2).</b> 6698 sayılı KVKK m.10 kapsamında hazırlanmış çalışma taslağıdır. Veri sorumlusunun unvanı, adresi, VERBİS kaydı, KEP adresi ve yurt dışı aktarım dayanakları yayından önce hukukçu tarafından tamamlanmalıdır.</p>
 <h1>Kişisel Verilerin Korunması Aydınlatma Metni</h1>
 <h2>Veri sorumlusu</h2>
 <p>[Şirket unvanı, adresi ve iletişim bilgileri eklenecek.]</p>
@@ -20,7 +20,15 @@
 <h2>Gizli oy</h2>
 <p>Oyun içi seçimlerde kullandığın oyun içeriği hiçbir kayıtta kimliğinle ilişkilendirilmez: oyu kullananlar listesi ile oy pusulaları ayrı tutulur. Bu nedenle oy içeriği veri dışa aktarımında da yer almaz.</p>
 <h2>Aktarım</h2>
-<p>Veriler; barındırma, e-posta gönderimi ve (etkinleştirilmişse) yapay zekâ destekli içerik özetleme hizmet sağlayıcılarıyla, yalnızca hizmetin gerektirdiği ölçüde paylaşılır. [Sağlayıcılar ve yurt dışı aktarım dayanağı eklenecek.] Harita karoları üçüncü taraf sunuculardan yüklenir; bu sunucular IP adresini görebilir.</p>
+<p>Veriler yalnızca hizmetin gerektirdiği ölçüde aşağıdaki hizmet sağlayıcılarıyla paylaşılır. [Her sağlayıcının unvanı, ülkesi ve KVKK m.9 kapsamındaki yurt dışı aktarım dayanağı (yeterlilik kararı / standart sözleşme / açık rıza) eklenecek.]</p>
+<table><thead><tr><th>Sağlayıcı türü</th><th>Paylaşılan veri</th><th>Not</th></tr></thead><tbody>
+<tr><td>Barındırma (sunucu)</td><td>Tüm oyun ve hesap verisi</td><td>[Sağlayıcı ve veri merkezi ülkesi]</td></tr>
+<tr><td>E-posta gönderimi (SMTP)</td><td>E-posta adresi, oyuncu adı, doğrulama/sıfırlama bağlantısı</td><td>[Sağlayıcı]</td></tr>
+<tr><td>Yapay zekâ (Anthropic, isteğe bağlı)</td><td>Mahalle olay özetleri, parsel durumu, şikâyet edilen ya da işaretlenen mesaj metni, demo sakinlere yazılan sohbet mesajı</td><td>Etkinse; ABD. E-posta ve kimlik bilgisi gönderilmez.</td></tr>
+<tr><td>Web push (tarayıcı üreticisinin push servisi)</td><td>Şifreli bildirim metni ve cihaz abonelik adresi</td><td>Yalnızca bildirimleri açan oyuncular</td></tr>
+<tr><td>Hava verisi (Open-Meteo)</td><td>Yalnızca il merkezlerinin koordinatları</td><td>Kişisel veri gönderilmez</td></tr>
+<tr><td>Harita karoları (OpenFreeMap / kendi karo sunucumuz)</td><td>Tarayıcının IP adresi (karo istekleri)</td><td>Doğrudan tarayıcıdan</td></tr>
+</tbody></table>
 <h2>Saklama süresi</h2>
 <p>Hesap verileri hesap silinene kadar saklanır. Hesap silindiğinde e-posta, parola özeti, doğum yılı, 2FA bilgileri, oturumlar ve bildirimler silinir; ekonomi defteri ve denetim kaydı, işlem bütünlüğü ve yasal yükümlülükler için anonim kimlikle saklanır. Süresi dolan oturum ve e-posta bağlantıları düzenli olarak temizlenir.</p>
 <h2>Hakların (KVKK m.11)</h2>

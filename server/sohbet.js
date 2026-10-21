@@ -36,11 +36,11 @@ function yazmaEngeli(userId, k) {
   return null;
 }
 
-const mesajSatiri = (m, userId) => ({ id: m.id, metin: m.metin, ad: m.ad, ben: m.user_id === userId, zaman: m.created_at });
+const mesajSatiri = (m, userId) => ({ id: m.id, metin: m.metin, ad: m.ad, ben: m.user_id === userId, zaman: m.created_at, demo: !!m.npc });
 
 function mesajlar(kanal, userId, onceId) {
   const k = kanalCoz(kanal);
-  const satirlar = db.prepare(`SELECT m.*, u.display_name AS ad FROM sohbet_mesajlari m JOIN users u ON u.id = m.user_id
+  const satirlar = db.prepare(`SELECT m.*, u.display_name AS ad, u.is_npc AS npc FROM sohbet_mesajlari m JOIN users u ON u.id = m.user_id
                                WHERE m.kanal = ? AND m.gizlendi = 0 ${onceId ? 'AND m.id < ?' : ''} ORDER BY m.id DESC LIMIT ?`)
     .all(...[k.kanal, ...(onceId ? [Number(onceId)] : []), SOHBET.sayfa]);
   return { kanal: k.kanal, ad: k.ad, mesajlar: satirlar.reverse().map((m) => mesajSatiri(m, userId)),
@@ -67,9 +67,23 @@ function yaz(userId, kanal, govde = {}) {
   return { tamam: true, id, isaretlendi: !!onTarama };
 }
 
+// Demo sakin (yaşayan nüfus) mesajı: yazma engelleri insan hesapları içindir; içerik taraması ve hız sınırı yine uygulanır
+function npcYaz(userId, kanal, metinHam) {
+  const k = kanalCoz(kanal);
+  const u = db.prepare(`SELECT display_name, is_npc FROM users WHERE id = ?`).get(userId);
+  if (!u?.is_npc) throw new OyunHatasi(403, 'Yalnızca demo sakinler');
+  const metin = String(metinHam || '').replace(/\s+/g, ' ').trim().slice(0, SOHBET.maxUzunluk);
+  if (!metin || icerikDenetle(metin).karar !== 'TEMIZ') return null;
+  const t = Date.now();
+  if (db.prepare(`SELECT COUNT(*) c FROM sohbet_mesajlari WHERE user_id = ? AND created_at > ?`).get(userId, t - SOHBET.pencereMs).c >= 2) return null;
+  const id = db.prepare(`INSERT INTO sohbet_mesajlari (kanal, user_id, metin, created_at) VALUES (?, ?, ?, ?)`).run(k.kanal, userId, metin, t).lastInsertRowid;
+  yay('sohbet', { kanal: k.kanal, mesaj: { id, metin, ad: u.display_name, zaman: t, userId, demo: true } });
+  return id;
+}
+
 function rotalar(app, { h, auth }) {
   app.get('/api/sohbet/:kanal', h((req) => mesajlar(req.params.kanal, req.kullanici?.id ?? null, req.query.once)));
   app.post('/api/sohbet/:kanal', auth.girisGerekli, h((req) => yaz(req.kullanici.id, req.params.kanal, req.body)));
 }
 
-module.exports = { rotalar, kanalCoz, mesajlar, yaz, SOHBET };
+module.exports = { rotalar, kanalCoz, mesajlar, yaz, npcYaz, SOHBET };
