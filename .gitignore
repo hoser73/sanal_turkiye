@@ -1,0 +1,15 @@
+# Bağımlılıklar
+node_modules/
+
+# Çalışma verisi: veritabanı, karo önbelleği, yedekler, günlükler, şifreleme anahtarı (.sifreleme-anahtari)
+data/
+
+# Ortam ve gizli bilgiler
+.env
+.env.*
+*.pem
+*.key
+
+# Sistem / editör
+.DS_Store
+*.log

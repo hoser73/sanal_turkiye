@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Sanal Türkiye</title>
+  <meta name="description" content="Haritada bir yer seç, o yeri geliştir, komşularınla etkileşime gir, bölgeni yönet.">
+  <meta name="theme-color" content="#0e5e50">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/vendor/maplibre/maplibre-gl.css">
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <header class="ust">
+    <a class="logo" href="/" aria-label="Sanal Türkiye ana sayfa">
+      <img src="/icon.svg" alt="" width="28" height="28">
+      <span>Sanal <b>Türkiye</b></span>
+    </a>
+    <nav class="kirinti" id="kirinti" aria-label="Konum">
+      <button type="button" data-git="turkiye">Türkiye</button>
+    </nav>
+    <div class="arama" role="search">
+      <input id="arama" type="search" placeholder="İl, ilçe, mahalle ya da köy ara…" autocomplete="off" aria-label="Yer ara" aria-controls="aramaSonuc">
+      <ul class="arama-sonuc" id="aramaSonuc" role="listbox" hidden></ul>
+    </div>
+    <div class="ust-sag">
+      <div class="bakiye" id="bakiye" hidden title="Akçe: nakde çevrilemeyen oyun puanı">
+        <span class="sembol">₳</span><span id="bakiyeDeger">0</span>
+      </div>
+      <div class="kilitli" id="kilitli" hidden title="Bekleyen tekliflerinde kilitli akçe">🔒 <span id="kilitliDeger">0</span></div>
+      <button type="button" class="zil" id="sohbetDugme" aria-label="Sohbet" aria-expanded="false" aria-controls="sohbetCekmece">💬<span class="rozet" id="sohbetRozet" hidden></span></button>
+      <div class="bildirim-sar">
+        <button type="button" class="zil" id="bildirimDugme" hidden aria-label="Bildirimler">🔔<span class="rozet" id="bildirimRozet" hidden></span></button>
+        <div class="bildirim-kutu" id="bildirimKutu" hidden></div>
+      </div>
+      <button type="button" class="dugme ince" id="girisDugme">Giriş yap</button>
+      <div class="kullanici" id="kullanici" hidden>
+        <a class="dugme ince yetkili-dugme" id="yonetimLink" href="/yonetim.html" hidden title="Moderasyon ve denetim paneli">🛡️</a>
+        <button type="button" class="hesap-dugme" id="hesapDugme" title="Hesabım ve gizlilik"><span id="kullaniciAd"></span><span class="uyari-nokta" id="hesapUyari" hidden></span></button>
+        <button type="button" class="bag" id="cikisDugme">Çıkış</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="sahne">
+    <div id="harita" class="harita" role="region" aria-label="Türkiye haritası"></div>
+
+    <div class="kip-secici" id="kipSecici" role="group" aria-label="Harita görünümü">
+      <button type="button" data-kip="2d" aria-pressed="true">2B</button>
+      <button type="button" data-kip="3d" aria-pressed="false">3B</button>
+    </div>
+
+    <div class="lejant" id="lejant" aria-label="İmar türleri">
+      <div class="lejant-baslik">
+        <strong>İmar katmanı</strong>
+        <button type="button" class="bag" id="lejantKapat" aria-expanded="true">gizle</button>
+      </div>
+      <ul id="lejantListe"></ul>
+      <div class="lejant-not">
+        <span class="ornek benim"></span> senin
+        <span class="ornek diger"></span> başka oyuncu
+        <span class="ornek satilik"></span> satılık
+      </div>
+      <p class="lejant-kaynak">Gerçek arazi kullanımından (OSM) türetilmiş oyun imarı</p>
+    </div>
+
+    <section class="sohbet-cekmece" id="sohbetCekmece" hidden aria-label="Sohbet"></section>
+
+    <aside class="panel" id="panel" aria-label="Oyun paneli">
+      <div class="panel-tutamac" id="panelTutamac" aria-hidden="true"></div>
+      <nav class="sekmeler" role="tablist">
+        <button role="tab" data-sekme="parsel" aria-selected="true">Parsel</button>
+        <button role="tab" data-sekme="arazilerim">Arazilerim</button>
+        <button role="tab" data-sekme="yonetim">Yönetim</button>
+        <button role="tab" data-sekme="gorevler">Görevler <span class="rozet" id="gorevRozet" hidden></span></button>
+        <button role="tab" data-sekme="pazar">Pazar <span class="rozet" id="pazarRozet" hidden></span></button>
+        <button role="tab" data-sekme="haberler">Haberler</button>
+      </nav>
+      <div class="panel-icerik" id="panelIcerik" role="tabpanel"></div>
+    </aside>
+  </main>
+
+  <footer class="uyari-serit">
+    <span class="uzun">Sanal parseller gerçek tapu değildir; oyun içi kullanım hakkıdır. Akçe nakde çevrilemez. İmar türleri gerçek arazi kullanımından türetilmiş oyun kuralıdır, resmî imar planı değildir.</span>
+    <span class="kisa">Sanal parsel gerçek tapu değildir · Akçe nakde çevrilemez</span>
+    <nav class="yasal-baglar" aria-label="Yasal"><a href="/yasal/kullanim-kosullari.html">Koşullar</a> · <a href="/yasal/kvkk.html">KVKK</a> · <a href="/yasal/cerez.html">Çerezler</a></nav>
+  </footer>
+
+  <div class="dogrulama-serit" id="dogrulamaSerit" hidden role="status">
+    <span>📧 E-posta adresini doğrula: pazar, seçim ve belediye işlemleri doğrulamadan sonra açılır.</span>
+    <button type="button" class="bag" id="dogrulamaYeniden">Bağlantıyı yeniden gönder</button>
+    <a class="bag" id="gelistiriciPosta" href="/gelistirici/posta.html" target="_blank" hidden>geliştirme posta kutusu</a>
+  </div>
+
+  <dialog id="hesapModal" class="modal tek" aria-labelledby="hesapBaslik">
+    <div class="modal-govde" id="hesapGovde"></div>
+  </dialog>
+  <dialog id="sikayetModal" class="modal tek dar" aria-labelledby="sikayetBaslik">
+    <form class="modal-govde form" id="sikayetForm" method="dialog"></form>
+  </dialog>
+  <dialog id="molaModal" class="modal tek dar" aria-labelledby="molaBaslik">
+    <div class="modal-govde">
+      <p class="ust-baslik">Mola zamanı</p>
+      <h2 id="molaBaslik">⏳ <span id="molaSure"></span> dakikadır oynuyorsun</h2>
+      <p>Tarlaların seni bekler; ekinler sen yokken de büyür. Biraz su içip gözlerini dinlendirmeye ne dersin?</p>
+      <div class="satir-dugmeler"><button type="button" class="dugme birincil" id="molaTamam">Devam et</button>
+        <button type="button" class="dugme" id="molaAyar">Hatırlatıcı ayarı</button></div>
+    </div>
+  </dialog>
+
+  <dialog id="karsilama" class="modal">
+    <div class="karsilama-gorsel" aria-hidden="true"></div>
+    <div class="modal-govde">
+      <p class="ust-baslik">Yaşayan dijital ülke simülasyonu</p>
+      <h1>Haritada bir yer seç, geliştir, bölgeni yönet.</h1>
+      <p><b>81 ilin tamamı</b> açık: gerçek Türkiye haritası üzerinde köyünü, mahalleni bul; tarla ek, ev kur, komşularınla ticaret yap. Ücretsiz başla, 500 akçe hoş geldin hibesi al.</p>
+      <ul class="karsilama-ozellik">
+        <li><b>81</b> il</li><li><b>973</b> ilçe</li><li><b>~870 milyon</b> parsel hücresi</li><li><b>2B · 3B</b> harita</li>
+      </ul>
+
+      <form id="authForm" class="form" novalidate>
+        <div class="form-sekme" role="tablist" id="authSekme">
+          <button type="button" data-mod="kayit" aria-selected="true">Ücretsiz başla</button>
+          <button type="button" data-mod="giris" aria-selected="false">Giriş yap</button>
+        </div>
+        <p class="form-bilgi" id="authBilgi" hidden></p>
+        <label data-mod-alan="kayit">Oyuncu adı
+          <input name="ad" autocomplete="nickname" maxlength="32" placeholder="ör. Meramlı Çiftçi">
+        </label>
+        <label data-mod-alan="kayit giris unuttum">E-posta
+          <input name="email" type="email" autocomplete="email">
+        </label>
+        <label data-mod-alan="kayit giris sifirla"><span id="sifreEtiket">Parola</span>
+          <input name="sifre" type="password" autocomplete="current-password" minlength="8">
+        </label>
+        <label data-mod-alan="kayit">Doğum yılı
+          <input name="dogumYili" type="number" inputmode="numeric" min="1900" max="2100" placeholder="ör. 1994">
+          <span class="kucuk">13 yaşından itibaren katılabilirsin. 18 yaş altı hesaplarda sohbet kapalı başlar ve oyun süresi hatırlatıcısı açıktır.</span>
+        </label>
+        <label data-mod-alan="ikiAdim">Doğrulama kodu
+          <input name="kod" inputmode="numeric" autocomplete="one-time-code" maxlength="9" placeholder="123456 ya da kurtarma kodu">
+        </label>
+        <div class="onaylar" data-mod-alan="kayit">
+          <label class="onay"><input type="checkbox" name="kosullarOnay"> <span><a href="/yasal/kullanim-kosullari.html" target="_blank" rel="noopener">Kullanım Koşulları</a>'nı okudum, kabul ediyorum.</span></label>
+          <label class="onay"><input type="checkbox" name="kvkkOnay"> <span><a href="/yasal/kvkk.html" target="_blank" rel="noopener">KVKK Aydınlatma Metni</a>'ni okudum.</span></label>
+          <label class="onay"><input type="checkbox" name="pazarlamaOnay"> <span>Etkinlik ve yenilik e-postaları almak istiyorum (isteğe bağlı).</span></label>
+        </div>
+        <p class="form-hata" id="authHata" role="alert"></p>
+        <button class="dugme birincil genis" type="submit" id="authGonder">Ücretsiz başla</button>
+        <div class="auth-alt">
+          <button type="button" class="bag" data-mod-alan="giris" data-auth-mod="unuttum">Parolamı unuttum</button>
+          <button type="button" class="bag" data-mod-alan="unuttum sifirla ikiAdim" data-auth-mod="giris">← Girişe dön</button>
+        </div>
+      </form>
+      <button type="button" class="bag" id="misafirDugme">Önce haritayı gezmek istiyorum</button>
+      <p class="kucuk">Bu bir oyundur: getiri, değer artışı veya geri alım vaadi yoktur.</p>
+    </div>
+  </dialog>
+
+  <div class="tostlar" id="tostlar" aria-live="polite"></div>
+
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+{
+  "name": "Sanal Türkiye",
+  "short_name": "Sanal Türkiye",
+  "description": "Yaşayan dijital ülke simülasyonu",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f6f3ec",
+  "theme_color": "#0e5e50",
+  "lang": "tr",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}
