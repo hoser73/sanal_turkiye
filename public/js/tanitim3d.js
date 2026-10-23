@@ -4,7 +4,7 @@
 // bulut/yağmur/rüzgâr Konya'nın gerçek havasından gelir; gece pencereler yanar. Kamera drone gibi yavaşça süzülür.
 import * as THREE from '/vendor/three/three.module.js';
 import { gunesKonumu } from './gunes.js';
-import { malzemeler, koyEvi, ahir, silo, turbin, agacUret, kabukMalzemesi, leylek, leylekYuvasi, ucak } from './tanitim3d-model.js';
+import { malzemeler, koyEvi, ahir, silo, turbin, agacUret, kabukMalzemesi, leylek, leylekYuvasi, ucak, bayrakDokusu, gonder } from './tanitim3d-model.js';
 import { sonIslemKur } from './tanitim3d-efekt.js';
 
 const MOBIL = matchMedia('(max-width: 900px)').matches || /Mobi|Android|iPhone|iPad/.test(navigator.userAgent);
@@ -54,7 +54,14 @@ const KOK = `vec4 kok = vec4(0.0, 0.0, 0.0, 1.0);
   kok = instanceMatrix * kok;
 #endif
   kok = modelMatrix * kok;`;
+const BAYRAK_GLSL = `
+float bayrakZ(vec3 p) {
+  float u = clamp(p.x / 6.0, 0.0, 1.0), hiz = 4.5 + uRuzgar * 3.5, faz = p.x * 1.05 - uT * hiz;
+  float a = (0.18 + 0.3 * uRuzgar) * pow(u, 0.8);
+  return sin(faz) * a + sin(faz * 2.2 + p.y * 0.9 + 1.3) * a * 0.35 + sin(p.x * 3.1 - uT * hiz * 1.7 + p.y * 1.7) * a * 0.12;
+}`;
 const KOSE = {
+  bayrak: `transformed.z += bayrakZ(position); transformed.y -= pow(clamp(position.x / 6.0, 0.0, 1.0), 2.0) * 0.45 * (1.0 - min(uRuzgar, 1.0));`,
   get yaprak() { return this.agac; },
   bugday: `{ ${KOK}
     float dalga = sin(dot(kok.xz, vec2(0.16, 0.07)) - uT * 2.1) * 0.5 + 0.5; dalga *= dalga;
@@ -88,7 +95,11 @@ function yamala(mat, tur) {
   mat.onBeforeCompile = (s) => {
     Object.assign(s.uniforms, U);
     s.vertexShader = s.vertexShader
-      .replace('#include <common>', `#include <common>\n${GLSL}\nuniform float uT; uniform float uRuzgar; varying vec3 vDunya; varying float vDalga;`)
+      .replace('#include <common>', `#include <common>\n${GLSL}\nuniform float uT; uniform float uRuzgar; varying vec3 vDunya; varying float vDalga;${tur === 'bayrak' ? BAYRAK_GLSL : ''}`)
+      .replace('#include <beginnormal_vertex>', tur === 'bayrak' ? `#include <beginnormal_vertex>
+  { float e = 0.04; float dzx = (bayrakZ(position + vec3(e, 0.0, 0.0)) - bayrakZ(position - vec3(e, 0.0, 0.0))) / (2.0 * e);
+    float dzy = (bayrakZ(position + vec3(0.0, e, 0.0)) - bayrakZ(position - vec3(0.0, e, 0.0))) / (2.0 * e);
+    objectNormal = normalize(vec3(-dzx, -dzy, 1.0)); }` : '#include <beginnormal_vertex>')
       .replace('#include <begin_vertex>', `#include <begin_vertex>\nvDalga = 0.0;\n${KOSE[tur] || ''}
 { vec4 dp = vec4(transformed, 1.0);
 #ifdef USE_INSTANCING
@@ -575,6 +586,14 @@ export function ciftlik3d(kap, { hava = null, kaydirmaKok = null, olcek = () => 
   const ev = yere(koyEvi(M, gece), -14, -30, 0.08);
   yere(ahir(M), 16, -48, -0.05);
   yere(silo(M), 32, -40);
+  // Gönderde dalgalanan Türk bayrağı (köy evinin önünde)
+  {
+    const BOY = 16, g = gonder(BOY);
+    const kumas = new THREE.Mesh(new THREE.PlaneGeometry(6, 4, 56, 32).translate(3, 0, 0),
+      yamala(new THREE.MeshStandardMaterial({ map: bayrakDokusu(), side: THREE.DoubleSide, roughness: 0.65 }), 'bayrak'));
+    kumas.position.set(0.12, BOY - 2.15, 0); kumas.castShadow = true; g.add(kumas);
+    yere(g, -25, -14, -0.35);
+  }
   const saman = malz('#d4ad57', { roughness: 1 });
   for (const [x, z, y] of [[2, -24, 0], [4.2, -24.4, 0], [6.4, -24.2, 0], [3.1, -24.2, 1.4], [5.3, -24.3, 1.4], [-34, -10, 0], [-31.6, -11, 0]]) {
     const b = silindir(0.78, 0.78, 1.3, saman, 16); b.rotation.z = Math.PI / 2; b.position.set(x, H(x, z) + 0.78 + y * 1.0, z); sahne.add(b);

@@ -40,6 +40,7 @@ Ortam değişkenleri (v0.6 eklemeleri): `TABAN_URL` (e-posta bağlantıları; ü
 - Masaüstünde sağ panel haritanın üstünde kayan, katlanır bir çekmece (sağ kenardaki "Oyun paneli" tutamacı). Kapalıyken Türkiye bütün pencereyi kaplar; bir yer seçilince ya da sekme açılınca panel kendiliğinden açılır. Elle açma/kapama tercihi hatırlanır (`st-panel`), varsayılan kapalı. Harita sığdırmaları açık panelin payını hesaba katar.
 - Ülke ölçeğinde Türkiye harita alanını kenardan kenara doldurur; imar lejantı yalnızca yakın planda (z ≥ 11) görünür.
 - Açılış sayfasındaki "gerçek harita uçuşu" bölümü (v0.16) kaldırıldı: oyunun 3B haritasını sayfa içinde çalıştırmak ağırdı ve takılıyordu.
+- Açılış sahnesinde köy evinin önünde 16 m'lik gönderde Türk bayrağı (resmî 2:3 oran, #E30A17, ay ve yıldız resmî ölçülerle). Kumaş gölgelendiricide Konya'nın gerçek rüzgârıyla dalgalanır; kıvrımlarda ışık doğru düşer.
 
 ## v0.20 — dallı ağaçlar, leylekler, uçak; yalnızca Türkiye haritası
 

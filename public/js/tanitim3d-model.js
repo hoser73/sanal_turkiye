@@ -579,3 +579,28 @@ export function ucak() {
   g.userData = { izMalz, isik };
   return g;
 }
+
+// ---------- Türk bayrağı (TS 2/3 oranı): kırmızı zemin #E30A17, ay ve yıldız resmî ölçülerle; gönder, alem topu
+export function bayrakDokusu() {
+  const G = 800, [c, x] = tuval(1200, 800);
+  x.fillStyle = '#e30a17'; x.fillRect(0, 0, 1200, G);
+  x.fillStyle = '#ffffff'; x.beginPath(); x.arc(425, 400, 200, 0, Math.PI * 2); x.fill();          // ayın dış dairesi
+  x.fillStyle = '#e30a17'; x.beginPath(); x.arc(475, 400, 160, 0, Math.PI * 2); x.fill();          // iç daire
+  x.fillStyle = '#ffffff'; x.beginPath();                                                           // yıldız: bir ucu göndere bakar
+  for (let i = 0; i < 10; i++) { const a = Math.PI + (i * Math.PI) / 5, r = i % 2 ? 38.2 : 100; x.lineTo(683.333 + Math.cos(a) * r, 400 + Math.sin(a) * r); }
+  x.closePath(); x.fill();
+  const img = x.getImageData(0, 0, 1200, G);   // kumaş dokusu: ince atkı-çözgü
+  for (let j = 0; j < G; j++) for (let i = 0; i < 1200; i++) { const o = (j * 1200 + i) * 4, k = ((i % 4 < 2) !== (j % 4 < 2) ? 6 : -6) + (rnd() - 0.5) * 8; img.data[o] += k; img.data[o + 1] += k; img.data[o + 2] += k; }
+  x.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
+  return t;
+}
+export function gonder(boy = 14) {
+  const g = new THREE.Group(), metal = new THREE.MeshStandardMaterial({ color: '#eef0f2', roughness: 0.25, metalness: 0.6 });
+  const direk = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.12, boy, 16), metal); direk.position.y = boy / 2; direk.castShadow = true; g.add(direk);
+  const alem = new THREE.Mesh(new THREE.SphereGeometry(0.2, 16, 12), new THREE.MeshStandardMaterial({ color: '#d4a62a', roughness: 0.25, metalness: 0.9 }));
+  alem.position.y = boy + 0.18; alem.castShadow = true; g.add(alem);
+  const kaide = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.85, 0.5, 20), new THREE.MeshStandardMaterial({ color: '#b9b2a6', roughness: 0.9 }));
+  kaide.position.y = 0.25; kaide.receiveShadow = true; kaide.castShadow = true; g.add(kaide);
+  return g;
+}

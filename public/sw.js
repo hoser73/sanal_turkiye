@@ -1,6 +1,6 @@
 // Sanal Türkiye servis çalışanı: uygulama kabuğunu önbelleğe alır (çevrimdışı açılış), API'yi her zaman ağdan ister,
 // imar karolarını sınırlı önbellekte tutar ve web push bildirimlerini gösterir.
-const SURUM = 'st-v0.21.2';
+const SURUM = 'st-v0.21.3';
 const KABUK = [
   '/', '/index.html', '/cevrimdisi.html', '/css/app.css', '/css/ciftlik.css', '/css/tanitim.css', '/icon.svg', '/manifest.json',
   '/js/app.js', '/js/yardimci.js', '/js/harita.js', '/js/stil.js', '/js/izgara.js', '/js/modeller.js', '/js/sahne3d.js',
