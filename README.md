@@ -1,4 +1,4 @@
-# Sanal Türkiye — prototip (v0.15, ulusal)
+# Sanal Türkiye — prototip (v0.21, ulusal)
 
 Yaşayan dijital ülke simülasyonu. **81 ilin tamamı açık**: gerçek Türkiye haritası üzerinde herhangi bir köye, mahalleye yakınlaşıp parsel edinebilir, tarla ekip yapı kurabilir, oyuncular arası pazarda alım satım yapabilirsin. Harita 2B ve 3B görünümlüdür.
 
@@ -34,6 +34,39 @@ Ortam değişkenleri (v0.6 eklemeleri): `TABAN_URL` (e-posta bağlantıları; ü
 `npm run dev` seçimleri tek başına denemek için `SECIM_HIZI=1440 SECIM_MIN_SECMEN=1 BELEDIYE_MIN_SECMEN=1` ile çalışır (1 oyun günü = 1 dakika): muhtarlık seçimi ≈ 8 dakika, belediye seçimi ≈ 12 dakika, meclis oylaması 1 dakika, proje yapımı 2–4 dakika, muhtarlık dönemi 30, belediye dönemi 90 dakika; günlük devlet katkısı dakikada bir işler. `npm start` gerçek süreleri kullanır.
 
 > Not: v0.1–0.2'nin Meram ızgarası ulusal ızgarayla uyumsuz olduğundan eski `data/sanalturkiye.db` dosyası kullanılmaz (silinmedi).
+
+## v0.21 — tam ekran harita, katlanır panel
+
+- Masaüstünde sağ panel haritanın üstünde kayan, katlanır bir çekmece (sağ kenardaki "Oyun paneli" tutamacı). Kapalıyken Türkiye bütün pencereyi kaplar; bir yer seçilince ya da sekme açılınca panel kendiliğinden açılır. Elle açma/kapama tercihi hatırlanır (`st-panel`), varsayılan kapalı. Harita sığdırmaları açık panelin payını hesaba katar.
+- Ülke ölçeğinde Türkiye harita alanını kenardan kenara doldurur; imar lejantı yalnızca yakın planda (z ≥ 11) görünür.
+- Açılış sayfasındaki "gerçek harita uçuşu" bölümü (v0.16) kaldırıldı: oyunun 3B haritasını sayfa içinde çalıştırmak ağırdı ve takılıyordu.
+
+## v0.20 — dallı ağaçlar, leylekler, uçak; yalnızca Türkiye haritası
+
+- **Ağaçlar** (`agacUret` in tanitim3d-model.js): gövde ve dallar özyinelemeli üretilir (kabuk dokulu konik silindirler), dal uçlarında yaprak kümeleri; ceviz, meyve, söğüt (sarkık), kavak (sütun, ekimde sararır), karaçam (katlı). Her türün üç ayrıntılı ve bir uzak çeşidi; uzaktakiler sade çizilir. Yaprak saydamlığı uzaklıkla (mip) korunur, taç seyrelmez.
+- **Gökyüzü yaşamı:** termikte süzülen leylek sürüsü (beyaz gövde, siyah kanat uçları, kırmızı gaga ve bacaklar), elektrik direğinde leylek yuvası ve gagasını takırdatan leylek, arada bir geçen markasız yolcu uçağı ve iz bulutları (gece kırmızı ışık).
+- **Oyun haritası yalnızca Türkiye:** ülke ölçeğinde Türkiye dışı tamamen örtülür (Türkiye denizle çevrili bir ada gibi), yakına inince örtü açılır; harita dünyaya kaydırılamaz (`maxBounds`, en düşük yakınlık 4). Adres çubuğunda ülke ölçeğinde kalmış eski `#konum` açılışı bozmaz; açılıştan oyuna dönünce Türkiye ekrana yeniden sığdırılır ve görünüm düz 2B başlar.
+
+## v0.19 — sinematik açılış sahnesi
+
+- **Son işleme** (`public/js/tanitim3d-efekt.js`): MSAA'lı HDR çizim, güneş ve parıltılarda ışıma, renk derecelendirme, köşe kararması, film greni, ön planda alan derinliği. three.js ekleri sunucuda `/vendor/three-ek/` altından, yalın `'three'` içe aktarımı mutlak yola çevrilerek servis edilir.
+- **Bulutlar:** güneşe doğru örneklenen ışık geçirgenliğiyle hacimli görünen kümülüs (koyu taban, gümüş kenar), yüksek sirrus tülleri; gün batımında sıcak ufuk bandı.
+- **Fotoğraf dokuları** (`public/img/doku/`, Poly Haven, CC0; 1024 px renk + 512 px normal ve AO/pürüzlülük, toplam ~2,4 MB): sıva, moloz taş, kil kiremit, boyalı tahta (ahır), oluklu sac (ahır çatısı, silo), zeminde yakın ayrıntı. Gündüz ortam ışığı ve yansımalar "Autumn Field" HDRI'sinden. Dosyalar yüklenene kadar prosedürel dokular görünür.
+- **Ön plan:** buğday arasında gelincik ve peygamber çiçekleri, kelebekler, elektrik telinde serçeler.
+- **Hareketi azalt** tercihinde de 3B sahne çizilir; yalnızca kamera sabit durur. Yerel geliştirmede `?tn_saat=17.5` ile günün saati denenebilir.
+
+## v0.18 — gerçekçi 3B açılış sahnesi
+
+`public/js/tanitim3d-model.js`: tuvalde üretilen dokular ve normal haritaları (sıva, moloz taş, alaturka kiremit, boyalı tahta, oluklu sac, yaprak atlası); cumbalı Anadolu köy evi (taş zemin kat, sıvalı üst kat, ahşap kiriş ve payandalar, kırma kiremit çatı, güneş enerjili su ısıtıcısı, çiçekli pencereler, uydu çanağı), tahta ahır ve sac çatı, oluklu silo, kanat profilli ve bükümlü kanatlı rüzgâr türbinleri (gece kırmızı ikaz ışığı), yaprak kartlı ağaç taçları (kavaklar sonbaharda sararır). Dağlar sırtlı gürültüyle ve eğime göre bozkır/orman/kaya/kar renkli. Gökyüzü ortam yansıması (PMREM) camlarda ve metalde görünür. Masaüstünde kamera çiftliği OYNA düğmesinin sağında tutar; telefonda logo üstte, düğmeler altta.
+
+## v0.17 — oyun açılış ekranı
+
+İlk ekran artık bir oyun açılışı: tam ekran canlı 3B çiftlik, ortada büyük "Sanal Türkiye" logosu (Lilita One, kurdeleli), kocaman yeşil **OYNA** düğmesi, altında "Giriş yap · Kayıt ol". Giriş/kayıt kartı (giris-ui.js) ayrı, beyaz, sade bir pencerede açılır (`.tn-giris-modal`): ✕, dışına tık ya da Esc ile kapanır. İlk ziyarette yalnızca açılış ekranı görünür (`ac(…, { kartGizli: true })`); oyunun içinden açılan giriş (`{ oyundan: true }`) kapatılınca oyuna döner. Giriş yapmış biri OYNA'ya basınca doğrudan oyuna geçer. Üst çubuk sayfa kaydırılınca belirir.
+
+## v0.16 — gerçek zamanlı 3B açılış
+
+- **3B kahraman** (`public/js/tanitim3d.js`, three.js, dış doku/model yok): Anadolu ovasında bir çiftlik. Rüzgârda dalga dalga eğilen buğday tarlası (42 bin öbek, telefonda 11 bin), salınan kavak, ceviz, söğüt ve karaçamlar, akan dere (kendi su gölgelendiricisi), sürülmüş/anız/yonca tarla yamaları, köy evi, ahır, silo, saman balyaları, otlakta inek ve koyunlar (otlar, dolaşır), yolda römorklu traktör ve tozu, bacadan duman, elektrik telleri, rüzgâr türbinleri, uzakta köy ve camii, karlı dağlar, kuş sürüsü, tarlalarda kayan bulut gölgeleri. Güneş Konya'nın gerçek güneş konumundan, bulut/yağmur/rüzgâr Konya'nın gerçek havasından (`/api/tanitim` artık `kod` ve `ruzgar` da verir); gece pencereler ve kapı lambası yanar. Kamera drone gibi süzülür; fare ve kaydırmayla kayar. Yavaş cihazda çözünürlük ve buğday kendiliğinden düşer; WebGL yoksa ya da hareket azaltılmışsa SVG manzara kalır.
+- ~~Gerçek harita uçuşu~~ (v0.21'de kaldırıldı).
 
 ## v0.15 — zengin açılış sayfası
 

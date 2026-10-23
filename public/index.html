@@ -10,7 +10,7 @@
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Baloo+2:wght@600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Baloo+2:wght@600;700;800&family=Lilita+One&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/vendor/maplibre/maplibre-gl.css">
   <link rel="stylesheet" href="/css/app.css">
   <link rel="stylesheet" href="/css/ciftlik.css">
@@ -125,6 +125,7 @@
       </nav>
       <div class="panel-icerik" id="panelIcerik" role="tabpanel"></div>
     </aside>
+    <button type="button" class="panel-katla" id="panelKatla" aria-controls="panel" aria-expanded="true" title="Paneli kapat"><span class="panel-katla-ok" aria-hidden="true">›</span><span class="panel-katla-yazi">Oyun paneli</span></button>
   </main>
 
   <footer class="uyari-serit">
@@ -153,7 +154,7 @@
     </div>
   </dialog>
 
-  <section id="acilis" class="acilis" hidden role="dialog" aria-modal="true" aria-labelledby="tnBaslik">
+  <section id="acilis" class="acilis" hidden role="dialog" aria-modal="true" aria-label="Sanal Türkiye">
     <nav class="tn-ust" aria-label="Tanıtım">
       <a class="tn-logo" href="#tn-bas" data-tn="yukari"><img src="/icon.svg" alt="" width="34" height="34"><span>Sanal <b>Türkiye</b></span></a>
       <div class="tn-baglar"><a href="#tn-nasil">Nasıl oynanır</a><a href="#tn-dunya">Dünya</a><a href="#tn-turkiye">81 il</a><a href="#tn-sss">SSS</a></div>
@@ -162,19 +163,14 @@
 
     <header class="tn-kahraman" id="tn-bas">
       <div class="tn-manzara" aria-hidden="true"></div>
-      <div class="tn-kahraman-ic">
-        <div class="tn-tanitim">
-          <p class="tn-ust-etiket"><span class="tn-canli-nokta"></span> <span id="tnCanliEtiket">Yaşayan dijital Türkiye</span></p>
-          <h1 id="tnBaslik">Gerçek Türkiye haritasında<br><span class="tn-donen" id="tnDonen">çiftliğini kur.</span></h1>
-          <p class="tn-alt">81 ilin her köyü, her mahallesi oyunda. Tarlanı haritadan seç, ek, hasat et; hayvan besle, göle olta at, pazarda sat, muhtar ol. Hava bile gerçek.</p>
-          <div class="tn-sayaclar" id="tnSayaclar">
-            <div><b data-sayac="81">81</b><span>il</span></div><div><b data-sayac="973">973</b><span>ilçe</span></div>
-            <div><b data-sayac="25">25</b><span>yöresel ürün</span></div><div><b>870 milyon</b><span>parsel hücresi</span></div>
-          </div>
-          <div class="tn-hava" id="tnHava" aria-label="Şu an büyük şehirlerde hava"></div>
-        </div>
-        <div class="acilis-kart" id="acilisKart"></div>
+      <div class="tn-acilis">
+        <h1 class="tn-oyun-logo" id="tnBaslik"><span class="ust">Sanal</span><span class="alt" data-t="Türkiye">Türkiye</span></h1>
+        <p class="tn-slogan">Gerçek Türkiye haritasında <span class="tn-donen" id="tnDonen">çiftliğini kur.</span></p>
+        <button type="button" class="tn-oyna" data-tn="oyna"><span class="tn-oyna-ok" aria-hidden="true"></span>OYNA</button>
+        <div class="tn-acilis-baglar"><button type="button" data-tn="giris">Giriş yap</button><button type="button" data-tn="kayit-eposta">Kayıt ol</button></div>
+        <p class="tn-ucretsiz">Ücretsiz · Tarayıcıda ve telefonda oynanır</p>
       </div>
+      <p class="tn-canli-alt"><span class="tn-canli-nokta"></span> <span id="tnCanliEtiket">Yaşayan dijital Türkiye</span></p>
       <a class="tn-asagi" href="#tn-canli" aria-label="Aşağı kaydır"><span>Keşfet</span><i></i></a>
     </header>
 
@@ -208,6 +204,7 @@
         <div><span class="tn-rozet">Mini oyun</span><h3>Göl kıyısında 3B balık tutma</h3><p>Yemini ve misinanı seç, oltayı savur, yalancı vuruşlara aldanma. Lüfer kaçar, sazan direnir, levrek sudan fırlar.</p></div>
       </article>
     </section>
+
 
     <section class="tn-bolum tn-turkiye" id="tn-turkiye">
       <p class="tn-bolum-etiket">Etkileşimli harita</p><h2>81 il, 81 hikâye</h2>
@@ -256,8 +253,15 @@
     <footer class="tn-alt-bilgi">
       <div><b>Sanal Türkiye</b> · Yaşayan dijital ülke oyunu</div>
       <div><a href="/yasal/kullanim-kosullari.html" target="_blank" rel="noopener">Kullanım Koşulları</a> · <a href="/yasal/kvkk.html" target="_blank" rel="noopener">KVKK</a> · <a href="/yasal/cerez.html" target="_blank" rel="noopener">Çerezler</a></div>
-      <div class="kucuk">Harita © OpenStreetMap katkıcıları · OpenFreeMap · Hava: Open-Meteo.com · Akçe nakde çevrilmez; bu bir oyundur.</div>
+      <div class="kucuk">Harita © OpenStreetMap katkıcıları · OpenFreeMap · Hava: Open-Meteo.com · 3B dokular: Poly Haven (CC0) · Akçe nakde çevrilmez; bu bir oyundur.</div>
     </footer>
+
+    <div class="tn-giris-modal" id="tnGirisModal">
+      <div class="tn-giris-kutu" role="dialog" aria-modal="true" aria-labelledby="acilisBaslik">
+        <button type="button" class="tn-giris-kapat" data-tn="kart-kapat" aria-label="Kapat">✕</button>
+        <div class="acilis-kart" id="acilisKart"></div>
+      </div>
+    </div>
   </section>
 
   <div class="tostlar" id="tostlar" aria-live="polite"></div>

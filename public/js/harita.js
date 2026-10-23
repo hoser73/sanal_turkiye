@@ -10,7 +10,7 @@ import { temaUygula, dunyaStili } from './tema.js';
 import { dunyaKur, GRAFIK } from './dunya3d.js';
 import { turBaslat } from './sinematik.js';
 
-const TURKIYE_KUTU = [[25.6, 35.75], [44.85, 42.15]];
+const TURKIYE_KUTU = [[25.65, 35.8], [44.82, 42.12]];
 const PARSEL_ZOOM = 14;          // imar hücreleri ve tıklanabilir parseller
 const IZGARA_ZOOM = 16;          // hücre çizgileri
 const IL_ZOOM = 8.5;             // bu ölçeğin altında il seçimi
@@ -26,12 +26,25 @@ const MAKS_HUCRE = 600;          // tek seferde istenebilecek alan (sunucu sın�
 
 const bos = () => ({ type: 'FeatureCollection', features: [] });
 
+// Masaüstünde açık sağ panel haritanın üstünde durur: sığdırırken o kadar pay bırakılır
+function panelPayi() {
+  if (window.matchMedia('(max-width: 820px)').matches || document.querySelector('.sahne')?.classList.contains('panel-kapali')) return 0;
+  return document.getElementById('panel')?.offsetWidth || 0;
+}
 // Görünür harita alanı: masaüstünde sol üstte lejant, mobilde altta çekmece var
 function dolgu(kap) {
   const dar = kap.clientWidth < 700;
-  if (!dar) return { top: 40, bottom: 40, left: 230, right: 40 };
+  if (!dar) return { top: 40, bottom: 40, left: 230, right: 40 + panelPayi() };
   const cekmece = document.getElementById('panel')?.offsetHeight || 0;
   return { top: 64, bottom: cekmece + 12, left: 12, right: 12 };
+}
+
+// Türkiye görünümü: ülke harita alanını kenardan kenara doldurur (yalnızca üstteki düğmeler ve alttaki şerit için pay)
+function ulkeDolgu(kap) {
+  const dar = kap.clientWidth < 700;
+  if (!dar) return { top: 84, bottom: 70, left: 18, right: 18 + panelPayi() };
+  const cekmece = document.getElementById('panel')?.offsetHeight || 0;
+  return { top: 64, bottom: cekmece + 12, left: 6, right: 6 };
 }
 
 async function altlikVarMi() {
@@ -93,11 +106,13 @@ export function yapilar3dUret(parseller) {
 // ---------- Kurulum ----------
 export async function haritaKur(kap, { parselTik, ilTik, ilceTik, mahalleAlanTik, mahalleTik, belediyeTik, carsiTik, konumDegisti, kip = '2d', tema = 'ciftlik', grafik = 'yuksek' }) {
   const altlik = await altlikVarMi();
-  const baglantidaKonumVar = /konum=/.test(location.hash);
+  // Ülke ölçeğinde kalmış eski bir #konum (ör. 4.18/…) açılışı bozmasın: yalnızca yakın plan bağlantılar korunur
+  const baglantidaKonumVar = Number((/konum=([\d.]+)/.exec(location.hash) || [])[1] || 0) >= 6.5;
   const map = new maplibregl.Map({
     container: kap, style: stilOlustur({ altlik }),
-    bounds: TURKIYE_KUTU, fitBoundsOptions: { padding: dolgu(kap) },
-    minZoom: 1.6, maxZoom: 19.5, maxPitch: 78,
+    bounds: TURKIYE_KUTU, fitBoundsOptions: { padding: ulkeDolgu(kap) },
+    minZoom: 3.2, maxZoom: 19.5, maxPitch: 78,
+    maxBounds: [[2, 14], [68, 62]],       // oyun yalnızca Türkiye: harita dünyaya kaydırılamaz (dar ekranda da Türkiye sığsın diye geniş)
     hash: 'konum',                       // paylaşılabilir bağlantı: #konum=zoom/lat/lon/bearing/pitch
     attributionControl: { compact: true },
     // Grafik düzeyi: kenar yumuşatma ve piksel yoğunluğu (3B dünya katmanı aynı bağlamda çizilir)
@@ -112,7 +127,12 @@ export async function haritaKur(kap, { parselTik, ilTik, ilceTik, mahalleAlanTik
 
   if (!map.isStyleLoaded()) await new Promise((r) => map.once('style.load', r));
   // Kurucu seçeneği çekmece boşluğunu güvenilir uygulamıyor; bağlantıda konum yoksa burada sığdır
-  if (!baglantidaKonumVar) map.fitBounds(TURKIYE_KUTU, { padding: dolgu(kap), duration: 0 });
+  if (!baglantidaKonumVar) map.fitBounds(TURKIYE_KUTU, { padding: ulkeDolgu(kap), duration: 0 });
+  // İmar lejantı yalnızca yakın planda anlamlı: ülke ve il ölçeğinde Türkiye'nin üstünü kapatmasın
+  const olcekSinifi = () => document.body.classList.toggle('ulke-olcegi', map.getZoom() < 11);
+  map.on('zoom', olcekSinifi); olcekSinifi();
+  // Pencere boyutu değişince ülke görünümündeysek Türkiye yeniden ekrana sığdırılır
+  map.on('resize', () => { if (map.getZoom() < 6 && !map.isMoving()) map.fitBounds(TURKIYE_KUTU, { padding: ulkeDolgu(kap), pitch: map.getPitch(), duration: 0 }); });
   const once = (id) => (map.getLayer(id) ? id : undefined);
 
   // ---------- Kaynaklar ----------
@@ -124,7 +144,8 @@ export async function haritaKur(kap, { parselTik, ilTik, ilceTik, mahalleAlanTik
   for (const k of ['izgara', 'imlec', 'secili', 'parseller', 'yapilar3d', 'benim', 'secimler', 'belediyeler']) map.addSource(k, { type: 'geojson', data: bos() });
 
   // ---------- Ülke görünümü ----------
-  map.addLayer({ id: 'maske', type: 'fill', source: 'maske', paint: { 'fill-color': '#e4dccb', 'fill-opacity': ['interpolate', ['linear'], ['zoom'], 5, 0.62, 9, 0.35] } }, once(SIRA.ulke));
+  // Türkiye dışı (komşu ülkeler, denizler ve adları) ülke ölçeğinde tamamen örtülür; yakına inince yavaşça açılır
+  map.addLayer({ id: 'maske', type: 'fill', source: 'maske', paint: { 'fill-color': '#cfe3ec', 'fill-opacity': ['interpolate', ['linear'], ['zoom'], 5, 1, 7.5, 1, 9.5, 0] } });
   map.addLayer({ id: 'il-dolgu', type: 'fill', source: 'iller', maxzoom: 10, paint: {
     'fill-color': ['interpolate', ['linear'], ['coalesce', ['feature-state', 'yogunluk'], 0], 0, '#f4ead3', 0.35, '#cfe0c9', 1, '#2f7d68'],
     'fill-opacity': ['interpolate', ['linear'], ['zoom'], 5, ['case', ['boolean', ['feature-state', 'uzerinde'], false], 0.75, 0.5], 8.5, 0.2, 10, 0],
@@ -560,7 +581,9 @@ export async function haritaKur(kap, { parselTik, ilTik, ilceTik, mahalleAlanTik
       map.getSource('mahalleler').setData(fc);
       return fc.ilce;
     },
-    turkiyeyeGit() { map.fitBounds(TURKIYE_KUTU, { padding: dolgu(kap), pitch: kip === '3d' ? 35 : 0, duration: 1600 }); },
+    // Panel açılıp kapanınca ülke görünümündeysek Türkiye görünür alana yeniden sığar
+    paneleGoreSigdir() { if (map.getZoom() < 6.5 && !map.isMoving()) map.fitBounds(TURKIYE_KUTU, { padding: ulkeDolgu(kap), pitch: map.getPitch(), bearing: map.getBearing(), duration: 600 }); },
+    turkiyeyeGit({ anlik = false } = {}) { map.fitBounds(TURKIYE_KUTU, { padding: ulkeDolgu(kap), pitch: kip === '3d' ? 35 : 0, bearing: 0, duration: anlik ? 0 : 1600 }); },
     ilIstatistikleri(liste) {
       ilIstatistik = new Map(liste.map((s) => [s.plaka, s]));
       const enCok = Math.max(1, ...liste.map((s) => s.parsel + s.ilan * 2));

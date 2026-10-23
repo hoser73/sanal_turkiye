@@ -4,7 +4,7 @@
 const db = require('./db');
 const { YORESEL, URUNLER } = require('./config/rules');
 
-const SEHIRLER = ['34', '06', '35', '07', '42', '16', '61', '27'];
+const SEHIRLER = ['34', '06', '35', '07', '42', '16', '61', '27'];   // 42 (Konya) 3B açılış sahnesinin havasıdır
 const AKIS_EYLEMLERI = ['CROP_HARVESTED', 'CROP_PLANTED', 'PARCEL_ACQUIRED', 'STRUCTURE_COMPLETED', 'GI_PRODUCED', 'NEIGHBOR_HELPED', 'PRODUCTION_COLLECTED'];
 let onbellek = null;
 
@@ -42,7 +42,7 @@ function tanitim(t = Date.now()) {
   const v = {
     sayilar: { ...sayilar(t), il: 81, ilce: 973, yoresel: Object.keys(YORESEL).length },
     akis: akis(),
-    hava: SEHIRLER.map((p) => ({ plaka: p, il: iller.get(p), ...(dunya.ilHavasi(p) || {}) })).filter((h) => h.ikon),
+    hava: SEHIRLER.map((p) => ({ plaka: p, il: iller.get(p), ...(dunya.ilHavasi(p) || {}), ...(db.prepare(`SELECT kod, ruzgar FROM hava_durumu WHERE plaka = ?`).get(p) || {}) })).filter((h) => h.ikon),
     etkinlik: etk ? { ad: etk.ad, ikon: etk.ikon, renk: etk.renk, aciklama: etk.aciklama } : null,
     yoresel: Object.values(YORESEL).map((y) => ({ ad: y.ad, ikon: y.ikon, il: iller.get(y.il), plaka: y.il })),
     sponsorlar: require('./carsi').markalar(t).filter((m) => m.sponsor).map(({ ad, ikon, logo, renk, tur }) => ({ ad, ikon, logo, renk, tur })),

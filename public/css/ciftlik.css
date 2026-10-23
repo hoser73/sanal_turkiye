@@ -424,3 +424,6 @@ body.acilis-acik { overflow: hidden; }
   .avatar-yapici { grid-template-columns: 1fr; justify-items: center; }
 }
 .tostlar { z-index: 1000; }   /* açılış ekranının da üstünde */
+/* Ülke ve il ölçeğinde imar lejantı gizlenir (Türkiye haritayı kenardan kenara doldurur) */
+.lejant { transition: opacity .3s, visibility .3s; }
+body.ulke-olcegi .lejant { opacity: 0; visibility: hidden; pointer-events: none; }

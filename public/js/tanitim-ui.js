@@ -84,7 +84,7 @@ function manzara() {
   <span class="tn-traktor" aria-hidden="true">🚜</span>`;
 }
 
-export function tanitimKur({ api, kayitAc, girisAc, kapat, ilOner }) {
+export function tanitimKur({ api, girisli, kayitAc, epostaKayit, girisAc, kapat, kartKapat, ilOner }) {
   const kok = document.getElementById('acilis');
   if (!kok) return { yenile() {} };
   const az = hareketAz();
@@ -138,14 +138,19 @@ export function tanitimKur({ api, kayitAc, girisAc, kapat, ilOner }) {
   kok.addEventListener('click', (e) => {
     const a = e.target.closest('a[href^="#tn"]');
     if (a) { e.preventDefault(); kok.querySelector(a.getAttribute('href'))?.scrollIntoView({ behavior: az ? 'auto' : 'smooth', block: 'start' }); return; }
+    if (e.target.id === 'tnGirisModal') { kartKapat(); return; }   // pencerenin dışına tık
     const b = e.target.closest('[data-tn]');
     if (!b) return;
     const t = b.dataset.tn;
+    // Giriş yapmış biri (ör. kayıdın son adımında pencereyi kapattıysa) OYNA ile doğrudan oyuna geçer
+    const hesapAc = (f) => (girisli() ? kapat() : f());
     if (t === 'yukari') { e.preventDefault(); kok.scrollTo({ top: 0, behavior: az ? 'auto' : 'smooth' }); }
-    if (t === 'kayit') { kok.scrollTo({ top: 0, behavior: az ? 'auto' : 'smooth' }); kayitAc(); }
-    if (t === 'giris') { kok.scrollTo({ top: 0, behavior: az ? 'auto' : 'smooth' }); girisAc(); }
+    if (t === 'oyna' || t === 'kayit') hesapAc(kayitAc);
+    if (t === 'kayit-eposta') hesapAc(epostaKayit);
+    if (t === 'giris') hesapAc(girisAc);
     if (t === 'gez') kapat();
-    if (t === 'il-basla') { ilOner?.(b.dataset.plaka); kok.scrollTo({ top: 0, behavior: az ? 'auto' : 'smooth' }); kayitAc(); }
+    if (t === 'kart-kapat') kartKapat();
+    if (t === 'il-basla') { ilOner?.(b.dataset.plaka); hesapAc(kayitAc); }
   });
 
   // Canlı veri
@@ -154,8 +159,7 @@ export function tanitimKur({ api, kayitAc, girisAc, kapat, ilOner }) {
     try { veri = await api('/api/tanitim'); } catch { return; }
     const s = veri.sayilar;
     document.getElementById('tnCanliEtiket').textContent = s.hasat24 > 0
-      ? `Canlı · son 24 saatte ${sayi(s.hasat24)} hasat, ${sayi(s.ekim24)} ekim${s.balik24 ? `, ${sayi(s.balik24)} balık` : ''}` : 'Yaşayan dijital Türkiye';
-    document.getElementById('tnHava').innerHTML = veri.hava.map((h) => `<span class="tn-hava-cip" title="${esc(h.il)}: ${esc(h.durum)}"><b>${esc(h.il)}</b> ${h.ikon} ${h.sicaklik}°</span>`).join('');
+      ? `Şu an canlı · son 24 saatte ${sayi(s.hasat24)} hasat, ${sayi(s.ekim24)} ekim` : 'Yaşayan dijital Türkiye';
     const akis = veri.akis.map((o) => { const [ikon, metin] = (AKIS_METIN[o.eylem] || (() => ['•', 'oyunda bir şey oldu']))(o); return `<span class="tn-akis-oge">${ikon} <b>${esc(o.yer)}</b> ${esc(metin)} <small>${once(o.zaman)}</small></span>`; });
     const ak = document.getElementById('tnAkis');
     if (akis.length) ak.innerHTML = akis.join('') + akis.join('');
@@ -167,7 +171,30 @@ export function tanitimKur({ api, kayitAc, girisAc, kapat, ilOner }) {
       document.getElementById('tnSponsorListe').innerHTML = veri.sponsorlar.map((m) => `<span class="tn-sponsor-oge" style="--renk:${esc(m.renk)}">${m.logo ? `<img src="${esc(m.logo)}" alt="" width="40" height="40">` : `<span>${esc(m.ikon)}</span>`}<b>${esc(m.ad)}</b><small>${esc(m.tur)}</small></span>`).join('');
     }
   }
-  yenile();
+  yenile().finally(() => { if (!kok.hidden) ucKur(); });
+
+  // 3B kahraman: gerçek zamanlı çiftlik sahnesi (tanitim3d.js); WebGL yoksa SVG manzara kalır
+  const webgl = (() => { try { const c = document.createElement('canvas'); return !!(c.getContext('webgl2') || c.getContext('webgl')); } catch { return false; } })();
+  let uc = null, ucYukleniyor = false;
+  async function ucKur() {
+    if (uc || ucYukleniyor || !webgl) return;   // hareket azaltılmışsa da çizilir; yalnızca kamera sabit durur
+    ucYukleniyor = true;
+    try {
+      const { ciftlik3d } = await import('./tanitim3d.js');
+      if (kok.hidden) return;
+      uc = ciftlik3d(kok.querySelector('.tn-manzara'), { sakin: az, hava: veri?.hava?.find((h) => h.plaka === '42') || null, kaydirmaKok: kok, olcek: () => Math.min(1, kok.scrollTop / innerHeight) });
+      await uc.hazir;
+      kahraman.classList.add('uc');
+      kahraman.classList.toggle('gece', uc.gece > 0.5);
+      kahraman.classList.toggle('aksam', uc.alaca > 0.4 && uc.gece <= 0.5);
+    } catch { uc?.durdur(); uc = null; } finally { ucYukleniyor = false; }
+  }
+
+  // Açılış kapanınca 3B sahne kapatılır; yeniden açılınca kurulur
+  new MutationObserver(() => {
+    if (kok.hidden) { uc?.durdur(); uc = null; kahraman.classList.remove('uc'); }
+    else ucKur();
+  }).observe(kok, { attributes: true, attributeFilter: ['hidden'] });
 
   // Etkileşimli Türkiye haritası (bölüme yaklaşınca yüklenir)
   let haritaKuruldu = false;

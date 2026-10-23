@@ -42,7 +42,7 @@ const TEMALAR = {
       demiryolu: { 'line-color': '#6e5a46' },
       'sinir-ilce': { 'line-color': '#fff3d0', 'line-opacity': 0.6 },
       'sinir-ulke': { 'line-color': '#ffe7a6', 'line-width': z(3, 1.2, 10, 3) },
-      maske: { 'fill-color': '#2c3a24', 'fill-opacity': z(3, 0.4, 6, 0.32, 9, 0.12) },
+      maske: { 'fill-color': '#4f9fd2', 'fill-opacity': z(5, 1, 7.5, 1, 9.5, 0) },   // Türkiye denizle çevrili bir ada gibi görünür
       'il-dolgu': { 'fill-color': ['interpolate', ['linear'], ['coalesce', ['feature-state', 'yogunluk'], 0], 0, '#fff0b8', 0.35, '#cfe79a', 1, '#5fae4a'],
         'fill-opacity': z(5, ['case', ['boolean', ['feature-state', 'uzerinde'], false], 0.5, 0.14], 8.5, 0.06, 10, 0) },
       'il-sinir': { 'line-color': '#fff6dc', 'line-opacity': z(4, 0.85, 9, 0.9, 11, 0), 'line-width': z(5, 1.2, 9, 2.4) },

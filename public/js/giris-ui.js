@@ -19,7 +19,7 @@ export function girisKur({ api, tost, girisSonrasi, iller, rehberBaslat }) {
   const kok = document.getElementById('acilis');
   const kart = document.getElementById('acilisKart');
   let ekran = 'karsilama', yollar = { google: false, apple: false, passkey: true, telefon: false }, hata = '', bilgi = '';
-  let taslak = null, kayitBilgi = null, avatar = { t: 1, s: 0, p: 1, g: 0 }, adDurum = null, adZaman = 0, sifirlamaTokeni = null, telefonKodu = null, onerilenIl = null;
+  let taslak = null, kayitBilgi = null, avatar = { t: 1, s: 0, p: 1, g: 0 }, adDurum = null, adZaman = 0, sifirlamaTokeni = null, telefonKodu = null, onerilenIl = null, oyundan = false;
   const passkeyVar = passkeyDestekli();
   api('/api/giris/yollar').then((y) => { yollar = y; if (!kok.hidden) ciz(); }).catch(() => {});
 
@@ -152,9 +152,14 @@ export function girisKur({ api, tost, girisSonrasi, iller, rehberBaslat }) {
     hata = ek.hata || ''; bilgi = ek.bilgi || '';
     if (ek.token) sifirlamaTokeni = ek.token;
     kok.hidden = false; document.body.classList.add('acilis-acik');
+    // Kart açılış ekranının üstünde pencere olarak açılır; ilk ziyarette yalnızca açılış ekranı görünür
+    kok.classList.toggle('kart-acik', !ek.kartGizli);
+    oyundan = !!ek.oyundan;
     ekran = e; ciz();
   }
-  function kapat() { kok.hidden = true; document.body.classList.remove('acilis-acik'); }
+  function kapat() { kok.hidden = true; kok.classList.remove('kart-acik'); document.body.classList.remove('acilis-acik'); }
+  // Pencereyi kapat: oyunun içinden açıldıysa oyuna döner, yoksa açılış ekranında kalır
+  function kartKapat() { if (oyundan) kapat(); else kok.classList.remove('kart-acik'); }
   const yuklen = (d, f) => async (...a) => { if (d) d.disabled = true; try { return await f(...a); } catch (e) { hata = e.message; bilgi = ''; ciz(); return null; } finally { if (d && d.isConnected) d.disabled = false; } };
 
   // ---------- Akışlar
@@ -270,7 +275,7 @@ export function girisKur({ api, tost, girisSonrasi, iller, rehberBaslat }) {
     });
     calis();
   });
-  kok.addEventListener('keydown', (e) => { if (e.key === 'Escape' && ['karsilama', 'giris'].includes(ekran)) kapat(); });
+  kok.addEventListener('keydown', (e) => { if (e.key === 'Escape' && kok.classList.contains('kart-acik')) kartKapat(); });
 
   // Dönüş parametreleri (Google/Apple, sıfırlama bağlantısı): adres çubuğundan temizlenir
   async function adresIsle({ girisli, sifirla }) {
@@ -287,9 +292,9 @@ export function girisKur({ api, tost, girisSonrasi, iller, rehberBaslat }) {
     if (hataKod) return ac('karsilama', { hata: HATALAR[hataKod] || 'Giriş tamamlanamadı.' });
     if (giris === 'tamam' && girisli) { tost('Tekrar hoş geldin!'); return null; }
     if (baglandi) { tost(`✅ ${baglandi === 'google' ? 'Google' : baglandi === 'apple' ? 'Apple' : 'Hesap'} hesabın bağlandı`); return 'hesap'; }
-    if (!girisli) return ac('karsilama');
+    if (!girisli) return ac('karsilama', { kartGizli: true });
     return null;
   }
 
-  return { ac, kapat, adresIsle, acikMi: () => !kok.hidden, ilOner: (p) => { onerilenIl = p; } };
+  return { ac, kapat, kartKapat, adresIsle, acikMi: () => !kok.hidden, ilOner: (p) => { onerilenIl = p; } };
 }

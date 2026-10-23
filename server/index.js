@@ -275,6 +275,20 @@ app.use('/api', (_req, _res, next) => next(new OyunHatasi(404, 'Uç bulunamadı'
 // ---- Statik dosyalar
 app.use('/vendor/maplibre', express.static(path.join(__dirname, '..', 'node_modules', 'maplibre-gl', 'dist'), { maxAge: '7d' }));
 app.use('/vendor/three', express.static(path.join(__dirname, '..', 'node_modules', 'three', 'build'), { maxAge: '7d' }));
+// three.js ekleri (son işleme, HDR yükleyici): yalın 'three' içe aktarımı tarayıcı için mutlak yola çevrilir (içe aktarma haritası gerekmez)
+const THREE_EK = path.join(__dirname, '..', 'node_modules', 'three', 'examples', 'jsm');
+const threeEkOnbellek = new Map();
+app.get(/^\/vendor\/three-ek\/(.+\.js)$/, (req, res, next) => {
+  const dosya = path.normalize(path.join(THREE_EK, req.params[0]));
+  if (!dosya.startsWith(THREE_EK + path.sep)) return next();
+  let kod = threeEkOnbellek.get(dosya);
+  if (!kod) {
+    try { kod = require('fs').readFileSync(dosya, 'utf8'); } catch { return next(); }
+    kod = kod.replace(/from\s+'three'/g, "from '/vendor/three/three.module.js'").replace(/from\s+'three\/addons\//g, "from '/vendor/three-ek/");
+    threeEkOnbellek.set(dosya, kod);
+  }
+  res.type('application/javascript').set('Cache-Control', 'public, max-age=604800').send(kod);
+});
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // ---- Hata yöneticisi (yığın izi sızdırmaz)

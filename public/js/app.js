@@ -119,7 +119,8 @@ async function basla() {
   lejantCiz();
   panelCiz();
   // Açılış hep düz (2B) Türkiye görünümü; kayıtlı 3B tercihi yalnızca konumlu bağlantıyla (#konum, ?parsel) açılınca uygulanır
-  const baslangicKip = /konum=/.test(location.hash) || new URLSearchParams(location.search).has('parsel') ? kipOku() : '2d';
+  const yakinKonum = Number((/konum=([\d.]+)/.exec(location.hash) || [])[1] || 0) >= 6.5;   // ülke ölçeğindeki eski #konum sayılmaz
+  const baslangicKip = yakinKonum || new URLSearchParams(location.search).has('parsel') ? kipOku() : '2d';
   kipDugmesiCiz(baslangicKip);
   // Açılış ekranı: Google/Apple dönüşü, sıfırlama bağlantısı, iki adımlı kod ya da giriş yapmamış ziyaretçi (harita arkada yüklenir)
   if (durum.ikinciAdimBekleniyor) giris.ac('ikiAdim');
@@ -442,6 +443,7 @@ function lejantCiz() {
 
 // ================= Panel =================
 function sekmeSec(ad) {
+  panelAc();
   durum.sekme = ad;
   $$('.sekmeler button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.sekme === ad)));
   $('#panelIcerik').scrollTop = 0;
@@ -1431,6 +1433,19 @@ document.addEventListener('click', (e) => {
 });
 
 // ================= Mobil çekmece =================
+// Masaüstünde sağ panel katlanır: kapalıyken harita tüm pencereyi kaplar; bir yer seçilince ya da sekme açılınca kendiliğinden açılır
+function masaustu() { return !window.matchMedia('(max-width: 820px)').matches; }
+function panelDurumu(acik, { kaydet = true } = {}) {
+  $('.sahne').classList.toggle('panel-kapali', !acik);
+  $('#panelKatla').setAttribute('aria-expanded', String(acik));
+  $('#panelKatla').title = acik ? 'Paneli kapat' : 'Paneli aç';
+  if (kaydet) tercihYaz('st-panel', acik ? 'acik' : 'kapali');
+  durum.harita?.paneleGoreSigdir();
+}
+function panelAc() { if (masaustu() && $('.sahne').classList.contains('panel-kapali')) panelDurumu(true, { kaydet: false }); }   // kendiliğinden açılış tercihi değiştirmez
+$('#panelKatla').addEventListener('click', () => panelDurumu($('.sahne').classList.contains('panel-kapali')));
+panelDurumu(tercihOku('st-panel', 'kapali') === 'acik', { kaydet: false });
+
 function panelBoyut(sinif) {
   const p = $('#panel');
   p.classList.remove('buyuk', 'kucuk');
@@ -1442,7 +1457,7 @@ $('#panelTutamac').addEventListener('click', () => {
 });
 
 // ================= Kimlik (tam sayfa açılış ve hesap akışları: giris-ui.js) =================
-function authAc(mod) { giris.ac({ kayit: 'karsilama', giris: 'giris', ikiAdim: 'ikiAdim' }[mod] || mod); }
+function authAc(mod) { giris.ac({ kayit: 'karsilama', giris: 'giris', ikiAdim: 'ikiAdim' }[mod] || mod, { oyundan: true }); }
 async function girisSonrasi(mesaj) {
   canliYenile();
   await benYenile();
@@ -1454,7 +1469,8 @@ async function girisSonrasi(mesaj) {
 }
 const giris = girisKur({ api, tost, girisSonrasi, iller: () => durum.bolgeler.filter((b) => b.type === 'IL'),
   rehberBaslat: () => { durum.rehber?.guncelle(); sekmeSec('parsel'); } });
-tanitimKur({ api, kayitAc: () => giris.ac('karsilama'), girisAc: () => giris.ac('giris'), kapat: () => giris.kapat(), ilOner: (p) => giris.ilOner(p) });
+tanitimKur({ api, girisli, kayitAc: () => giris.ac('karsilama'), epostaKayit: () => giris.ac('hesap'), girisAc: () => giris.ac('giris'),
+  kapat: () => giris.kapat(), kartKapat: () => giris.kartKapat(), ilOner: (p) => giris.ilOner(p) });
 $('#girisDugme').addEventListener('click', () => authAc('giris'));
 
 async function cikisSonrasi() {
