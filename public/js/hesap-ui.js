@@ -2,10 +2,13 @@
 // oyun süresi hatırlatıcısı, e-posta doğrulama şeridi ve şikâyet penceresi.
 import { api, esc, tost, zamanOnce } from './yardimci.js';
 import { pushDestekli, pushDurumu, pushAc, pushKapat } from './canli.js';
+import { passkeyDestekli, passkeyOlustur, iptalMi } from './webauthn.js';
+import { avatarSVG, avatarCoz, avatarKod, TENLER, SACLAR, BASLIKLAR, GIYSILER } from './avatar.js';
 
 const $ = (s, k = document) => k.querySelector(s);
 let ctx = { yenile: async () => {}, cikti: async () => {} };
 let hesap = null, oturumlar = [], rozetler = [], kozmetikler = [], kurulum = null, kurtarma = null, bolum = 'guvenlik';
+let yollar = null, anahtarlar = [], telefonKodu = null, avatarTaslak = null;
 
 export function hesapKur(baglam) {
   ctx = { ...ctx, ...baglam };
@@ -64,7 +67,8 @@ export async function epostaDogrula(token) {
 export async function hesapAc(b) {
   if (b) bolum = b;
   try {
-    [hesap, oturumlar, rozetler, kozmetikler] = await Promise.all([api('/api/hesap'), api('/api/oturumlar'), api('/api/rozetlerim').catch(() => []), api('/api/kozmetik').catch(() => [])]);
+    [hesap, oturumlar, rozetler, kozmetikler, yollar, anahtarlar] = await Promise.all([api('/api/hesap'), api('/api/oturumlar'), api('/api/rozetlerim').catch(() => []),
+      api('/api/kozmetik').catch(() => []), api('/api/hesap/giris-yollari').catch(() => null), api('/api/passkey').catch(() => [])]);
   } catch (e) { return tost(e.message, 'hata'); }
   ciz();
   if (!$('#hesapModal').open) $('#hesapModal').showModal();
@@ -113,7 +117,7 @@ function guvenlik(h) {
         <button class="dugme">Kapat</button></form></details>`
     : `<p>Hesabını parolan çalınsa bile korur. ${h.rol !== 'OYUNCU' ? '<b>Yetkili hesaplarda zorunludur.</b>' : 'Muhtar ve belediye görevlileri için önerilir.'}</p>
        <button type="button" class="dugme birincil" data-h="2fa-kur">İki adımlı doğrulamayı kur</button>`;
-  return `
+  return `${girisYollariBolumu(h)}
     <section><h3>İki adımlı doğrulama</h3>${ikiAdim}</section>
     <section><h3>Oturumlar</h3>
       <ul class="liste">${oturumlar.map((o) => `<li class="liste-oge"><span class="ikon">${/iOS|Android/.test(o.tarayici) ? '📱' : '💻'}</span>
@@ -129,6 +133,29 @@ function guvenlik(h) {
         <button class="dugme birincil">Değiştir</button><p class="kucuk">Diğer cihazlardaki oturumların kapatılır.</p></form></details>
     </section>
     ${h.dogrulandi ? '' : '<section><h3>E-posta doğrulama</h3><p>Gelen kutunu kontrol et. Bağlantı 48 saat geçerlidir.</p><button type="button" class="dugme" data-h="dogrula-yeniden">Bağlantıyı yeniden gönder</button></section>'}`;
+}
+
+// Giriş yolları: Google / Apple bağlantısı, passkey'ler, telefon doğrulama, parolasız hesapta parola belirleme
+function girisYollariBolumu(h) {
+  if (!yollar) return '';
+  const bagli = (s) => yollar.bagli.find((b) => b.saglayici === s);
+  const saglayici = (s, ad, ikon) => !yollar.acik[s] && !bagli(s) ? '' : `<li class="liste-oge"><span class="ikon">${ikon}</span><div class="govde"><b>${ad}</b>
+      <span class="kucuk">${bagli(s) ? `Bağlı${bagli(s).email ? ` · ${esc(bagli(s).email)}` : ''}` : 'Bağlı değil'}</span></div>
+      <div class="sag">${bagli(s) ? '<span class="cip yesil">✓</span>' : `<a class="dugme ince" href="/api/oauth/${s}/basla?mod=bagla">Bağla</a>`}</div></li>`;
+  const tel = yollar.telefon ? `<span class="cip yesil">✓ ${esc(yollar.telefon.numara)}</span>`
+    : !yollar.acik.telefon ? '<span class="kucuk">Şu an kapalı</span>'
+    : telefonKodu ? `<form class="form satir" data-form="tel-dogrula"><label>${esc(telefonKodu.telefon)} kodu<input name="kod" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required></label><button class="dugme ince birincil">Doğrula</button></form>
+        ${telefonKodu.gelistirmeKodu ? `<p class="kucuk">Geliştirme: kod <b>${esc(telefonKodu.gelistirmeKodu)}</b></p>` : ''}`
+    : '<form class="form satir" data-form="tel-kod"><label>Cep telefonu<input name="telefon" type="tel" inputmode="tel" autocomplete="tel-national" placeholder="5xx xxx xx xx" required></label><button class="dugme ince">Kod gönder</button></form>';
+  return `<section><h3>Giriş yolları</h3>
+    <ul class="liste">
+      <li class="liste-oge"><span class="ikon">✉️</span><div class="govde"><b>E-posta ve parola</b><span class="kucuk">${yollar.parola ? 'Parolan var' : 'Parolan yok — passkey ya da bağlı hesapla giriyorsun'}</span></div>
+        <div class="sag">${yollar.parola ? '' : '<button type="button" class="dugme ince" data-h="parola-belirle">Parola belirle</button>'}</div></li>
+      ${saglayici('google', 'Google', '🟢')}${saglayici('apple', 'Apple', '🍏')}
+      <li class="liste-oge"><span class="ikon">🔑</span><div class="govde"><b>Passkey</b><span class="kucuk">${anahtarlar.length ? anahtarlar.map((k) => `${esc(k.ad || 'Passkey')} <button type="button" class="bag tehlike" data-h="passkey-sil" data-id="${esc(k.id)}">sil</button>`).join(' · ') : 'Parmak izi ya da yüz tanımayla şifresiz giriş'}</span></div>
+        <div class="sag">${passkeyDestekli() ? '<button type="button" class="dugme ince" data-h="passkey-ekle">Bu cihaza ekle</button>' : ''}</div></li>
+      <li class="liste-oge"><span class="ikon">📱</span><div class="govde"><b>Telefon</b><span class="kucuk">Hesabını korur; numara şifreli saklanır</span></div><div class="sag">${tel}</div></li>
+    </ul></section>`;
 }
 
 function gizlilik(h) {
@@ -159,7 +186,18 @@ function gizlilik(h) {
 function oyunAyarlari(h) {
   const a = h.ayarlar || {};
   const iller = (ctx.iller?.() || []).slice().sort((x, y) => x.name.localeCompare(y.name, 'tr'));
+  const av = avatarTaslak || avatarCoz(h.avatar);
+  const satir = (ad, alan, ogeler) => `<div class="avatar-satir"><span>${ad}</span><div>${ogeler.map(([i, ic]) => `<button type="button" class="cip-dugme" data-h="avatar" data-alan="${alan}" data-i="${i}" aria-pressed="${av[alan] === i}">${ic}</button>`).join('')}</div></div>`;
   return `
+    <section><h3>🧑‍🌾 Avatar</h3>
+      <div class="avatar-yapici kucuk-yapici"><div class="avatar-onizleme">${avatarSVG(avatarKod(av), 80)}</div><div class="avatar-secenekler">
+        ${satir('Ten', 't', TENLER.map((r, i) => [i, `<span class="renk" style="background:${r}"></span>`]))}
+        ${satir('Saç', 's', SACLAR.map((x, i) => [i, x.renk ? `<span class="renk" style="background:${x.renk}"></span>` : '∅']))}
+        ${satir('Başlık', 'p', BASLIKLAR.map((x, i) => [i, x]))}
+        ${satir('Giysi', 'g', GIYSILER.map((r, i) => [i, `<span class="renk" style="background:${r}"></span>`]))}
+      </div></div>
+      ${avatarTaslak ? '<button type="button" class="dugme birincil ince" data-h="avatar-kaydet">Avatarı kaydet</button>' : ''}
+    </section>
     <section><h3>🧿 Memleket</h3>
       <p>Memleketin hemşehri sohbetini açar; gurbette yaptığın eylemler il liginde memleketine de yarım puan yazar. 30 günde bir değiştirilebilir.</p>
       <form class="form satir" data-form="memleket"><label>İl<select name="plaka">${!h.memleket ? '<option value="">Seç…</option>' : ''}${iller.map((il) => `<option value="${il.plaka}" ${h.memleket?.plaka === il.plaka ? 'selected' : ''}>${esc(il.name)}</option>`).join('')}</select></label>
@@ -214,6 +252,20 @@ async function hesapTik(e) {
   if (hh === 'bolum') { bolum = b.dataset.b; return ciz(); }
   if (hh === '2fa-kur') { kurulum = await islem(() => api('/api/2fa/kur', {})); return ciz(); }
   if (hh === 'kurtarma-tamam') { kurtarma = null; return hesapAc(); }
+  if (hh === 'passkey-ekle') {
+    b.disabled = true;
+    try {
+      const s = await api('/api/passkey/ekle/secenekler', {});
+      const yanit = await passkeyOlustur(s.secenekler);
+      await api('/api/passkey/ekle/dogrula', { sorguId: s.sorguId, yanit, ad: /iPhone|iPad/.test(navigator.userAgent) ? 'iPhone' : /Android/.test(navigator.userAgent) ? 'Android' : /Mac/.test(navigator.userAgent) ? 'Mac' : 'Bu cihaz' });
+      tost('🔑 Passkey eklendi; artık şifresiz girebilirsin');
+    } catch (err) { if (!iptalMi(err)) tost(err.message, 'hata'); } finally { b.disabled = false; }
+    return hesapAc();
+  }
+  if (hh === 'passkey-sil') { if (!confirm('Bu passkey silinsin mi?')) return; await islem(() => api(`/api/passkey/${b.dataset.id}/sil`, {}), 'Passkey silindi'); return hesapAc(); }
+  if (hh === 'parola-belirle') { await islem(() => api('/api/sifre/unuttum', { email: hesap.email }), 'Parola belirleme bağlantısı e-postana gönderildi'); return; }
+  if (hh === 'avatar') { avatarTaslak = { ...(avatarTaslak || avatarCoz(hesap.avatar)), [b.dataset.alan]: Number(b.dataset.i) }; return ciz(); }
+  if (hh === 'avatar-kaydet') { await islem(() => api('/api/hesap/avatar', { avatar: avatarKod(avatarTaslak) }), 'Avatarın güncellendi'); avatarTaslak = null; await ctx.yenile(); return hesapAc(); }
   if (hh === 'kod-kopyala') return navigator.clipboard?.writeText(kurtarma.join('\n')).then(() => tost('Kodlar panoya kopyalandı'));
   if (hh === 'oturum-kapat') { await islem(() => api(`/api/oturum/${b.dataset.id}/kapat`, {}), 'Oturum kapatıldı'); return hesapAc(); }
   if (hh === 'digerleri') { const r = await islem(() => api('/api/oturumlar/digerleri', {})); if (r) tost(`${r.kapatilan} oturum kapatıldı`); return hesapAc(); }
@@ -250,6 +302,8 @@ async function hesapGonder(e) {
       case '2fa-etkin': { const r = await api('/api/2fa/etkinlestir', v); kurulum = null; kurtarma = r.kurtarmaKodlari; hesap = await api('/api/hesap'); ciz(); await ctx.yenile(); return; }
       case 'memleket': if (!v.plaka) return; await api('/api/hesap/memleket', v); tost('Memleketin kaydedildi 🧿'); break;
       case '2fa-kapat': await api('/api/2fa/kapat', v); tost('İki adımlı doğrulama kapatıldı'); break;
+      case 'tel-kod': telefonKodu = await api('/api/telefon/kod', v); return ciz();
+      case 'tel-dogrula': await api('/api/telefon/dogrula', v); telefonKodu = null; tost('📱 Telefonun doğrulandı'); break;
       case 'sifre': await api('/api/sifre/degistir', v); tost('Parolan değişti; diğer oturumlar kapatıldı'); break;
       case 'sil':
         if (!confirm('Hesabın kalıcı olarak silinecek. Emin misin?')) return;

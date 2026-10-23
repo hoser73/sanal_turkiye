@@ -35,10 +35,14 @@ function tarayiciOzeti(ua = '') {
 }
 const ipOzeti = (ip) => ozet(`st-ip:${ip || ''}`).slice(0, 16);
 
+// Sonradan eklenen kullanıcı sütunları (sorgular hazırlanmadan önce): benzersiz ad anahtarı, avatar, passkey ve telefon
+for (const [k, t] of [['ad_anahtar', 'TEXT'], ['avatar', 'TEXT'], ['webauthn_kimlik', 'TEXT'], ['telefon_sifreli', 'TEXT'], ['telefon_ozet', 'TEXT'], ['telefon_dogrulandi_at', 'TEXT']]) {
+  if (!db.prepare(`PRAGMA table_info(users)`).all().some((c) => c.name === k)) db.exec(`ALTER TABLE users ADD COLUMN ${k} ${t}`);
+}
 const q = {
   oturumBul: db.prepare(`
     SELECT s.token_hash, s.ikinci_adim, s.deneme, s.son_gorulme, u.id, u.display_name, u.status, u.rol, u.email,
-           u.email_dogrulandi_at, u.totp_aktif, u.dogum_yili, u.silindi_at
+           u.email_dogrulandi_at, u.totp_aktif, u.dogum_yili, u.silindi_at, u.telefon_dogrulandi_at
     FROM sessions s JOIN users u ON u.id = s.user_id
     WHERE s.token_hash = ? AND s.expires_at > datetime('now')`),
   gorulme: db.prepare(`UPDATE sessions SET son_gorulme = datetime('now') WHERE token_hash = ?`),
@@ -86,7 +90,7 @@ function kimlik(req, _res, next) {
   if (s && !s.silindi_at) {
     if (s.ikinci_adim) {
       req.kullanici = { id: s.id, display_name: s.display_name, status: s.status, rol: s.rol,
-        dogrulandi: !!s.email_dogrulandi_at, totp: !!s.totp_aktif, genc: gencMi(s.dogum_yili), oturum: s.token_hash };
+        dogrulandi: !!s.email_dogrulandi_at, totp: !!s.totp_aktif, genc: gencMi(s.dogum_yili), oturum: s.token_hash, telefon: !!s.telefon_dogrulandi_at };
       // Son görülme 5 dakikada bir güncellenir (her istekte yazmamak için)
       if (!s.son_gorulme || Date.now() - Date.parse(s.son_gorulme + 'Z') > 5 * 60_000) q.gorulme.run(s.token_hash);
     } else req.ikinciAdimBekleyen = s;
@@ -103,6 +107,8 @@ function dogrulanmisGerekli(req, res, next) {
   girisGerekli(req, res, (e) => {
     if (e) return next(e);
     if (!req.kullanici.dogrulandi) return next(new OyunHatasi(403, 'Bu işlem için e-posta adresini doğrulamalısın', 'DOGRULAMA_GEREKLI'));
+    // TELEFON_ZORUNLU=1: değer aktaran işlemler doğrulanmış telefon da ister (çoklu hesaba karşı)
+    if (process.env.TELEFON_ZORUNLU === '1' && !req.kullanici.telefon) return next(new OyunHatasi(403, 'Bu işlem için telefon numaranı doğrulamalısın', 'TELEFON_GEREKLI'));
     next();
   });
 }
@@ -144,31 +150,55 @@ function dogrulamaPostasi(u) {
 }
 
 // ---------- Kayıt / giriş
-function kayit(req, res) {
-  const { email, sifre, ad, dogumYili, kosullarOnay, kvkkOnay, pazarlamaOnay } = req.body || {};
-  if (!metinMi(email, 5, 254) || !EPOSTA_RE.test(email)) throw new OyunHatasi(400, 'Geçerli bir e-posta girin');
-  if (!metinMi(sifre, 8, 128)) throw new OyunHatasi(400, 'Parola 8–128 karakter olmalı');
-  if (!metinMi(ad, 2, 32) || !/^[\p{L}\p{N} ._-]+$/u.test(ad)) throw new OyunHatasi(400, 'Oyuncu adı 2–32 karakter (harf, rakam, boşluk)');
+// Oyuncu adı benzersizdir (Türkçe büyük/küçük harf duyarsız; boşluklar sadeleşir)
+const adAnahtari = (ad) => String(ad).trim().replace(/\s+/g, ' ').toLocaleLowerCase('tr-TR');
+db.exec(`CREATE INDEX IF NOT EXISTS ix_users_ad_anahtar ON users(ad_anahtar)`);
+for (const u of db.prepare(`SELECT id, display_name FROM users WHERE ad_anahtar IS NULL`).all()) db.prepare(`UPDATE users SET ad_anahtar = ? WHERE id = ?`).run(adAnahtari(u.display_name), u.id);
+const AVATAR_RE = /^t[0-4]-s[0-5]-p[0-5]-g[0-7]$/;   // ten, saç, şapka, giysi (istemci avatar.js)
+function adUygun(ad) {
+  if (!metinMi(ad, 2, 32) || !/^[\p{L}\p{N} ._-]+$/u.test(ad) || !/\p{L}/u.test(ad)) return { uygun: false, sebep: 'Oyuncu adı 2–32 karakter (harf, rakam, boşluk)' };
+  if (db.prepare(`SELECT 1 FROM users WHERE ad_anahtar = ?`).get(adAnahtari(ad))) return { uygun: false, sebep: 'Bu oyuncu adı alınmış' };
+  return { uygun: true };
+}
+// Kayıt formunun profil kısmı (her kayıt yolunda aynı): ad, doğum yılı, avatar, zorunlu onaylar
+function profilDenetle({ ad, dogumYili, avatar, kosullarOnay, kvkkOnay } = {}) {
+  const u = adUygun(ad);
+  if (!u.uygun) throw new OyunHatasi(u.sebep.includes('alınmış') ? 409 : 400, u.sebep, u.sebep.includes('alınmış') ? 'AD_ALINMIS' : undefined);
   const dy = Number(dogumYili);
   if (!Number.isInteger(dy) || dy < 1900 || dy > buYil()) throw new OyunHatasi(400, 'Doğum yılını gir');
   if (yas(dy) < HESAP.minYas) throw new OyunHatasi(403, `Sanal Türkiye'ye ${HESAP.minYas} yaşından itibaren katılabilirsin`, 'YAS_SINIRI');
+  if (avatar != null && avatar !== '' && !AVATAR_RE.test(avatar)) throw new OyunHatasi(400, 'Geçersiz avatar');
   if (kosullarOnay !== true || kvkkOnay !== true) throw new OyunHatasi(400, 'Kullanım koşullarını ve KVKK aydınlatma metnini onaylamalısın');
-  const e = email.trim().toLowerCase();
-  if (db.prepare('SELECT 1 FROM users WHERE email = ?').get(e)) throw new OyunHatasi(409, 'Bu e-posta ile kayıtlı hesap var');
-  const hash = bcrypt.hashSync(sifre, 10);
+  return { ad: String(ad).trim().replace(/\s+/g, ' '), dy, avatar: avatar || null };
+}
+// Hesap oluşturma (e-posta+parola, Google/Apple, passkey ortak): onaylar, hoş geldin hibesi, denetim kaydı
+function hesapOlustur({ email, hash = null, ad, dy, avatar = null, pazarlamaOnay = false, dogrulandi = false, yol = 'EPOSTA' }) {
   const genc = gencMi(dy);
   const ayarlar = { sureHatirlatici: genc ? HESAP.gencSureHatirlatici : 0, sohbet: !genc };
-  const userId = db.transaction(() => {
-    const id = db.prepare(`INSERT INTO users (email, password_hash, display_name, dogum_yili, ayarlar, email_dogrulandi_at)
-                           VALUES (?, ?, ?, ?, ?, ${otomatikDogrula() ? "datetime('now')" : 'NULL'})`)
-      .run(e, hash, ad.trim(), dy, JSON.stringify(ayarlar)).lastInsertRowid;
+  return db.transaction(() => {
+    if (db.prepare('SELECT 1 FROM users WHERE email = ?').get(email)) throw new OyunHatasi(409, 'Bu e-posta ile kayıtlı hesap var; giriş yap', 'EPOSTA_KAYITLI');
+    if (db.prepare(`SELECT 1 FROM users WHERE ad_anahtar = ?`).get(adAnahtari(ad))) throw new OyunHatasi(409, 'Bu oyuncu adı alınmış', 'AD_ALINMIS');
+    const id = db.prepare(`INSERT INTO users (email, password_hash, display_name, ad_anahtar, avatar, dogum_yili, ayarlar, email_dogrulandi_at)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ${dogrulandi || otomatikDogrula() ? "datetime('now')" : 'NULL'})`)
+      .run(email, hash, ad, adAnahtari(ad), avatar, dy, JSON.stringify(ayarlar)).lastInsertRowid;
     q.onayEkle.run(id, 'KOSULLAR', YASAL.KOSULLAR.surum, 1);
     q.onayEkle.run(id, 'KVKK', YASAL.KVKK.surum, 1);
     q.onayEkle.run(id, 'PAZARLAMA', YASAL.PAZARLAMA.surum, pazarlamaOnay === true ? 1 : 0);
     L.odul(id, HESAP.baslangicBakiye, 'Hoş geldin hibesi');
-    L.denetim({ aktor: id, eylem: 'USER_REGISTERED', herkese: false, sonra: { genc } });
+    L.denetim({ aktor: id, eylem: 'USER_REGISTERED', herkese: false, sonra: { genc, yol } });
     return id;
   })();
+}
+function epostaDenetle(email) {
+  if (!metinMi(email, 5, 254) || !EPOSTA_RE.test(email)) throw new OyunHatasi(400, 'Geçerli bir e-posta girin');
+  return email.trim().toLowerCase();
+}
+function kayit(req, res) {
+  const { email, sifre, pazarlamaOnay } = req.body || {};
+  const e = epostaDenetle(email);
+  if (!metinMi(sifre, 8, 128)) throw new OyunHatasi(400, 'Parola 8–128 karakter olmalı');
+  const p = profilDenetle(req.body || {});
+  const userId = hesapOlustur({ email: e, hash: bcrypt.hashSync(sifre, 10), ...p, pazarlamaOnay });
   if (!otomatikDogrula()) dogrulamaPostasi(q.kullanici.get(userId));
   oturumAc(req, res, userId);
   res.status(201).json({ tamam: true, dogrulamaGerekli: !otomatikDogrula() });
@@ -280,7 +310,10 @@ function sifreSifirla(req) {
   const { token, sifre } = req.body || {};
   if (!metinMi(sifre, 8, 128)) throw new OyunHatasi(400, 'Parola 8–128 karakter olmalı');
   const userId = tokenTuket(token, 'SIFIRLA');
+  const onceDogrulanmis = !!q.kullanici.get(userId).email_dogrulandi_at;
   db.transaction(() => {
+    // E-postası doğrulanmamış hesap: adresin sahibi devralır; başkasının eklemiş olabileceği passkey/bağlı hesap/2FA silinir
+    if (!onceDogrulanmis) require('./giris-yollari').epostaSahibiDevralir(userId);
     // Bağlantıya erişebilen kişi e-postanın sahibidir: adres de doğrulanmış sayılır
     db.prepare(`UPDATE users SET password_hash = ?, email_dogrulandi_at = COALESCE(email_dogrulandi_at, datetime('now')) WHERE id = ?`)
       .run(bcrypt.hashSync(sifre, 10), userId);
@@ -365,6 +398,7 @@ function hesapDurumu(userId) {
   const eksikOnay = Object.entries(YASAL).filter(([k, b]) => b.zorunlu && !db.prepare(
     `SELECT 1 FROM yasal_onaylar WHERE user_id = ? AND belge = ? AND surum = ? AND onay = 1`).get(userId, k, b.surum)).map(([k]) => k);
   return { dogrulandi: !!u.email_dogrulandi_at, ikiAdim: !!u.totp_aktif, rol: u.rol, rolAd: ROLLER[u.rol] || u.rol,
+    avatar: u.avatar || null, telefonDogrulandi: !!u.telefon_dogrulandi_at, parolaVar: !!u.password_hash,
     genc: gencMi(u.dogum_yili), ayarlar: ayar, eksikOnay,
     memleket: u.memleket_plaka ? { plaka: u.memleket_plaka, ad: db.prepare(`SELECT name FROM regions WHERE type = 'IL' AND plaka = ?`).get(u.memleket_plaka)?.name } : null,
     kurtarmaKalan: u.totp_aktif ? JSON.parse(u.kurtarma_kodlari || '[]').length : null };
@@ -377,6 +411,7 @@ function eskiOturumlariTemizle() {
 
 module.exports = {
   CEREZ, kimlik, cereztenKullanici, girisGerekli, dogrulanmisGerekli, rolGerekli, kayit, giris, ikinciAdim, cikis, yenidenKimlik, kodDogrula,
+  oturumAc, hesapOlustur, profilDenetle, adUygun, adAnahtari, epostaDenetle, dogrulamaPostasi, TABAN_URL, AVATAR_RE,
   epostaDogrula, dogrulamaYenidenGonder, sifreUnuttum, sifreSifirla, sifreDegistir, ikiAdimKur, ikiAdimEtkinlestir, ikiAdimKapat,
   oturumlar, oturumKapat, digerOturumlariKapat, hesapDurumu, eskiOturumlariTemizle, gencMi, yas,
 };

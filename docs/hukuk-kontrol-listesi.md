@@ -42,6 +42,10 @@ onay istenir ve onay kaydı (`yasal_onaylar`) sürümüyle saklanır.
     gerçek bankacılık, kredi ya da yatırım hizmeti olmadığı metinlerde açıkça yazmalı; banka reklamına ilişkin BDDK/TBB
     düzenlemeleri ve 13–17 yaş oyunculara banka reklamı gösterilmesi değerlendirilmeli (mevcut tasarım: 18 yaş altı oyun içi
     kredi kullanamaz, marka herkese görünür). Sponsorla oyuncu verisi paylaşılmıyor; paylaşılacaksa KVKK aydınlatma ve açık rıza gerekir.
+12. **Giriş yolları ve telefon:** Google/Apple ile girişte alınan veriler (e-posta, ad, sağlayıcı kimliği) ve telefon numarası
+    (hesap güvenliği, sahte hesapların önlenmesi) KVKK aydınlatma metnine eklenmeli; sağlayıcılar yurt dışındaysa aktarım
+    dayanağı (madde 1). SMS doğrulama kodunun ticari elektronik ileti sayılmadığı (İYS) teyit edilmeli. Google ve Apple
+    marka kullanım kuralları (düğme görselleri) yayından önce uygulanmalı.
 
 ## Teknik olarak hazır olanlar (metinlerde atıf yapılabilir)
 

@@ -1,4 +1,4 @@
-# Sanal Türkiye — prototip (v0.13, ulusal)
+# Sanal Türkiye — prototip (v0.14, ulusal)
 
 Yaşayan dijital ülke simülasyonu. **81 ilin tamamı açık**: gerçek Türkiye haritası üzerinde herhangi bir köye, mahalleye yakınlaşıp parsel edinebilir, tarla ekip yapı kurabilir, oyuncular arası pazarda alım satım yapabilirsin. Harita 2B ve 3B görünümlüdür.
 
@@ -10,7 +10,7 @@ Yaşayan dijital ülke simülasyonu. **81 ilin tamamı açık**: gerçek Türkiy
 npm install
 npm start            # http://localhost:3400
 npm run dev          # geliştirme: dosya değişince yeniden başlar, seçim takvimi hızlı (aşağıya bakın)
-npm test             # kabul testleri (148; ağ ve gerçek yapay zekâ kullanmaz; PostgreSQL testi gömülü PGlite ile)
+npm test             # kabul testleri (155; ağ ve gerçek yapay zekâ kullanmaz; PostgreSQL testi gömülü PGlite ile)
 npm run rol -- e-posta ADMIN   # yetkili rolü ver (MODERATOR / DENETCI / ADMIN; panel için 2FA zorunlu)
 npm run yedek        # çevrimiçi yedek (data/yedekler, gzip, bütünlük denetimi, 14 yedek döndürme)
 npm run geri-yukle -- data/yedekler/<dosya>.db.gz [--onayla]   # sunucu durdurulmuşken
@@ -34,6 +34,20 @@ Ortam değişkenleri (v0.6 eklemeleri): `TABAN_URL` (e-posta bağlantıları; ü
 `npm run dev` seçimleri tek başına denemek için `SECIM_HIZI=1440 SECIM_MIN_SECMEN=1 BELEDIYE_MIN_SECMEN=1` ile çalışır (1 oyun günü = 1 dakika): muhtarlık seçimi ≈ 8 dakika, belediye seçimi ≈ 12 dakika, meclis oylaması 1 dakika, proje yapımı 2–4 dakika, muhtarlık dönemi 30, belediye dönemi 90 dakika; günlük devlet katkısı dakikada bir işler. `npm start` gerçek süreleri kullanır.
 
 > Not: v0.1–0.2'nin Meram ızgarası ulusal ızgarayla uyumsuz olduğundan eski `data/sanalturkiye.db` dosyası kullanılmaz (silinmedi).
+
+## v0.14 — giriş ve üyelik
+
+- **Tam sayfa açılış:** canlı çiftlik sahnesi + kart; Google, Apple, passkey ya da e-postayla devam; "önce haritayı gez".
+- **Adım adım kayıt:** (1) hesap — e-posta + parola (güç göstergesi) ya da şifresiz passkey, (2) profil — oyuncu adı (anlık
+  uygunluk; Türkçe büyük/küçük harf duyarsız benzersiz), avatar oluşturucu (ten, saç, başlık, giysi), doğum yılı, onaylar,
+  (3) telefon doğrulama (isteğe bağlı), (4) memleket (liste ya da konum). Google/Apple/passkey ile ilk gelen oyuncu bir kayıt
+  taslağıyla 2. adımdan devam eder.
+- **Google ve Apple** (OpenID Connect, state + nonce + tarayıcı bağı, Google'da PKCE, JWKS imza denetimi), **passkey**
+  (`@simplewebauthn/server`), **telefon** (SMS kodu; geliştirmede kod ekranda, üretimde Netgsm). Hesabım → Güvenlik → Giriş
+  yolları: Google/Apple bağla, passkey ekle/sil, telefon doğrula, parolasız hesapta parola belirle; Oyun ayarları → avatar.
+- Önceden ele geçirmeye karşı: doğrulanmamış hesabın e-postasının sahibi (Google/Apple ya da sıfırlama bağlantısıyla) hesabı
+  devralınca diğer giriş yolları ve oturumlar silinir.
+- Kurulum: `docs/giris-yollari.md`. Sağlayıcı ayarları yoksa o düğmeler görünmez; üretim denetimi eksikleri uyarır.
 
 ## v0.13 — Çarşı: banka, nalbur, market, zirai bayi (sponsorluğa hazır)
 

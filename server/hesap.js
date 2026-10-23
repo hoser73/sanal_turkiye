@@ -132,9 +132,10 @@ function hesapSil(req, res) {
     db.prepare(`DELETE FROM push_abonelikleri WHERE user_id = ?`).run(userId);
     db.prepare(`DELETE FROM sohbet_mesajlari WHERE user_id = ?`).run(userId);
     for (const e of db.prepare(`SELECT * FROM urun_emirleri WHERE user_id = ? AND durum = 'ACIK'`).all(userId)) require('./ekonomi').emirIptal(userId, e.id);
-    db.prepare(`UPDATE users SET email = NULL, password_hash = NULL, display_name = ?, dogum_yili = NULL, totp_sir = NULL, totp_aktif = 0,
+    db.prepare(`UPDATE users SET email = NULL, password_hash = NULL, display_name = ?, ad_anahtar = NULL, avatar = NULL, dogum_yili = NULL, totp_sir = NULL, totp_aktif = 0,
                 kurtarma_kodlari = NULL, ayarlar = '{}', status = 'DELETED', rol = 'OYUNCU', silindi_at = datetime('now') WHERE id = ?`)
       .run(`Ayrılan oyuncu #${userId}`, userId);
+    require('./giris-yollari').hesapSilindi(userId);   // Google/Apple bağlantıları, passkey'ler, telefon
     L.denetim({ aktor: userId, eylem: 'ACCOUNT_DELETED', sonra: { parselIadesi: parseller.length }, herkese: false });
   })();
   res.clearCookie(auth.CEREZ, { path: '/' });

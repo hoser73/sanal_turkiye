@@ -80,7 +80,9 @@ app.use('/api/karo/', rateLimit({ windowMs: 60_000, limit: 2400, standardHeaders
 app.use('/api/', rateLimit({ windowMs: 60_000, limit: Number(process.env.API_HIZ_SINIRI || 600), standardHeaders: 'draft-8', legacyHeaders: false, skip: (req) => req.path.startsWith('/karo/') }));
 // Testler aynı IP'den çok sayıda hesap açar: KIMLIK_HIZ_CARPANI yalnızca test/geliştirme içindir
 const kimlikSiniri = (n) => n * Number(process.env.KIMLIK_HIZ_CARPANI || 1);
-app.use(['/api/kayit', '/api/giris'], rateLimit({ windowMs: 15 * 60_000, limit: kimlikSiniri(30), standardHeaders: 'draft-8', legacyHeaders: false }));
+app.use(['/api/kayit', '/api/giris', '/api/passkey', '/api/oauth'], rateLimit({ windowMs: 15 * 60_000, limit: kimlikSiniri(30), standardHeaders: 'draft-8', legacyHeaders: false }));
+app.use(['/api/telefon'], rateLimit({ windowMs: 15 * 60_000, limit: kimlikSiniri(15), standardHeaders: 'draft-8', legacyHeaders: false }));
+app.use(['/api/oyuncu-adi'], rateLimit({ windowMs: 15 * 60_000, limit: kimlikSiniri(90), standardHeaders: 'draft-8', legacyHeaders: false }));
 // Kaba kuvvet ve e-posta bombalamasına karşı: sıfırlama, doğrulama, 2FA ve kritik hesap işlemleri
 app.use(['/api/sifre', '/api/eposta', '/api/giris/2fa', '/api/2fa', '/api/hesap/sil'],
   rateLimit({ windowMs: 15 * 60_000, limit: kimlikSiniri(20), standardHeaders: 'draft-8', legacyHeaders: false }));
@@ -131,7 +133,7 @@ dunya.rotalar(app, { h, auth });
 kooperatif.rotalar(app, { h, auth });
 simge.rotalar(app, { h, auth });
 // Komşuluk, yöresel ürünler, etkinlikler, balık tutma, hatırlatmalar
-for (const m of ['./komsuluk', './yoresel', './etkinlik', './balik', './hatirlatma', './iklim', './carsi']) require(m).rotalar(app, { h, auth, hazir });
+for (const m of ['./komsuluk', './yoresel', './etkinlik', './balik', './hatirlatma', './iklim', './carsi', './giris-yollari']) require(m).rotalar(app, { h, auth, hazir });
 yz.rotalar(app, { h, auth });
 kozmetik.rotalar(app, { h, auth });
 zaman.rotalar(app, { h });

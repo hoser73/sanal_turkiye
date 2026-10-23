@@ -18,6 +18,8 @@ import { komsularBolumu, parselKomsuDugmeleri, urunGonderFormu, yoreselBolumu, e
 import { balikOyunu } from './balik-ui.js';
 import { havaSeridi, havaPenceresi, iklimSatiri, ortuSatiri } from './hava-ui.js';
 import { carsiGirisi, dukkanHTML, bankaHTML } from './carsi-ui.js';
+import { girisKur } from './giris-ui.js';
+import { avatarSVG } from './avatar.js';
 import { rehberKur } from './rehber.js';
 
 const $ = (s, kok = document) => kok.querySelector(s);
@@ -118,10 +120,9 @@ async function basla() {
   // Açılış hep düz (2B) Türkiye görünümü; kayıtlı 3B tercihi yalnızca konumlu bağlantıyla (#konum, ?parsel) açılınca uygulanır
   const baslangicKip = /konum=/.test(location.hash) || new URLSearchParams(location.search).has('parsel') ? kipOku() : '2d';
   kipDugmesiCiz(baslangicKip);
-  if (tokenler.sifirla) { sifirlamaTokeni = tokenler.sifirla; authAc('sifirla'); }
-  else if (durum.ikinciAdimBekleniyor) authAc('ikiAdim');
-  // Karşılama harita yüklenirken hazır olsun
-  if (!tokenler.sifirla && !durum.ikinciAdimBekleniyor && !girisli()) $('#karsilama').showModal();
+  // Açılış ekranı: Google/Apple dönüşü, sıfırlama bağlantısı, iki adımlı kod ya da giriş yapmamış ziyaretçi (harita arkada yüklenir)
+  if (durum.ikinciAdimBekleniyor) giris.ac('ikiAdim');
+  else giris.adresIsle({ girisli: girisli(), sifirla: tokenler.sifirla }).then((r) => { if (r === 'hesap') hesapAc('guvenlik'); });
   durum.harita = await haritaKur($('#harita'), {
     parselTik: parselSec,
     carsiTik: (k) => { durum.carsiAlt = k; sekmeSec('carsi'); },
@@ -395,7 +396,7 @@ function ustCiz() {
   $('#kullanici').hidden = !b;
   if (b) {
     $('#bakiyeDeger').textContent = sayi(b.bakiye);
-    $('#kullaniciAd').textContent = b.kullanici.ad;
+    $('#kullaniciAd').innerHTML = `${avatarSVG(b.hesap?.avatar, 26)}<span>${esc(b.kullanici.ad)}</span>`;
     const kalan = b.gorevler.filter((g) => !g.tamam).length + (b.seviye?.odulBekleyen ? 1 : 0) + (b.gunlukOdul ? 1 : 0);
     $('#gorevRozet').hidden = !kalan;
     $('#gorevRozet').textContent = kalan;
@@ -1439,89 +1440,21 @@ $('#panelTutamac').addEventListener('click', () => {
   panelBoyut(p.classList.contains('kucuk') ? '' : p.classList.contains('buyuk') ? 'kucuk' : 'buyuk');
 });
 
-// ================= Kimlik =================
-// Kipler: kayit · giris · ikiAdim (parola sonrası kod) · unuttum (sıfırlama bağlantısı iste) · sifirla (bağlantıdan yeni parola)
-let authMod = 'kayit';
-let sifirlamaTokeni = null;
-const AUTH_DUGME = { kayit: 'Ücretsiz başla', giris: 'Giriş yap', ikiAdim: 'Doğrula', unuttum: 'Sıfırlama bağlantısı gönder', sifirla: 'Yeni parolayı kaydet' };
-const AUTH_BILGI = {
-  ikiAdim: 'Hesabında iki adımlı doğrulama açık. Kimlik doğrulayıcı uygulamandaki 6 haneli kodu ya da bir kurtarma kodunu gir.',
-  unuttum: 'Hesabının e-posta adresini yaz; parolanı sıfırlaman için bir bağlantı gönderelim.',
-  sifirla: 'Yeni parolanı belirle. Kaydedince tüm cihazlardaki oturumların kapatılır.',
-};
-function authAc(mod) {
-  authModSec(mod);
-  const d = $('#karsilama');
-  if (!d.open) d.showModal();
-}
-function authModSec(mod) {
-  authMod = mod;
-  $('#authSekme').hidden = !['kayit', 'giris'].includes(mod);
-  $$('#authSekme button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.mod === mod)));
-  $$('[data-mod-alan]').forEach((el) => { el.hidden = !el.dataset.modAlan.split(' ').includes(mod); });
-  $('#authGonder').textContent = AUTH_DUGME[mod];
-  $('#authBilgi').hidden = !AUTH_BILGI[mod];
-  $('#authBilgi').textContent = AUTH_BILGI[mod] || '';
-  $('#sifreEtiket').textContent = mod === 'sifirla' ? 'Yeni parola' : 'Parola';
-  $('input[name="sifre"]').autocomplete = mod === 'giris' ? 'current-password' : 'new-password';
-  $('#authHata').textContent = '';
-  if (mod === 'ikiAdim') setTimeout(() => $('input[name="kod"]').focus(), 50);
-}
-$$('#authSekme button').forEach((b) => b.addEventListener('click', () => authModSec(b.dataset.mod)));
-$$('[data-auth-mod]').forEach((b) => b.addEventListener('click', () => authModSec(b.dataset.authMod)));
-$('#girisDugme').addEventListener('click', () => authAc('giris'));
-$('#misafirDugme').addEventListener('click', () => $('#karsilama').close());
-authModSec('kayit');
-
+// ================= Kimlik (tam sayfa açılış ve hesap akışları: giris-ui.js) =================
+function authAc(mod) { giris.ac({ kayit: 'karsilama', giris: 'giris', ikiAdim: 'ikiAdim' }[mod] || mod); }
 async function girisSonrasi(mesaj) {
-  $('#authHata').textContent = '';
   canliYenile();
-  $('#karsilama').close();
   await benYenile();
   await haritaYenile();
   if (durum.secili) durum.kart = await api(`/api/parsel/${encodeURIComponent(durum.secili)}`);
   ilIstatistikYenile();
-  tost(mesaj);
+  panelCiz();
+  if (mesaj) tost(mesaj);
 }
-$('#authForm').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const v = Object.fromEntries(new FormData(e.target));
-  const gonder = $('#authGonder');
-  gonder.disabled = true;
-  try {
-    if (authMod === 'kayit') {
-      const r = await api('/api/kayit', { ad: v.ad, email: v.email, sifre: v.sifre, dogumYili: Number(v.dogumYili) || null,
-        kosullarOnay: !!v.kosullarOnay, kvkkOnay: !!v.kvkkOnay, pazarlamaOnay: !!v.pazarlamaOnay });
-      await girisSonrasi(`🎉 Hoş geldin ${v.ad}! Hibe hesabında.${r.dogrulamaGerekli ? ' E-postana gelen bağlantıyla adresini doğrula.' : ''}`);
-      sekmeSec('gorevler');
-    } else if (authMod === 'giris') {
-      const r = await api('/api/giris', { email: v.email, sifre: v.sifre });
-      if (r.ikinciAdim) return authModSec('ikiAdim');
-      await girisSonrasi(`Tekrar hoş geldin, ${durum.ben?.kullanici.ad || ''}`);
-      panelCiz();
-    } else if (authMod === 'ikiAdim') {
-      await api('/api/giris/2fa', { kod: v.kod });
-      e.target.reset();
-      await girisSonrasi(`Tekrar hoş geldin, ${durum.ben?.kullanici.ad || ''}`);
-      panelCiz();
-    } else if (authMod === 'unuttum') {
-      const r = await api('/api/sifre/unuttum', { email: v.email });
-      $('#authBilgi').hidden = false;
-      $('#authBilgi').textContent = r.mesaj;
-    } else if (authMod === 'sifirla') {
-      await api('/api/sifre/sifirla', { token: sifirlamaTokeni, sifre: v.sifre });
-      sifirlamaTokeni = null;
-      authModSec('giris');
-      $('#authBilgi').hidden = false;
-      $('#authBilgi').textContent = '✅ Parolan değişti. Yeni parolanla giriş yapabilirsin.';
-    }
-  } catch (err) {
-    $('#authHata').textContent = err.message;
-    if (err.kod === 'IKI_ADIM_KILIT') authModSec('giris');
-  } finally {
-    gonder.disabled = false;
-  }
-});
+const giris = girisKur({ api, tost, girisSonrasi, iller: () => durum.bolgeler.filter((b) => b.type === 'IL'),
+  rehberBaslat: () => { durum.rehber?.guncelle(); sekmeSec('parsel'); } });
+$('#girisDugme').addEventListener('click', () => authAc('giris'));
+
 async function cikisSonrasi() {
   durum.ben = null; durum.cuzdan = null;
   canliYenile();

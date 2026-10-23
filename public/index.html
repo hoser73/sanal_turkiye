@@ -152,58 +152,29 @@
     </div>
   </dialog>
 
-  <dialog id="karsilama" class="modal">
-    <div class="karsilama-gorsel" aria-hidden="true">
-      <span class="kg kg-gunes">☀️</span><span class="kg kg-bulut">☁️</span><span class="kg kg-ev">🏡</span><span class="kg kg-agac">🌳</span>
-      <span class="kg kg-agac2">🌲</span><span class="kg kg-traktor">🚜</span><span class="kg kg-inek">🐄</span><span class="kg kg-koyun">🐑</span>
-      <span class="kg kg-cicek">🌻</span><span class="kg kg-cicek2">🌷</span>
+  <section id="acilis" class="acilis" hidden role="dialog" aria-modal="true" aria-labelledby="acilisBaslik">
+    <div class="acilis-sahne" aria-hidden="true">
+      <span class="as-gunes"></span><span class="as-bulut b1"></span><span class="as-bulut b2"></span><span class="as-bulut b3"></span>
+      <span class="as-tepe t1"></span><span class="as-tepe t2"></span><span class="as-tepe t3"></span>
+      <span class="as-oge as-ev">🏡</span><span class="as-oge as-ambar">🛖</span><span class="as-oge as-agac a1">🌳</span><span class="as-oge as-agac a2">🌲</span><span class="as-oge as-agac a3">🌳</span>
+      <span class="as-oge as-traktor">🚜</span><span class="as-oge as-inek">🐄</span><span class="as-oge as-koyun">🐑</span><span class="as-oge as-tavuk">🐓</span>
+      <span class="as-oge as-cicek c1">🌻</span><span class="as-oge as-cicek c2">🌷</span><span class="as-oge as-cicek c3">🌻</span>
     </div>
-    <div class="modal-govde">
-      <p class="ust-baslik">Yaşayan dijital ülke simülasyonu</p>
-      <h1>Haritada bir yer seç, geliştir, bölgeni yönet.</h1>
-      <p><b>81 ilin tamamı</b> açık: gerçek Türkiye haritası üzerinde köyünü, mahalleni bul; tarla ek, ev kur, komşularınla ticaret yap. Ücretsiz başla, 500 akçe hoş geldin hibesi al.</p>
-      <ul class="karsilama-ozellik">
-        <li><b>81</b> il</li><li><b>973</b> ilçe</li><li><b>~870 milyon</b> parsel hücresi</li><li><b>2B · 3B</b> harita</li>
-      </ul>
-
-      <form id="authForm" class="form" novalidate>
-        <div class="form-sekme" role="tablist" id="authSekme">
-          <button type="button" data-mod="kayit" aria-selected="true">Ücretsiz başla</button>
-          <button type="button" data-mod="giris" aria-selected="false">Giriş yap</button>
-        </div>
-        <p class="form-bilgi" id="authBilgi" hidden></p>
-        <label data-mod-alan="kayit">Oyuncu adı
-          <input name="ad" autocomplete="nickname" maxlength="32" placeholder="ör. Meramlı Çiftçi">
-        </label>
-        <label data-mod-alan="kayit giris unuttum">E-posta
-          <input name="email" type="email" autocomplete="email">
-        </label>
-        <label data-mod-alan="kayit giris sifirla"><span id="sifreEtiket">Parola</span>
-          <input name="sifre" type="password" autocomplete="current-password" minlength="8">
-        </label>
-        <label data-mod-alan="kayit">Doğum yılı
-          <input name="dogumYili" type="number" inputmode="numeric" min="1900" max="2100" placeholder="ör. 1994">
-          <span class="kucuk">13 yaşından itibaren katılabilirsin. 18 yaş altı hesaplarda sohbet kapalı başlar ve oyun süresi hatırlatıcısı açıktır.</span>
-        </label>
-        <label data-mod-alan="ikiAdim">Doğrulama kodu
-          <input name="kod" inputmode="numeric" autocomplete="one-time-code" maxlength="9" placeholder="123456 ya da kurtarma kodu">
-        </label>
-        <div class="onaylar" data-mod-alan="kayit">
-          <label class="onay"><input type="checkbox" name="kosullarOnay"> <span><a href="/yasal/kullanim-kosullari.html" target="_blank" rel="noopener">Kullanım Koşulları</a>'nı okudum, kabul ediyorum.</span></label>
-          <label class="onay"><input type="checkbox" name="kvkkOnay"> <span><a href="/yasal/kvkk.html" target="_blank" rel="noopener">KVKK Aydınlatma Metni</a>'ni okudum.</span></label>
-          <label class="onay"><input type="checkbox" name="pazarlamaOnay"> <span>Etkinlik ve yenilik e-postaları almak istiyorum (isteğe bağlı).</span></label>
-        </div>
-        <p class="form-hata" id="authHata" role="alert"></p>
-        <button class="dugme birincil genis" type="submit" id="authGonder">Ücretsiz başla</button>
-        <div class="auth-alt">
-          <button type="button" class="bag" data-mod-alan="giris" data-auth-mod="unuttum">Parolamı unuttum</button>
-          <button type="button" class="bag" data-mod-alan="unuttum sifirla ikiAdim" data-auth-mod="giris">← Girişe dön</button>
-        </div>
-      </form>
-      <button type="button" class="bag" id="misafirDugme">Önce haritayı gezmek istiyorum</button>
-      <p class="kucuk">Bu bir oyundur: getiri, değer artışı veya geri alım vaadi yoktur.</p>
+    <div class="acilis-icerik">
+      <div class="acilis-tanitim">
+        <div class="acilis-logo"><img src="/icon.svg" alt="" width="56" height="56"><span>Sanal <b>Türkiye</b></span></div>
+        <h1>Gerçek Türkiye haritasında<br>çiftliğini kur.</h1>
+        <ul class="acilis-ozellik">
+          <li><span>🗺️</span><div><b>81 il, 973 ilçe</b>Köyünü, mahalleni bul; tarlanı haritadan seç.</div></li>
+          <li><span>🌾</span><div><b>Ek, hasat et, büyü</b>Hayvanlar, yöresel ürünler, 3B balık tutma.</div></li>
+          <li><span>🌦️</span><div><b>Gerçek hava</b>Yağmur tarlanı sular, don uyarısı gelir.</div></li>
+          <li><span>🤝</span><div><b>Komşuluk ve yönetim</b>Ticaret yap, muhtar ol, belediyeni yönet.</div></li>
+        </ul>
+        <p class="acilis-not">Ücretsiz · 500 akçe hoş geldin hibesi · Akçe nakde çevrilmez; bu bir oyundur.</p>
+      </div>
+      <div class="acilis-kart" id="acilisKart"></div>
     </div>
-  </dialog>
+  </section>
 
   <div class="tostlar" id="tostlar" aria-live="polite"></div>
 

@@ -17,6 +17,12 @@ function uretimDenetimi(env = process.env) {
   if (!env.ANTHROPIC_API_KEY && env.YAPAY_ZEKA !== 'kapali') uyarilar.push('ANTHROPIC_API_KEY yok; yapay zekâ özellikleri kural tabanlı yedekle çalışır');
   if ((env.HAVA_KAYNAGI || 'open-meteo') === 'open-meteo') uyarilar.push('Open-Meteo ücretsiz uç noktası ticari olmayan kullanım içindir; ticari yayında abonelik gerekir');
   if (!env.VERI_DIZINI) uyarilar.push('VERI_DIZINI tanımlı değil; veri uygulama klasöründeki data/ altında tutulacak');
+  // Giriş yolları (docs/giris-yollari.md)
+  if (!(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET)) uyarilar.push('Google ile giriş kapalı (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET yok)');
+  if (!(env.APPLE_CLIENT_ID && env.APPLE_TEAM_ID && env.APPLE_KEY_ID && env.APPLE_PRIVATE_KEY)) uyarilar.push('Apple ile giriş kapalı (APPLE_* ayarları yok)');
+  if (env.SMS_SAGLAYICI !== 'netgsm') uyarilar.push('SMS sağlayıcısı yok; telefon doğrulama kapalı');
+  else if (!(env.NETGSM_KULLANICI && env.NETGSM_SIFRE && env.NETGSM_BASLIK)) hatalar.push('SMS_SAGLAYICI=netgsm için NETGSM_KULLANICI, NETGSM_SIFRE ve NETGSM_BASLIK gerekli');
+  if (env.TELEFON_ZORUNLU === '1' && env.SMS_SAGLAYICI !== 'netgsm') hatalar.push('TELEFON_ZORUNLU=1 için SMS sağlayıcısı gerekli');
   return { hatalar, uyarilar, uretim: true };
 }
 
