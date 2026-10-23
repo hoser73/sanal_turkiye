@@ -5,7 +5,8 @@ import * as THREE from '/vendor/three/three.module.js';
 import { kararli, alanHesapla, kaldir, birlestir } from './dunya-ortak.js';
 import { kiremitTuvali, dokuCiz } from './ciftlik-doku.js';
 import { parselParcalari } from './modeller.js';
-import { S, parcaEkle } from './model3d.js';
+import { S } from './model3d.js';
+import { parselModeli } from './parsel3d.js';
 import * as G from './izgara.js';
 
 // Sıcak sıva tonları, köyde taş; kiremit (dokuyla çarpılır), düz çatılar
@@ -323,8 +324,8 @@ export function binaKur(ctx) {
       const [x, zz] = ctx.yerel(lng, lat);
       if (Math.hypot(x, zz) > 4000) continue;
       const g = new THREE.Group();
-      const parcalar = parselParcalari(z, yp, ek, kz, ss);
-      for (const p of parcalar) parcaEkle(p, 0, 0, g);
+      const parcalar = parselParcalari(z, yp, ek, kz, ss);   // yalnızca baca yeri için
+      g.add(parselModeli({ id: `${gx},${gy}`, imar: z, yp, ek, kz, ss }, { ayrinti: 0.45, gece: ortak.gece ?? 0, zeminY: sahip ? 0.1 : 0 }));
       if (sahip) {
         // Sahipli parsel: çiftlik oyunundaki gibi çitle çevrili tarla ya da avlu
         const plaka = new THREE.Mesh(plakaGeo, z === 'TARIM' ? plakaMalz.toprak : plakaMalz.cimen);

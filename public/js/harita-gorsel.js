@@ -1,10 +1,9 @@
 // Harita görsel katmanı: tuvalde çizilen desenler ve renkli emoji simgeleri, gerçek saate bağlı gökyüzü / gece / şehir ışıkları,
 // sahip olunan ve seçili parsellerin ışıması, gerçek havaya göre yağmur ve kar efekti. Hepsi isteğe bağlı süslemedir;
-// hareket azaltma tercihi (prefers-reduced-motion) açıksa canlandırmalar durur.
+// canlandırmalar oyunun kendi ayarına bağlıdır (sistemin hareketi azalt tercihi dünyayı dondurmaz).
 import { gunesKonumu } from './gunes.js';
 import { CIFTLIK_DOKULARI, dokuCiz } from './ciftlik-doku.js';
 
-const hareketAz = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const ORAN = Math.min(2, window.devicePixelRatio || 1);
 
 function tuval(w, h) {
@@ -203,7 +202,6 @@ export function yagisKur(kap) {
   }
   yagis = {
     ayarla(yeniTur, yeniSiddet = 0.5) {
-      if (hareketAz()) yeniTur = null;
       tur = yeniTur; siddet = yeniSiddet;
       const adet = tur ? Math.round((tur === 'yagmur' ? 320 : 300) * Math.min(1.6, 0.4 + siddet) * (c.width * c.height) / (1440 * 900 * ORAN * ORAN)) : 0;
       parcaciklar = Array.from({ length: adet }, yeni);

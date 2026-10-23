@@ -34,7 +34,7 @@ const latOf = (y) => (Math.atan(Math.sinh(Math.PI * (1 - 2 * y))) * 180) / Math.
 export function dunyaKur(map, { grafik = 'yuksek' } = {}) {
   let ayar = GRAFIK[grafik] || GRAFIK.yuksek;
   let etkin = !ayar.kapali;
-  let renderer = null;
+  let renderer = null, bekleyenHdr = null;
   const sahne = new THREE.Scene();
   const kamera = new THREE.Camera();
   const gok = new THREE.HemisphereLight('#dceefc', '#8a7a5c', 1.1);
@@ -209,6 +209,8 @@ export function dunyaKur(map, { grafik = 'yuksek' } = {}) {
       renderer.toneMapping = THREE.ACESFilmicToneMapping;
       renderer.toneMappingExposure = 1.0;
       yenilePlanla(50);
+      // Gökyüzü ışığı (HDRI): dosya burada yüklenir, ortam haritası çizim sırasında üretilir (MapLibre'nin GL durumu bozulmasın)
+      import('/vendor/three-ek/loaders/HDRLoader.js').then(({ HDRLoader }) => new HDRLoader().load('/img/doku/gokyuzu_1k.hdr', (hdr) => { bekleyenHdr = hdr; map.triggerRepaint(); })).catch(() => {});
     },
     render(gl, args) {
       if (!etkin || !koken.ayarli || map.getZoom() < 9.3) return;
@@ -223,13 +225,21 @@ export function dunyaKur(map, { grafik = 'yuksek' } = {}) {
       kamera.projectionMatrix.fromArray(args.defaultProjectionData.mainMatrix).multiply(kokenMatrisi);
       kamera.projectionMatrixInverse.copy(kamera.projectionMatrix).invert();
       renderer.resetState();
+      if (bekleyenHdr) {
+        bekleyenHdr.mapping = THREE.EquirectangularReflectionMapping;
+        const p = new THREE.PMREMGenerator(renderer);
+        sahne.environment = p.fromEquirectangular(bekleyenHdr).texture; sahne.environmentIntensity = 0.5;
+        p.dispose(); bekleyenHdr.dispose(); bekleyenHdr = null;
+        renderer.resetState();
+      }
       renderer.setViewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
       renderer.render(sahne, kamera);
       if (akici) map.triggerRepaint();   // kısa eylem efekti: akıcı
       else if (canli && hareket && ayar.animasyon) tikPlanla();
     },
   };
-  const hareketAz = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // Hareketli öğeler yalnızca oyunun kendi ayarıyla (Görünüm → Hareketli öğeler) kapanır; sistemin "hareketi azalt" tercihi
+  // fare oynamadıkça dünyayı donduruyordu.
   // Canlandırma saati: hareketli öğeler varken haritayı saniyede ~20 kez yeniden çizdirir (her karede değil).
   // Harita sürüklenir ya da yakınlaşırken zaten çizildiğinden ek istek gönderilmez.
   let tik = 0;
@@ -237,7 +247,7 @@ export function dunyaKur(map, { grafik = 'yuksek' } = {}) {
     if (tik) return;
     tik = setTimeout(() => {
       tik = 0;
-      if (!document.hidden && !hareketAz() && !map.isMoving() && etkin) map.triggerRepaint();
+      if (!document.hidden && !map.isMoving() && etkin) map.triggerRepaint();
     }, 50);
   }
 
@@ -271,7 +281,7 @@ export function dunyaKur(map, { grafik = 'yuksek' } = {}) {
     hava(liste) { ortak.hava = liste || []; },
     // Eylem efekti (hasat, sulama, ekim, toplama): parsel merkezinde kısa parçacık patlaması
     efekt(tur, lng, lat, ikon) {
-      if (!etkin || !koken.ayarli || hareketAz()) return;
+      if (!etkin || !koken.ayarli || !hareket) return;
       const [x, z] = yerel(lng, lat);
       if (Math.hypot(x, z) > 6000) return;
       efekt.patlat(tur, x, yukseklik(x, z), z, ikon);

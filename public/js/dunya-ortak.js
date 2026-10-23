@@ -98,7 +98,7 @@ export function kaldir(sahne, ...nesneler) {
   for (const n of nesneler.flat()) {
     if (!n) continue;
     sahne.remove(n);
-    n.traverse?.((o) => { if ((o.isMesh || o.isLine) && !o.userData.paylasimli) o.geometry?.dispose(); });
+    n.traverse?.((o) => { if ((o.isMesh || o.isLine) && !o.userData.paylasimli) o.geometry?.dispose(); if (o !== n && o.isInstancedMesh) o.dispose(); });
     if (n.isInstancedMesh) n.dispose();
   }
 }

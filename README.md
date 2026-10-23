@@ -1,4 +1,4 @@
-# Sanal Türkiye — prototip (v0.21, ulusal)
+# Sanal Türkiye — prototip (v0.22, ulusal)
 
 Yaşayan dijital ülke simülasyonu. **81 ilin tamamı açık**: gerçek Türkiye haritası üzerinde herhangi bir köye, mahalleye yakınlaşıp parsel edinebilir, tarla ekip yapı kurabilir, oyuncular arası pazarda alım satım yapabilirsin. Harita 2B ve 3B görünümlüdür.
 
@@ -34,6 +34,12 @@ Ortam değişkenleri (v0.6 eklemeleri): `TABAN_URL` (e-posta bağlantıları; ü
 `npm run dev` seçimleri tek başına denemek için `SECIM_HIZI=1440 SECIM_MIN_SECMEN=1 BELEDIYE_MIN_SECMEN=1` ile çalışır (1 oyun günü = 1 dakika): muhtarlık seçimi ≈ 8 dakika, belediye seçimi ≈ 12 dakika, meclis oylaması 1 dakika, proje yapımı 2–4 dakika, muhtarlık dönemi 30, belediye dönemi 90 dakika; günlük devlet katkısı dakikada bir işler. `npm start` gerçek süreleri kullanır.
 
 > Not: v0.1–0.2'nin Meram ızgarası ulusal ızgarayla uyumsuz olduğundan eski `data/sanalturkiye.db` dosyası kullanılmaz (silinmedi).
+
+## v0.22 — ayrıntılı parsel modelleri (harita ve panel maketi)
+
+- `public/js/parsel3d.js`: paneldeki dönen maket ve haritadaki 3B dünya aynı ayrıntılı modeli çizer. Ekinler gerçek bitki modelleriyle, büyümeye göre boy atar ve olgunlaştıkça renk değiştirir: sıra sıra buğday, kazıklı domates, düz kesilmiş çay çitleri, pamuk kozaları, telli bağ ve üzüm salkımları, meyveli elma/kayısı/fındık/zeytin ağaçları. Tarla zemini sürülmüş toprak dokusu (karık normal haritalı). Yapılar: cumbalı köy evi, ahır, oluklu silo (su deposu), alüminyum çerçeveli cam sera (içinde fide sıraları), eğik güneş panelleri, tel çit, damla sulama boruları ve pompa, kümes ve tavuklar, ağıl ve koyunlar, inek ahırı ve inekler, peyzaj ağaçları. Ayrıntılı modeli olmayan yapılar ve süsler eski parça tanımlarıyla çizilir.
+- Panel maketi: komşu hücrelerde rastgele ekinli tarlalar, ağaçlı orman/park, köy evli konut; kaidede katmanlı toprak kesiti; gerçek gökyüzü ışığı (HDRI), 2048 gölge haritası.
+- Harita 3B katmanına da gökyüzü ışığı (HDRI ortam haritası çizim sırasında üretilir; MapLibre'nin GL durumu bozulmaz).
 
 ## v0.21 — tam ekran harita, katlanır panel
 

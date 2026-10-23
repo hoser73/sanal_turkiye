@@ -9,7 +9,7 @@ const rnd = () => { tohum = (tohum * 16807) % 2147483647; return (tohum - 1) / 2
 const ara = (a, b) => a + rnd() * (b - a);
 const hash2 = (x, y) => { const s = Math.sin(x * 127.1 + y * 311.7) * 43758.5453; return s - Math.floor(s); };
 // Döşenebilir (kenarları birleşen) gürültü: u, v ∈ [0, 1)
-function pg(x, y, p) {
+export function pg(x, y, p) {
   const ix = Math.floor(x), iy = Math.floor(y);
   let fx = x - ix, fy = y - iy; fx = fx * fx * (3 - 2 * fx); fy = fy * fy * (3 - 2 * fy);
   const h = (a, b) => hash2(((a % p) + p) % p, ((b % p) + p) % p);
@@ -38,7 +38,7 @@ function normalHaritasi(yc, guc = 3) {
   return doku(c, false);
 }
 // Piksel piksel doku: f(u, v) → [r, g, b, yükseklik 0..1]
-function pikselDoku(S, f, guc) {
+export function pikselDoku(S, f, guc) {
   const [c, x] = tuval(S), [hc, hx] = tuval(S), img = x.createImageData(S, S), yim = hx.createImageData(S, S);
   for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) {
     const [r, g, b, y] = f(i / S, j / S), o = (j * S + i) * 4;
@@ -689,4 +689,104 @@ export function bayrakKumasi(M, { en = 9, boy = 6, nx = 42, ny = 28 } = {}) {
   // Başlangıçta biraz çalıştır ki ilk karede bayrak düz bir levha gibi durmasın
   for (let i = 0; i < 240; i++) adim(1 / 90, 1, i / 90);
   return { mesh, adim };
+}
+
+// ---------- Ortak yardımcılar (açılış sahnesi ve parsel modeli)
+const malz = (renk, o = {}) => new THREE.MeshStandardMaterial({ color: renk, roughness: 0.85, metalness: 0, ...o });
+function gurultu(x, y) {
+  const ix = Math.floor(x), iy = Math.floor(y);
+  let fx = x - ix, fy = y - iy; fx = fx * fx * (3 - 2 * fx); fy = fy * fy * (3 - 2 * fy);
+  const a = hash2(ix, iy), b = hash2(ix + 1, iy), c = hash2(ix, iy + 1), d = hash2(ix + 1, iy + 1);
+  return a + (b - a) * fx + (c - a) * fy + (a - b - c + d) * fx * fy;
+}
+// Fotoğraf dokuları (Poly Haven, CC0): bir kez yüklenir, aynı malzemelere uygulanır; yüklenene kadar prosedürel dokular kalır
+let fotoSozu = null;
+export function fotoDokulariYukle(M, maksAni = 8) {
+  if (fotoSozu) return fotoSozu;
+  const yukle = (ad, renkli) => new Promise((coz) => new THREE.TextureLoader().load(`/img/doku/${ad}.jpg`, (t) => {
+    if (renkli) t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = maksAni; coz(t);
+  }, undefined, () => coz(null)));
+  const fotoDoku = async (m, ad, { metal = false, renk = null, tekrar = 1, donme = 0 } = {}) => {
+    const [r1, n1, a1] = await Promise.all([yukle(`${ad}_renk`, true), yukle(`${ad}_normal`), yukle(`${ad}_arm`)]);
+    if (!r1) return;
+    for (const t of [r1, n1, a1]) if (t) { t.repeat.set(tekrar, tekrar); t.rotation = donme; t.center.set(0.5, 0.5); }
+    m.map = r1; m.normalMap = n1; m.normalScale = new THREE.Vector2(1, 1);
+    if (a1) { m.aoMap = a1; m.roughnessMap = a1; m.roughness = 1; if (metal) { m.metalnessMap = a1; m.metalness = 1; } }
+    if (renk) m.color.set(renk);
+    m.needsUpdate = true;
+  };
+  fotoSozu = Promise.all([
+    fotoDoku(M.sva, 'sva'), fotoDoku(M.tas, 'tas'), fotoDoku(M.kiremit, 'kiremit', { tekrar: 0.6 }), fotoDoku(M.ahirTahta, 'tahta', { renk: '#ff6650' }),
+    fotoDoku(M.sac, 'sac', { metal: true }), fotoDoku(M.siloSac, 'sac', { metal: true, donme: Math.PI / 2 }), yukle('zemin_renk', true),
+  ]).then((s) => ({ zemin: s[6] })).catch(() => ({}));
+  return fotoSozu;
+}
+
+// Buğday öbeği: 7 sap; başaklar kalın ve açık renk
+export function basakGeo() {
+  const pos = [], col = [], idx = [];
+  let v = 0;
+  for (let s = 0; s < 7; s++) {
+    const ox = (rnd() - 0.5) * 0.55, oz = (rnd() - 0.5) * 0.55, h = 0.8 + rnd() * 0.32, egim = (rnd() - 0.5) * 0.3, yon = rnd() * Math.PI;
+    const dx = Math.cos(yon), dz = Math.sin(yon);
+    for (let i = 0; i <= 5; i++) {
+      const t = i / 5, y = t * h, x = ox + egim * t * t;
+      const w = i === 5 ? 0.004 : t > 0.68 ? 0.034 : 0.011;
+      pos.push(x - dx * w, y, oz - dz * w, x + dx * w, y, oz + dz * w);
+      const c = t > 0.68 ? [0.92, 0.66, 0.24] : [0.58 + 0.28 * t, 0.47 + 0.2 * t, 0.17 + 0.05 * t];
+      col.push(...c, ...c);
+      if (i < 5) idx.push(v, v + 1, v + 2, v + 1, v + 3, v + 2);
+      v += 2;
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  g.setIndex(idx); g.computeVertexNormals();
+  return g;
+}
+
+export function inek(tur) {
+  const g = new THREE.Group();
+  const govdeGeo = new THREE.CapsuleGeometry(0.6, 1.3, 4, 10).rotateZ(Math.PI / 2);
+  const p = govdeGeo.attributes.position, renk = [], ofs = rnd() * 50;
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+    const c = tur === 'alaca' ? (gurultu(x * 1.6 + ofs, y * 1.6 + z * 1.3) > 0.55 ? [0.08, 0.07, 0.07] : [0.93, 0.91, 0.87]) : tur === 'kahve' ? [0.42, 0.25, 0.14] : [0.16, 0.13, 0.11];
+    renk.push(...c);
+  }
+  govdeGeo.setAttribute('color', new THREE.Float32BufferAttribute(renk, 3));
+  const govde = new THREE.Mesh(govdeGeo, malz('#ffffff', { vertexColors: true, roughness: 0.75 }));
+  govde.position.y = 1.25; govde.scale.set(1, 1, 0.82); govde.castShadow = true; g.add(govde);
+  const kafaRenk = tur === 'alaca' ? '#efebe4' : tur === 'kahve' ? '#5c3820' : '#241d18';
+  const bas = new THREE.Group(); bas.position.set(1.15, 1.55, 0); g.add(bas);
+  const kafa = new THREE.Mesh(new THREE.SphereGeometry(0.3, 10, 8), malz(kafaRenk)); kafa.scale.set(1.5, 0.95, 0.85); kafa.position.set(0.38, -0.12, 0); kafa.castShadow = true; bas.add(kafa);
+  const burun = new THREE.Mesh(new THREE.SphereGeometry(0.19, 8, 6), malz('#d9a39a')); burun.position.set(0.78, -0.24, 0); bas.add(burun);
+  for (const z of [0.25, -0.25]) {
+    const kulak = kutu(0.08, 0.14, 0.26, malz(kafaRenk), 0.2, 0.05, z * 1.3); bas.add(kulak);
+    const boynuz = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.22, 6), malz('#e8dcc4')); boynuz.position.set(0.25, 0.2, z * 0.8); boynuz.rotation.x = z > 0 ? 0.6 : -0.6; bas.add(boynuz);
+  }
+  const bacaklar = [];
+  for (const [x, z] of [[0.75, 0.3], [0.75, -0.3], [-0.75, 0.3], [-0.75, -0.3]]) {
+    const b = new THREE.Group(), l = silindir(0.1, 0.09, 0.95, malz(tur === 'alaca' ? '#e9e5dd' : kafaRenk), 6); l.position.y = -0.47; b.add(l);
+    b.position.set(x, 0.95, z); g.add(b); bacaklar.push(b);
+  }
+  const kuyruk = new THREE.Group(), kl = silindir(0.03, 0.03, 0.9, malz('#2a2420'), 4); kl.position.y = -0.45; kuyruk.add(kl); kuyruk.position.set(-1.25, 1.6, 0); g.add(kuyruk);
+  g.userData = { bas, bacaklar, kuyruk };
+  return g;
+}
+export function koyun() {
+  const g = new THREE.Group(), yun = malz('#ece5d4', { roughness: 1 }), siyah = malz('#2a2522');
+  const geo = new THREE.SphereGeometry(0.5, 10, 8), p = geo.attributes.position, o = rnd() * 9;
+  for (let i = 0; i < p.count; i++) { const k = 1 + (gurultu(p.getX(i) * 6 + o, p.getY(i) * 6 + p.getZ(i) * 4) - 0.5) * 0.25; p.setXYZ(i, p.getX(i) * k * 1.35, p.getY(i) * k, p.getZ(i) * k); }
+  geo.computeVertexNormals();
+  const govde = new THREE.Mesh(geo, yun); govde.position.y = 0.85; govde.castShadow = true; g.add(govde);
+  const bas = new THREE.Group(); bas.position.set(0.62, 1.0, 0); g.add(bas);
+  const kafa = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 6), siyah); kafa.scale.set(1.45, 0.9, 0.85); kafa.position.x = 0.18; bas.add(kafa);
+  const bacaklar = [];
+  for (const [x, z] of [[0.38, 0.2], [0.38, -0.2], [-0.38, 0.2], [-0.38, -0.2]]) {
+    const b = new THREE.Group(), l = silindir(0.05, 0.05, 0.6, siyah, 5); l.position.y = -0.3; b.add(l); b.position.set(x, 0.6, z); g.add(b); bacaklar.push(b);
+  }
+  g.userData = { bas, bacaklar };
+  return g;
 }

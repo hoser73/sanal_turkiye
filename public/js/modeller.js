@@ -228,6 +228,18 @@ export function susParcalari(tur, yuva) {
   return p;
 }
 
+// Yapıların parsel içindeki yuvaları (parselParcalari ile aynı kural): ayrıntılı 3B model (parsel3d.js) bunu kullanır
+export function yerlesim(yp) {
+  let anaSira = 0;
+  return (yp || '').split(',').filter(Boolean).map((kayit) => {
+    const [tip, tamamStr] = kayit.split(':');
+    let yuva = [0, 0, 1, 1];
+    if (TARIM_YUVALARI[tip]) yuva = TARIM_YUVALARI[tip];
+    else if (!['TEL_CIT', 'SULAMA_HATTI', 'PEYZAJ', 'SU_DEPOSU', 'GUNES_PANELI'].includes(tip)) yuva = ANA_YUVALAR[anaSira++ % ANA_YUVALAR.length];
+    return { tip, tamam: tamamStr === '1', yuva };
+  });
+}
+
 // Bir parselin tüm parçaları: yp = "EV:1,PEYZAJ:0", ek = "DOMATES:0.42"
 // kz: kozmetik kodu "cati:#hex|bayrak:#hex" — çatı rengini değiştirir, parsel köşesine flama diker
 // ss: süsler "KORKULUK:0,KUYU:3" (tür:yuva)

@@ -5,6 +5,7 @@ import { parselParcalari, PALET } from './modeller.js';
 import { S, tohumlu, malzeme, kutu, yerel, parcaEkle } from './model3d.js';
 import { dokuCiz } from './ciftlik-doku.js';
 import { gunesKonumu, isikRengi } from './gunes.js';
+import { parselModeli, komsuModeli, kaideDokusu, gokIsigi } from './parsel3d.js';
 
 const TOPRAK = '#a9845a', TOPRAK_KOYU = '#7b5d3d';
 const ZEMIN = {
@@ -26,7 +27,7 @@ function ciftlikDokusu(ad, tekrar) {
 export function sahneKur() {
   let renderer;
   try {
-    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'low-power' });
+    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
   } catch {
     return null;   // WebGL yoksa sahne gösterilmez
   }
@@ -39,12 +40,14 @@ export function sahneKur() {
   renderer.domElement.className = 'sahne3d-tuval';
 
   const sahne = new THREE.Scene();
+  gokIsigi(renderer).then((env) => { if (env) { sahne.environment = env; sahne.environmentIntensity = 0.55; ciz(); } });
   const gok = new THREE.HemisphereLight('#e3f0fb', '#c7b08a', 1.15);
   sahne.add(gok);
   const gunes = new THREE.DirectionalLight('#fff1d6', 2.1);
   gunes.position.set(40, 70, 30);
   gunes.castShadow = true;
-  gunes.shadow.mapSize.set(1024, 1024);
+  gunes.shadow.mapSize.set(2048, 2048);
+  gunes.shadow.normalBias = 0.04;
   Object.assign(gunes.shadow.camera, { left: -60, right: 60, top: 60, bottom: -60, near: 1, far: 220 });
   gunes.shadow.bias = -0.0008;
   sahne.add(gunes);
@@ -53,6 +56,8 @@ export function sahneKur() {
   const grup = new THREE.Group();
   sahne.add(grup);
   const dumanlar = [];
+  const kaideD = kaideDokusu();
+  let gece = 0;
   let bacaUstu = { x: 0, y: 18, z: 0 };
 
   let aci = Math.PI / 4, egim = 0.62, olcek = 1, kendiDon = true, gorunur = false, kap = null, kare = 0, son = 0;
@@ -68,6 +73,8 @@ export function sahneKur() {
   }
 
   function komsuDekoru(imar, ox, oz, tohum, hedef) {
+    const ayrintili = komsuModeli(imar, tohum, gece);
+    if (ayrintili) { ayrintili.position.set(ox, imar === 'TARIM' ? 0.3 : 0.3, oz); hedef.add(ayrintili); return; }
     const r = tohumlu(tohum);
     if (imar === 'KORUMA' || imar === 'PARK') {
       const adet = imar === 'KORUMA' ? 9 : 4;
@@ -121,14 +128,16 @@ export function sahneKur() {
     // Önceki maketi temizle
     for (const c of [...grup.children]) {
       grup.remove(c);
-      c.traverse((o) => { o.geometry?.dispose(); if (o.material?.map && ![...dokular.values()].includes(o.material.map)) { o.material.map.dispose(); o.material.dispose(); } });
+      c.traverse((o) => { if (o.isInstancedMesh) o.dispose(); if (o.userData.paylasimli) return; o.geometry?.dispose(); });
     }
     dumanlar.length = 0;
 
     // Toprak kaidesi (maket)
-    const kaide = kutu(S * 3 + 1, 5, S * 3 + 1, TOPRAK);
+    const kaideMalz = new THREE.MeshStandardMaterial({ map: kaideD, roughness: 0.95 }), kaideUst = malzeme(TOPRAK);
+    const kaide = new THREE.Mesh(new THREE.BoxGeometry(S * 3 + 1, 5, S * 3 + 1), [kaideMalz, kaideMalz, kaideUst, kaideUst, kaideMalz, kaideMalz]);
+    kaide.receiveShadow = true; kaide.userData.paylasimli = true;
     kaide.position.y = -2.5;
-    const alt = kutu(S * 3 + 1.4, 1.2, S * 3 + 1.4, TOPRAK_KOYU);
+    const alt = kutu(S * 3 + 1.4, 1.2, S * 3 + 1.4, '#3a2a1c');
     alt.position.y = -5.4;
     grup.add(kaide, alt);
 
@@ -150,8 +159,9 @@ export function sahneKur() {
     const ek = kart.ekin ? `${kart.ekin.tip}:${kart.ekin.ilerleme.toFixed(2)}` : '';
     const parsel = new THREE.Group();
     parsel.position.y = 0.6;
-    const parcalar = parselParcalari(imar, yp, ek, kart.kozmetik, (kart.susler || []).map((s) => `${s.tur}:${s.yuva}`).join(','));
-    for (const p of parcalar) parcaEkle(p, 0, 0, parsel);
+    const ss = (kart.susler || []).map((s) => `${s.tur}:${s.yuva}`).join(',');
+    const parcalar = parselParcalari(imar, yp, ek, kart.kozmetik, ss);   // yalnızca baca yeri için
+    parsel.add(parselModeli({ id: kart.id, imar, yp, ek, kz: kart.kozmetik, ss }, { ayrinti: 1, gece }));
     grup.add(parsel);
     // Sahip çerçevesi (altın)
     if (kart.sahip?.ben) {
@@ -184,6 +194,7 @@ export function sahneKur() {
     if (!konum) return;
     const g = gunesKonumu(konum.lon, konum.lat);
     const i = isikRengi(g.yukseklik);
+    gece = g.yukseklik < -2 ? 1 : 0;
     const az = g.azimut * Math.PI / 180, yk = Math.max(8, g.yukseklik) * Math.PI / 180;
     // Sahne: +x doğu, -z kuzey
     gunes.position.set(Math.sin(az) * Math.cos(yk) * 90, Math.sin(yk) * 90, -Math.cos(az) * Math.cos(yk) * 90);

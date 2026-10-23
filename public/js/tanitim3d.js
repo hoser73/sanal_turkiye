@@ -4,7 +4,7 @@
 // bulut/yağmur/rüzgâr Konya'nın gerçek havasından gelir; gece pencereler yanar. Kamera drone gibi yavaşça süzülür.
 import * as THREE from '/vendor/three/three.module.js';
 import { gunesKonumu } from './gunes.js';
-import { malzemeler, koyEvi, ahir, silo, turbin, agacUret, kabukMalzemesi, leylek, leylekYuvasi, ucak, gonder, bayrakKumasi } from './tanitim3d-model.js';
+import { malzemeler, koyEvi, ahir, silo, turbin, agacUret, kabukMalzemesi, leylek, leylekYuvasi, ucak, gonder, bayrakKumasi, basakGeo, inek, koyun, fotoDokulariYukle } from './tanitim3d-model.js';
 import { sonIslemKur } from './tanitim3d-efekt.js';
 
 const MOBIL = matchMedia('(max-width: 900px)').matches || /Mobi|Android|iPhone|iPad/.test(navigator.userAgent);
@@ -190,29 +190,6 @@ function birlestir(gs) {
   m.setIndex(idx);
   return m;
 }
-// Buğday öbeği: 7 sap; başaklar kalın ve açık renk
-function basakGeo() {
-  const pos = [], col = [], idx = [];
-  let v = 0;
-  for (let s = 0; s < 7; s++) {
-    const ox = (rnd() - 0.5) * 0.55, oz = (rnd() - 0.5) * 0.55, h = 0.8 + rnd() * 0.32, egim = (rnd() - 0.5) * 0.3, yon = rnd() * Math.PI;
-    const dx = Math.cos(yon), dz = Math.sin(yon);
-    for (let i = 0; i <= 5; i++) {
-      const t = i / 5, y = t * h, x = ox + egim * t * t;
-      const w = i === 5 ? 0.004 : t > 0.68 ? 0.034 : 0.011;
-      pos.push(x - dx * w, y, oz - dz * w, x + dx * w, y, oz + dz * w);
-      const c = t > 0.68 ? [0.92, 0.66, 0.24] : [0.58 + 0.28 * t, 0.47 + 0.2 * t, 0.17 + 0.05 * t];
-      col.push(...c, ...c);
-      if (i < 5) idx.push(v, v + 1, v + 2, v + 1, v + 3, v + 2);
-      v += 2;
-    }
-  }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-  g.setIndex(idx); g.computeVertexNormals();
-  return g;
-}
 function kutu(w, h, d, m, x = 0, y = 0, z = 0, ry = 0) {
   const k = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m);
   k.position.set(x, y, z); k.rotation.y = ry; k.castShadow = true; k.receiveShadow = true;
@@ -320,50 +297,6 @@ function traktor() {
   for (const z of [1.1, -1.1]) { const t = silindir(0.45, 0.45, 0.3, siyah, 14); t.rotation.x = Math.PI / 2; t.position.set(0, 0.45, z); romork.add(t); }
   romork.position.x = -4.2; g.add(romork);
   g.userData.tekerler = tekerler;
-  return g;
-}
-function inek(tur) {
-  const g = new THREE.Group();
-  const govdeGeo = new THREE.CapsuleGeometry(0.6, 1.3, 4, 10).rotateZ(Math.PI / 2);
-  const p = govdeGeo.attributes.position, renk = [], ofs = rnd() * 50;
-  for (let i = 0; i < p.count; i++) {
-    const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
-    const c = tur === 'alaca' ? (gurultu(x * 1.6 + ofs, y * 1.6 + z * 1.3) > 0.55 ? [0.08, 0.07, 0.07] : [0.93, 0.91, 0.87]) : tur === 'kahve' ? [0.42, 0.25, 0.14] : [0.16, 0.13, 0.11];
-    renk.push(...c);
-  }
-  govdeGeo.setAttribute('color', new THREE.Float32BufferAttribute(renk, 3));
-  const govde = new THREE.Mesh(govdeGeo, malz('#ffffff', { vertexColors: true, roughness: 0.75 }));
-  govde.position.y = 1.25; govde.scale.set(1, 1, 0.82); govde.castShadow = true; g.add(govde);
-  const kafaRenk = tur === 'alaca' ? '#efebe4' : tur === 'kahve' ? '#5c3820' : '#241d18';
-  const bas = new THREE.Group(); bas.position.set(1.15, 1.55, 0); g.add(bas);
-  const kafa = new THREE.Mesh(new THREE.SphereGeometry(0.3, 10, 8), malz(kafaRenk)); kafa.scale.set(1.5, 0.95, 0.85); kafa.position.set(0.38, -0.12, 0); kafa.castShadow = true; bas.add(kafa);
-  const burun = new THREE.Mesh(new THREE.SphereGeometry(0.19, 8, 6), malz('#d9a39a')); burun.position.set(0.78, -0.24, 0); bas.add(burun);
-  for (const z of [0.25, -0.25]) {
-    const kulak = kutu(0.08, 0.14, 0.26, malz(kafaRenk), 0.2, 0.05, z * 1.3); bas.add(kulak);
-    const boynuz = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.22, 6), malz('#e8dcc4')); boynuz.position.set(0.25, 0.2, z * 0.8); boynuz.rotation.x = z > 0 ? 0.6 : -0.6; bas.add(boynuz);
-  }
-  const bacaklar = [];
-  for (const [x, z] of [[0.75, 0.3], [0.75, -0.3], [-0.75, 0.3], [-0.75, -0.3]]) {
-    const b = new THREE.Group(), l = silindir(0.1, 0.09, 0.95, malz(tur === 'alaca' ? '#e9e5dd' : kafaRenk), 6); l.position.y = -0.47; b.add(l);
-    b.position.set(x, 0.95, z); g.add(b); bacaklar.push(b);
-  }
-  const kuyruk = new THREE.Group(), kl = silindir(0.03, 0.03, 0.9, malz('#2a2420'), 4); kl.position.y = -0.45; kuyruk.add(kl); kuyruk.position.set(-1.25, 1.6, 0); g.add(kuyruk);
-  g.userData = { bas, bacaklar, kuyruk };
-  return g;
-}
-function koyun() {
-  const g = new THREE.Group(), yun = malz('#ece5d4', { roughness: 1 }), siyah = malz('#2a2522');
-  const geo = new THREE.SphereGeometry(0.5, 10, 8), p = geo.attributes.position, o = rnd() * 9;
-  for (let i = 0; i < p.count; i++) { const k = 1 + (gurultu(p.getX(i) * 6 + o, p.getY(i) * 6 + p.getZ(i) * 4) - 0.5) * 0.25; p.setXYZ(i, p.getX(i) * k * 1.35, p.getY(i) * k, p.getZ(i) * k); }
-  geo.computeVertexNormals();
-  const govde = new THREE.Mesh(geo, yun); govde.position.y = 0.85; govde.castShadow = true; g.add(govde);
-  const bas = new THREE.Group(); bas.position.set(0.62, 1.0, 0); g.add(bas);
-  const kafa = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 6), siyah); kafa.scale.set(1.45, 0.9, 0.85); kafa.position.x = 0.18; bas.add(kafa);
-  const bacaklar = [];
-  for (const [x, z] of [[0.38, 0.2], [0.38, -0.2], [-0.38, 0.2], [-0.38, -0.2]]) {
-    const b = new THREE.Group(), l = silindir(0.05, 0.05, 0.6, siyah, 5); l.position.y = -0.3; b.add(l); b.position.set(x, 0.6, z); g.add(b); bacaklar.push(b);
-  }
-  g.userData = { bas, bacaklar };
   return g;
 }
 // =====================================================================================
@@ -713,24 +646,7 @@ export function ciftlik3d(kap, { hava = null, kaydirmaKok = null, olcek = () => 
   }
 
   // Fotoğraf gerçekliğinde dokular (Poly Haven, CC0) ve gündüz HDRI ortam ışığı: yüklenince yerine geçer
-  const maksAni = renderer.capabilities.getMaxAnisotropy();
-  const yukle = (ad, renkli) => new Promise((coz) => new THREE.TextureLoader().load(`/img/doku/${ad}.jpg`, (t) => {
-    if (renkli) t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = maksAni; coz(t);
-  }, undefined, () => coz(null)));
-  const fotoDoku = async (m, ad, { metal = false, renk = null, tekrar = 1, donme = 0 } = {}) => {
-    const [r1, n1, a1] = await Promise.all([yukle(`${ad}_renk`, true), yukle(`${ad}_normal`), yukle(`${ad}_arm`)]);
-    if (!r1 || !calisiyor) return;
-    for (const t of [r1, n1, a1]) if (t) { t.repeat.set(tekrar, tekrar); t.rotation = donme; t.center.set(0.5, 0.5); }
-    m.map = r1; m.normalMap = n1; m.normalScale = new THREE.Vector2(1, 1);
-    if (a1) { m.aoMap = a1; m.roughnessMap = a1; m.roughness = 1; if (metal) { m.metalnessMap = a1; m.metalness = 1; } }
-    if (renk) m.color.set(renk);
-    m.needsUpdate = true;
-  };
-  Promise.all([
-    fotoDoku(M.sva, 'sva'), fotoDoku(M.tas, 'tas'), fotoDoku(M.kiremit, 'kiremit', { tekrar: 0.6 }), fotoDoku(M.ahirTahta, 'tahta', { renk: '#ff6650' }),
-    fotoDoku(M.sac, 'sac', { metal: true }), fotoDoku(M.siloSac, 'sac', { metal: true, donme: Math.PI / 2 }),
-    yukle('zemin_renk', true).then((t) => { if (t) U.uDetay.value = t; }),
-  ]).catch(() => {});
+  fotoDokulariYukle(M, renderer.capabilities.getMaxAnisotropy()).then((d) => { if (calisiyor && d.zemin) U.uDetay.value = d.zemin; });
   if (gece < 0.5) import('/vendor/three-ek/loaders/HDRLoader.js').then(({ HDRLoader }) => new HDRLoader().load('/img/doku/gokyuzu_1k.hdr', (hdr) => {
     if (!calisiyor) return;
     hdr.mapping = THREE.EquirectangularReflectionMapping;
