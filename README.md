@@ -1,4 +1,4 @@
-# Sanal Türkiye — prototip (v0.14, ulusal)
+# Sanal Türkiye — prototip (v0.15, ulusal)
 
 Yaşayan dijital ülke simülasyonu. **81 ilin tamamı açık**: gerçek Türkiye haritası üzerinde herhangi bir köye, mahalleye yakınlaşıp parsel edinebilir, tarla ekip yapı kurabilir, oyuncular arası pazarda alım satım yapabilirsin. Harita 2B ve 3B görünümlüdür.
 
@@ -34,6 +34,15 @@ Ortam değişkenleri (v0.6 eklemeleri): `TABAN_URL` (e-posta bağlantıları; ü
 `npm run dev` seçimleri tek başına denemek için `SECIM_HIZI=1440 SECIM_MIN_SECMEN=1 BELEDIYE_MIN_SECMEN=1` ile çalışır (1 oyun günü = 1 dakika): muhtarlık seçimi ≈ 8 dakika, belediye seçimi ≈ 12 dakika, meclis oylaması 1 dakika, proje yapımı 2–4 dakika, muhtarlık dönemi 30, belediye dönemi 90 dakika; günlük devlet katkısı dakikada bir işler. `npm start` gerçek süreleri kullanır.
 
 > Not: v0.1–0.2'nin Meram ızgarası ulusal ızgarayla uyumsuz olduğundan eski `data/sanalturkiye.db` dosyası kullanılmaz (silinmedi).
+
+## v0.15 — zengin açılış sayfası
+
+Giriş yapmamış ziyaretçi artık kaydırılabilir, tam bir tanıtım sayfası görür (`#acilis`, `public/js/tanitim-ui.js`, `public/css/tanitim.css`):
+
+- **Kahraman:** elle çizilmiş katmanlı SVG çiftlik manzarası (dönen yel değirmeni, bacadan duman, uçan kuşlar, yürüyen traktör, hayvanlar); fareyle ve kaydırmayla derinlik efekti; İstanbul saatine göre gündüz / akşam / gece gökyüzü. Dönen başlık ("çiftliğini kur. / tarlanı ek. / göle olta at. …"), sayan sayaçlar, büyük şehirlerin anlık havası; sağda hesap kartı (giris-ui.js).
+- **Canlı veriler:** `GET /api/tanitim` (server/tanitim.js, 60 sn önbellek, kişisel veri yok): 24 saatlik hasat/ekim/balık sayıları, son olaylar (yalnızca yer + eylem, oyuncu adı yok), 8 büyük şehrin havası, süren etkinlik, yöresel ürünler, sponsorlar.
+- **Bölümler:** "Şu an Türkiye'de" kayan şeridi, 4 adımda nasıl oynanır, oyun içi ekran görüntüleriyle vitrin (`public/img/tanitim/`), etkileşimli 81 il haritası (üstüne gelince yöresel ürün, hava, çiftçi/tarla sayısı; "Bu ilde başla" kayıtta memleketi önceden seçer), özellikler, yöresel ürün şeridi, sponsorlar (varsa), SSS, kapanış çağrısı.
+- Kaydırınca beliren bölümler, `prefers-reduced-motion` desteği, telefonda tek sütun.
 
 ## v0.14 — giriş ve üyelik
 

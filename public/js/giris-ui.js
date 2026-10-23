@@ -19,7 +19,7 @@ export function girisKur({ api, tost, girisSonrasi, iller, rehberBaslat }) {
   const kok = document.getElementById('acilis');
   const kart = document.getElementById('acilisKart');
   let ekran = 'karsilama', yollar = { google: false, apple: false, passkey: true, telefon: false }, hata = '', bilgi = '';
-  let taslak = null, kayitBilgi = null, avatar = { t: 1, s: 0, p: 1, g: 0 }, adDurum = null, adZaman = 0, sifirlamaTokeni = null, telefonKodu = null;
+  let taslak = null, kayitBilgi = null, avatar = { t: 1, s: 0, p: 1, g: 0 }, adDurum = null, adZaman = 0, sifirlamaTokeni = null, telefonKodu = null, onerilenIl = null;
   const passkeyVar = passkeyDestekli();
   api('/api/giris/yollar').then((y) => { yollar = y; if (!kok.hidden) ciz(); }).catch(() => {});
 
@@ -126,7 +126,7 @@ export function girisKur({ api, tost, girisSonrasi, iller, rehberBaslat }) {
       <h2 id="acilisBaslik">Memleketin neresi?</h2>
       <p class="alt">Memleketinin il liginde puan toplarsın; hemşehrilerini görürsün. Tarlanı Türkiye'nin her yerinde açabilirsin.</p>${uyari()}
       <form class="form" data-f="memleket">
-        <label>İl<select name="plaka" required><option value="">İl seç…</option>${iller().slice().sort((x, y) => x.name.localeCompare(y.name, 'tr')).map((il) => `<option value="${esc(il.plaka)}">${esc(il.name)}</option>`).join('')}</select></label>
+        <label>İl<select name="plaka" required><option value="">İl seç…</option>${iller().slice().sort((x, y) => x.name.localeCompare(y.name, 'tr')).map((il) => `<option value="${esc(il.plaka)}"${il.plaka === onerilenIl ? ' selected' : ''}>${esc(il.name)}</option>`).join('')}</select></label>
         <button type="button" class="dugme genis" data-a="konum">📍 Konumumu kullan</button>
         <button class="dugme birincil genis">Kaydet ve oyuna başla</button>
       </form>
@@ -291,5 +291,5 @@ export function girisKur({ api, tost, girisSonrasi, iller, rehberBaslat }) {
     return null;
   }
 
-  return { ac, kapat, adresIsle, acikMi: () => !kok.hidden };
+  return { ac, kapat, adresIsle, acikMi: () => !kok.hidden, ilOner: (p) => { onerilenIl = p; } };
 }

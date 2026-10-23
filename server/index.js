@@ -133,7 +133,7 @@ dunya.rotalar(app, { h, auth });
 kooperatif.rotalar(app, { h, auth });
 simge.rotalar(app, { h, auth });
 // Komşuluk, yöresel ürünler, etkinlikler, balık tutma, hatırlatmalar
-for (const m of ['./komsuluk', './yoresel', './etkinlik', './balik', './hatirlatma', './iklim', './carsi', './giris-yollari']) require(m).rotalar(app, { h, auth, hazir });
+for (const m of ['./komsuluk', './yoresel', './etkinlik', './balik', './hatirlatma', './iklim', './carsi', './giris-yollari', './tanitim']) require(m).rotalar(app, { h, auth, hazir });
 yz.rotalar(app, { h, auth });
 kozmetik.rotalar(app, { h, auth });
 zaman.rotalar(app, { h });

@@ -19,6 +19,7 @@ import { balikOyunu } from './balik-ui.js';
 import { havaSeridi, havaPenceresi, iklimSatiri, ortuSatiri } from './hava-ui.js';
 import { carsiGirisi, dukkanHTML, bankaHTML } from './carsi-ui.js';
 import { girisKur } from './giris-ui.js';
+import { tanitimKur } from './tanitim-ui.js';
 import { avatarSVG } from './avatar.js';
 import { rehberKur } from './rehber.js';
 
@@ -1453,6 +1454,7 @@ async function girisSonrasi(mesaj) {
 }
 const giris = girisKur({ api, tost, girisSonrasi, iller: () => durum.bolgeler.filter((b) => b.type === 'IL'),
   rehberBaslat: () => { durum.rehber?.guncelle(); sekmeSec('parsel'); } });
+tanitimKur({ api, kayitAc: () => giris.ac('karsilama'), girisAc: () => giris.ac('giris'), kapat: () => giris.kapat(), ilOner: (p) => giris.ilOner(p) });
 $('#girisDugme').addEventListener('click', () => authAc('giris'));
 
 async function cikisSonrasi() {

@@ -1,10 +1,10 @@
 // Sanal Türkiye servis çalışanı: uygulama kabuğunu önbelleğe alır (çevrimdışı açılış), API'yi her zaman ağdan ister,
 // imar karolarını sınırlı önbellekte tutar ve web push bildirimlerini gösterir.
-const SURUM = 'st-v0.14.0';
+const SURUM = 'st-v0.15.0';
 const KABUK = [
-  '/', '/index.html', '/cevrimdisi.html', '/css/app.css', '/css/ciftlik.css', '/icon.svg', '/manifest.json',
+  '/', '/index.html', '/cevrimdisi.html', '/css/app.css', '/css/ciftlik.css', '/css/tanitim.css', '/icon.svg', '/manifest.json',
   '/js/app.js', '/js/yardimci.js', '/js/harita.js', '/js/stil.js', '/js/izgara.js', '/js/modeller.js', '/js/sahne3d.js',
-  '/js/pazar-ui.js', '/js/secim-ui.js', '/js/belediye-ui.js', '/js/hesap-ui.js', '/js/dilekce-ui.js', '/js/canli.js', '/js/sohbet-ui.js', '/js/lig-ui.js', '/js/gunes.js', '/js/topluluk-ui.js', '/js/foto.js', '/js/harita-gorsel.js', '/js/ciftlik-doku.js', '/js/tema.js', '/js/model3d.js', '/js/dunya3d.js', '/js/dunya-ortak.js', '/js/dunya-bitki.js', '/js/dunya-bina.js', '/js/dunya-hayat.js', '/js/dunya-bulut.js', '/js/sinematik.js', '/js/dunya-efekt.js', '/js/ciftlik-ui.js', '/js/ses.js', '/js/komsuluk-ui.js', '/js/rehber.js', '/js/hava-ui.js', '/js/carsi-ui.js', '/js/giris-ui.js', '/js/avatar.js', '/js/webauthn.js', '/js/balik-ui.js', '/js/balik3d.js', '/js/balik-2b.js',
+  '/js/pazar-ui.js', '/js/secim-ui.js', '/js/belediye-ui.js', '/js/hesap-ui.js', '/js/dilekce-ui.js', '/js/canli.js', '/js/sohbet-ui.js', '/js/lig-ui.js', '/js/gunes.js', '/js/topluluk-ui.js', '/js/foto.js', '/js/harita-gorsel.js', '/js/ciftlik-doku.js', '/js/tema.js', '/js/model3d.js', '/js/dunya3d.js', '/js/dunya-ortak.js', '/js/dunya-bitki.js', '/js/dunya-bina.js', '/js/dunya-hayat.js', '/js/dunya-bulut.js', '/js/sinematik.js', '/js/dunya-efekt.js', '/js/ciftlik-ui.js', '/js/ses.js', '/js/komsuluk-ui.js', '/js/rehber.js', '/js/hava-ui.js', '/js/carsi-ui.js', '/js/giris-ui.js', '/js/avatar.js', '/js/webauthn.js', '/js/balik-ui.js', '/js/balik3d.js', '/js/balik-2b.js', '/js/tanitim-ui.js',
   '/vendor/maplibre/maplibre-gl.css', '/vendor/maplibre/maplibre-gl.mjs', '/vendor/three/three.module.js', '/css/sayfa.css',
   '/veri/iller.geojson', '/veri/il-etiketleri.geojson', '/veri/maske.geojson', '/veri/turkiye.geojson',
 ];

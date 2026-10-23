@@ -14,6 +14,7 @@
   <link rel="stylesheet" href="/vendor/maplibre/maplibre-gl.css">
   <link rel="stylesheet" href="/css/app.css">
   <link rel="stylesheet" href="/css/ciftlik.css">
+  <link rel="stylesheet" href="/css/tanitim.css">
 </head>
 <body>
   <header class="ust">
@@ -152,28 +153,111 @@
     </div>
   </dialog>
 
-  <section id="acilis" class="acilis" hidden role="dialog" aria-modal="true" aria-labelledby="acilisBaslik">
-    <div class="acilis-sahne" aria-hidden="true">
-      <span class="as-gunes"></span><span class="as-bulut b1"></span><span class="as-bulut b2"></span><span class="as-bulut b3"></span>
-      <span class="as-tepe t1"></span><span class="as-tepe t2"></span><span class="as-tepe t3"></span>
-      <span class="as-oge as-ev">🏡</span><span class="as-oge as-ambar">🛖</span><span class="as-oge as-agac a1">🌳</span><span class="as-oge as-agac a2">🌲</span><span class="as-oge as-agac a3">🌳</span>
-      <span class="as-oge as-traktor">🚜</span><span class="as-oge as-inek">🐄</span><span class="as-oge as-koyun">🐑</span><span class="as-oge as-tavuk">🐓</span>
-      <span class="as-oge as-cicek c1">🌻</span><span class="as-oge as-cicek c2">🌷</span><span class="as-oge as-cicek c3">🌻</span>
-    </div>
-    <div class="acilis-icerik">
-      <div class="acilis-tanitim">
-        <div class="acilis-logo"><img src="/icon.svg" alt="" width="56" height="56"><span>Sanal <b>Türkiye</b></span></div>
-        <h1>Gerçek Türkiye haritasında<br>çiftliğini kur.</h1>
-        <ul class="acilis-ozellik">
-          <li><span>🗺️</span><div><b>81 il, 973 ilçe</b>Köyünü, mahalleni bul; tarlanı haritadan seç.</div></li>
-          <li><span>🌾</span><div><b>Ek, hasat et, büyü</b>Hayvanlar, yöresel ürünler, 3B balık tutma.</div></li>
-          <li><span>🌦️</span><div><b>Gerçek hava</b>Yağmur tarlanı sular, don uyarısı gelir.</div></li>
-          <li><span>🤝</span><div><b>Komşuluk ve yönetim</b>Ticaret yap, muhtar ol, belediyeni yönet.</div></li>
-        </ul>
-        <p class="acilis-not">Ücretsiz · 500 akçe hoş geldin hibesi · Akçe nakde çevrilmez; bu bir oyundur.</p>
+  <section id="acilis" class="acilis" hidden role="dialog" aria-modal="true" aria-labelledby="tnBaslik">
+    <nav class="tn-ust" aria-label="Tanıtım">
+      <a class="tn-logo" href="#tn-bas" data-tn="yukari"><img src="/icon.svg" alt="" width="34" height="34"><span>Sanal <b>Türkiye</b></span></a>
+      <div class="tn-baglar"><a href="#tn-nasil">Nasıl oynanır</a><a href="#tn-dunya">Dünya</a><a href="#tn-turkiye">81 il</a><a href="#tn-sss">SSS</a></div>
+      <div class="tn-ust-dugmeler"><button type="button" class="bag" data-tn="gez">Haritayı gez</button><button type="button" class="dugme ince" data-tn="giris">Giriş yap</button><button type="button" class="dugme altin ince" data-tn="kayit">Ücretsiz başla</button></div>
+    </nav>
+
+    <header class="tn-kahraman" id="tn-bas">
+      <div class="tn-manzara" aria-hidden="true"></div>
+      <div class="tn-kahraman-ic">
+        <div class="tn-tanitim">
+          <p class="tn-ust-etiket"><span class="tn-canli-nokta"></span> <span id="tnCanliEtiket">Yaşayan dijital Türkiye</span></p>
+          <h1 id="tnBaslik">Gerçek Türkiye haritasında<br><span class="tn-donen" id="tnDonen">çiftliğini kur.</span></h1>
+          <p class="tn-alt">81 ilin her köyü, her mahallesi oyunda. Tarlanı haritadan seç, ek, hasat et; hayvan besle, göle olta at, pazarda sat, muhtar ol. Hava bile gerçek.</p>
+          <div class="tn-sayaclar" id="tnSayaclar">
+            <div><b data-sayac="81">81</b><span>il</span></div><div><b data-sayac="973">973</b><span>ilçe</span></div>
+            <div><b data-sayac="25">25</b><span>yöresel ürün</span></div><div><b>870 milyon</b><span>parsel hücresi</span></div>
+          </div>
+          <div class="tn-hava" id="tnHava" aria-label="Şu an büyük şehirlerde hava"></div>
+        </div>
+        <div class="acilis-kart" id="acilisKart"></div>
       </div>
-      <div class="acilis-kart" id="acilisKart"></div>
-    </div>
+      <a class="tn-asagi" href="#tn-canli" aria-label="Aşağı kaydır"><span>Keşfet</span><i></i></a>
+    </header>
+
+    <section class="tn-serit" id="tn-canli" aria-label="Şu an oyunda">
+      <div class="tn-serit-baslik"><span class="tn-canli-nokta"></span> Şu an Türkiye'de</div>
+      <div class="tn-serit-kayan"><div class="tn-serit-ic" id="tnAkis"></div></div>
+    </section>
+
+    <section class="tn-bolum" id="tn-nasil">
+      <p class="tn-bolum-etiket">4 adımda</p><h2>Nasıl oynanır?</h2>
+      <ol class="tn-adimlar">
+        <li class="tn-gorun"><span class="tn-adim-ikon">🗺️</span><b>Tarlanı seç</b><p>Köyünü ya da mahalleni bul; gerçek arazi kullanımından türetilmiş yeşil bir tarım parseline dokun.</p></li>
+        <li class="tn-gorun"><span class="tn-adim-ikon">🌱</span><b>Ek ve sula</b><p>Buğdaydan Rize çayına; mevsim ve gerçek hava büyümeyi etkiler. Yağmur tarlanı bedavaya sular.</p></li>
+        <li class="tn-gorun"><span class="tn-adim-ikon">🧺</span><b>Hasat et, sat</b><p>Ürününü markete, pazara ya da borsaya sat; değirmende una, mandırada peynire çevir.</p></li>
+        <li class="tn-gorun"><span class="tn-adim-ikon">🏛️</span><b>Büyü ve yönet</b><p>Ahır kur, komşularınla takas yap, muhtarlığa aday ol, ilçe belediyeni yönet.</p></li>
+      </ol>
+    </section>
+
+    <section class="tn-bolum tn-dunya" id="tn-dunya">
+      <p class="tn-bolum-etiket">Oyunun içinden</p><h2>Gerçek bir dünya, oyun kadar sıcak</h2>
+      <article class="tn-vitrin tn-gorun">
+        <figure><img src="/img/tanitim/ciftlik.jpg" alt="Oyunda Konya Meram'ın 3B görünümü: kiremit çatılı evler, ağaçlar, yollar" loading="lazy" width="1200" height="750"></figure>
+        <div><span class="tn-rozet">3B dünya</span><h3>Köyün, kasaban, şehrin — 3B</h3><p>Gerçek binalar, ağaçlar ve yollar çiftlik oyunu tadında çizilir. Tarlan çitle çevrilir, ekinin büyür, bacadan duman tüter.</p></div>
+      </article>
+      <article class="tn-vitrin ters tn-gorun">
+        <figure><img src="/img/tanitim/bogaz.jpg" alt="Oyunda İstanbul Boğazı'nın 3B harita görünümü" loading="lazy" width="1200" height="750"></figure>
+        <div><span class="tn-rozet">Gerçek harita</span><h3>Boğaz'dan Hakkâri'ye her köşe</h3><p>OpenStreetMap verisiyle 973 ilçenin tamamı açık. Arazinin imarı gerçek kullanımdan gelir: tarla, orman, konut, sanayi.</p></div>
+      </article>
+      <article class="tn-vitrin tn-gorun">
+        <figure><img src="/img/tanitim/balik.jpg" alt="3B balık tutma: gün batımında göl, iskele ve oltada alabalık" loading="lazy" width="1200" height="750"></figure>
+        <div><span class="tn-rozet">Mini oyun</span><h3>Göl kıyısında 3B balık tutma</h3><p>Yemini ve misinanı seç, oltayı savur, yalancı vuruşlara aldanma. Lüfer kaçar, sazan direnir, levrek sudan fırlar.</p></div>
+      </article>
+    </section>
+
+    <section class="tn-bolum tn-turkiye" id="tn-turkiye">
+      <p class="tn-bolum-etiket">Etkileşimli harita</p><h2>81 il, 81 hikâye</h2>
+      <p class="tn-bolum-alt">Bir ilin üstüne gel: yöresel ürününü, şu anki havasını ve oradaki çiftçileri gör.</p>
+      <div class="tn-harita-kap tn-gorun">
+        <div class="tn-harita" id="tnHarita" role="img" aria-label="Türkiye il haritası"><p class="kucuk">Harita yükleniyor…</p></div>
+        <aside class="tn-il-kart" id="tnIlKart" aria-live="polite"><p class="tn-il-ipucu">👆 Haritada bir ile dokun</p></aside>
+      </div>
+    </section>
+
+    <section class="tn-bolum" id="tn-ozellik">
+      <p class="tn-bolum-etiket">Ve daha fazlası</p><h2>Bir çiftlikten çok daha fazlası</h2>
+      <div class="tn-ozellikler">
+        <div class="tn-ozellik tn-gorun"><span>🐄</span><b>Hayvancılık</b><p>Kümes, ahır, ağıl ve mandıra: yumurta, süt, yün, peynir.</p></div>
+        <div class="tn-ozellik tn-gorun"><span>🌦️</span><b>Gerçek hava</b><p>Open-Meteo verisiyle yağmur, don, dolu; erken uyarı ve tarla örtüsü.</p></div>
+        <div class="tn-ozellik tn-gorun"><span>🏪</span><b>Çarşı ve banka</b><p>Nalbur, market, zirai bayi; vadeli hesap ve kredi.</p></div>
+        <div class="tn-ozellik tn-gorun"><span>📈</span><b>Pazar ve borsa</b><p>Parsel ilanları, teklifler, ürün borsası; şeffaf fiyat geçmişi.</p></div>
+        <div class="tn-ozellik tn-gorun"><span>🗳️</span><b>Muhtarlık ve belediye</b><p>Gizli oylu seçimler, meclis kararları, mahalleye park ve sulama kanalı.</p></div>
+        <div class="tn-ozellik tn-gorun"><span>🤝</span><b>Komşuluk</b><p>Arkadaş ol, tarlasını sula, hediye ve ürün gönder.</p></div>
+        <div class="tn-ozellik tn-gorun"><span>🏆</span><b>İl ligi ve yarışmalar</b><p>Memleketine puan topla; haftalık köy yarışmasında ödül kazan.</p></div>
+        <div class="tn-ozellik tn-gorun"><span>🎉</span><b>Bayram etkinlikleri</b><p>Cumhuriyet Bayramı'ndan Hıdırellez'e her yıl aynı günlerde.</p></div>
+      </div>
+    </section>
+
+    <section class="tn-serit tn-yoresel" aria-label="Yöresel ürünler">
+      <div class="tn-serit-kayan ters"><div class="tn-serit-ic" id="tnYoresel"></div></div>
+    </section>
+
+    <section class="tn-bolum tn-sponsor" id="tnSponsor" hidden><p class="tn-bolum-etiket">Çarşı ortaklarımız</p><div class="tn-sponsor-liste" id="tnSponsorListe"></div></section>
+
+    <section class="tn-bolum tn-sss" id="tn-sss">
+      <p class="tn-bolum-etiket">Merak edilenler</p><h2>Sıkça sorulan sorular</h2>
+      <details><summary>Oyun ücretsiz mi?</summary><p>Evet. Kayıt ücretsizdir ve 500 akçe hoş geldin hibesiyle başlarsın. Oyunu oynamak için para ödemen gerekmez.</p></details>
+      <details><summary>Akçe gerçek para mı? Parselim gerçek tapu mu?</summary><p>Hayır. Akçe yalnızca oyun içi puandır ve nakde çevrilemez. Parseller gerçek haritaya oturtulmuş oyun içi kullanım haklarıdır; gerçek tapu, değer artışı ya da geri alım vaadi yoktur.</p></details>
+      <details><summary>Kimler oynayabilir?</summary><p>13 yaşından itibaren herkes. 18 yaş altı hesaplarda sohbet kapalı başlar, oyun süresi hatırlatıcısı açıktır ve kredi kullanılamaz.</p></details>
+      <details><summary>Telefonda oynanır mı?</summary><p>Evet. Tarayıcıdan açılır; ana ekrana ekleyip uygulama gibi kullanabilir, bildirim alabilirsin.</p></details>
+      <details><summary>Hava gerçekten gerçek mi?</summary><p>Evet. Her ilin havası Open-Meteo'dan yarım saatte bir alınır; yağmur tarlanı sular, don ve dolu ekinine zarar verebilir. Önceden uyarılırsın.</p></details>
+      <details><summary>Verilerim güvende mi?</summary><p>Parolan özetlenerek, telefon numaran şifreli saklanır; iki adımlı doğrulama ve passkey ile girebilirsin. Verilerini indirebilir, hesabını silebilirsin. Ayrıntılar <a href="/yasal/kvkk.html" target="_blank" rel="noopener">KVKK aydınlatma metninde</a>.</p></details>
+    </section>
+
+    <section class="tn-son">
+      <div class="tn-son-sahne" aria-hidden="true"><span class="s-bulut b1"></span><span class="s-bulut b2"></span><span class="s-balon">🎈</span><span class="s-agac">🌳</span><span class="s-ev">🏡</span><span class="s-cicek">🌻</span><span class="s-cicek2">🌼</span><span class="s-inek">🐄</span><span class="s-agac2">🌳</span></div>
+      <h2>Türkiye seni bekliyor.</h2><p>Bir tarla seç, ilk tohumunu bugün ek.</p>
+      <div class="tn-son-dugmeler"><button type="button" class="dugme altin" data-tn="kayit">Ücretsiz başla</button><button type="button" class="dugme" data-tn="gez">Önce haritayı gez</button></div>
+    </section>
+    <footer class="tn-alt-bilgi">
+      <div><b>Sanal Türkiye</b> · Yaşayan dijital ülke oyunu</div>
+      <div><a href="/yasal/kullanim-kosullari.html" target="_blank" rel="noopener">Kullanım Koşulları</a> · <a href="/yasal/kvkk.html" target="_blank" rel="noopener">KVKK</a> · <a href="/yasal/cerez.html" target="_blank" rel="noopener">Çerezler</a></div>
+      <div class="kucuk">Harita © OpenStreetMap katkıcıları · OpenFreeMap · Hava: Open-Meteo.com · Akçe nakde çevrilmez; bu bir oyundur.</div>
+    </footer>
   </section>
 
   <div class="tostlar" id="tostlar" aria-live="polite"></div>
