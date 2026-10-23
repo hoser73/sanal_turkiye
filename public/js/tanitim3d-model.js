@@ -580,27 +580,113 @@ export function ucak() {
   return g;
 }
 
-// ---------- Türk bayrağı (TS 2/3 oranı): kırmızı zemin #E30A17, ay ve yıldız resmî ölçülerle; gönder, alem topu
+// ---------- Türk bayrağı: resmî ölçülerle yüksek çözünürlüklü doku, dokuma normal haritası, Verlet kumaş fiziği
+// Ölçüler (G = en): ay dış dairesi merkezi gönderden 0,5G, çapı 0,5G; iç daire 0,0625G içeride, çapı 0,4G;
+// yıldız çemberi çapı 0,25G, ucu iç daireye 1/3G'lik çizgide; uçkur 1/30G. Renk #E30A17.
 export function bayrakDokusu() {
-  const G = 800, [c, x] = tuval(1200, 800);
-  x.fillStyle = '#e30a17'; x.fillRect(0, 0, 1200, G);
-  x.fillStyle = '#ffffff'; x.beginPath(); x.arc(425, 400, 200, 0, Math.PI * 2); x.fill();          // ayın dış dairesi
-  x.fillStyle = '#e30a17'; x.beginPath(); x.arc(475, 400, 160, 0, Math.PI * 2); x.fill();          // iç daire
-  x.fillStyle = '#ffffff'; x.beginPath();                                                           // yıldız: bir ucu göndere bakar
-  for (let i = 0; i < 10; i++) { const a = Math.PI + (i * Math.PI) / 5, r = i % 2 ? 38.2 : 100; x.lineTo(683.333 + Math.cos(a) * r, 400 + Math.sin(a) * r); }
+  const G = 1600, Lb = 2400, [c, x] = tuval(Lb, G), M = G / 30;   // M: gönder tarafındaki beyaz uçkur
+  x.fillStyle = '#e30a17'; x.fillRect(0, 0, Lb, G);
+  x.fillStyle = '#f4f4f2'; x.fillRect(0, 0, M, G);
+  const ax = M + 0.5 * G, ay = G / 2;
+  x.fillStyle = '#ffffff'; x.beginPath(); x.arc(ax, ay, 0.25 * G, 0, Math.PI * 2); x.fill();
+  x.fillStyle = '#e30a17'; x.beginPath(); x.arc(ax + 0.0625 * G, ay, 0.2 * G, 0, Math.PI * 2); x.fill();
+  const yx = ax + 0.32292 * G, R = 0.125 * G;   // yıldız merkezi: ay merkezinden 0,323G (yıldızın bir ucu aya bakar)
+  x.fillStyle = '#ffffff'; x.beginPath();
+  for (let i = 0; i < 10; i++) { const a = Math.PI + (i * Math.PI) / 5, r = i % 2 ? R * 0.382 : R; x.lineTo(yx + Math.cos(a) * r, ay + Math.sin(a) * r); }
   x.closePath(); x.fill();
-  const img = x.getImageData(0, 0, 1200, G);   // kumaş dokusu: ince atkı-çözgü
-  for (let j = 0; j < G; j++) for (let i = 0; i < 1200; i++) { const o = (j * 1200 + i) * 4, k = ((i % 4 < 2) !== (j % 4 < 2) ? 6 : -6) + (rnd() - 0.5) * 8; img.data[o] += k; img.data[o + 1] += k; img.data[o + 2] += k; }
-  x.putImageData(img, 0, 0);
-  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
+  // Dikiş izi (uçkur ile kumaş arası) ve kenar bastırması
+  x.strokeStyle = 'rgba(0,0,0,.18)'; x.lineWidth = 3; x.setLineDash([10, 8]);
+  x.beginPath(); x.moveTo(M + 6, 0); x.lineTo(M + 6, G); x.stroke();
+  x.beginPath(); x.moveTo(0, 10); x.lineTo(Lb, 10); x.moveTo(0, G - 10); x.lineTo(Lb, G - 10); x.moveTo(Lb - 12, 0); x.lineTo(Lb - 12, G); x.stroke();
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 16;
   return t;
 }
-export function gonder(boy = 14) {
-  const g = new THREE.Group(), metal = new THREE.MeshStandardMaterial({ color: '#eef0f2', roughness: 0.25, metalness: 0.6 });
-  const direk = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.12, boy, 16), metal); direk.position.y = boy / 2; direk.castShadow = true; g.add(direk);
-  const alem = new THREE.Mesh(new THREE.SphereGeometry(0.2, 16, 12), new THREE.MeshStandardMaterial({ color: '#d4a62a', roughness: 0.25, metalness: 0.9 }));
-  alem.position.y = boy + 0.18; alem.castShadow = true; g.add(alem);
-  const kaide = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.85, 0.5, 20), new THREE.MeshStandardMaterial({ color: '#b9b2a6', roughness: 0.9 }));
-  kaide.position.y = 0.25; kaide.receiveShadow = true; kaide.castShadow = true; g.add(kaide);
+function dokumaNormali() {   // ince atkı-çözgü dokusu (tekrarlanır)
+  return pikselDoku(64, (u, v) => {
+    const a = Math.sin(u * Math.PI * 16) * 0.5 + 0.5, b = Math.sin(v * Math.PI * 16) * 0.5 + 0.5;
+    const ust = (Math.floor(u * 8) + Math.floor(v * 8)) % 2 ? a : b;
+    return [128, 128, 128, ust];
+  }, 3).normalMap;
+}
+// Gönder: konik alüminyum direk, makara, altın alem, ip (halat) ve iki basamaklı taş kaide
+export function gonder(M, boy = 22) {
+  const g = new THREE.Group(), metal = new THREE.MeshStandardMaterial({ color: '#e9ecef', roughness: 0.22, metalness: 0.85 });
+  const direk = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.17, boy, 24), metal); direk.position.y = boy / 2 + 0.8; direk.castShadow = true; g.add(direk);
+  const makara = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.12, 20), metal); makara.position.y = boy + 0.85; g.add(makara);
+  const altin = new THREE.MeshStandardMaterial({ color: '#d9ab2a', roughness: 0.18, metalness: 1 });
+  const alem = new THREE.Mesh(new THREE.SphereGeometry(0.3, 24, 16), altin); alem.position.y = boy + 1.2; alem.castShadow = true; g.add(alem);
+  const uc = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.35, 12), altin); uc.position.y = boy + 1.62; g.add(uc);
+  for (const [w, h, y] of [[2.6, 0.4, 0.2], [1.7, 0.4, 0.6]]) { const k = kutu(w, h, w, M.tas, 0, y, 0); g.add(k); }
+  const kilit = kutu(0.06, 0.25, 0.08, metal, 0.18, 2.2, 0); g.add(kilit);
   return g;
+}
+// Verlet kumaş: gönder tarafı (sol kenar) ipe bağlı; rüzgâr her üçgene yüzey normaline göre etki eder, girdap ve
+// esintiyle kumaş kendiliğinden kıvrılır. Yapısal, çapraz ve bükülme bağları kumaşın gerilip çökmesini önler.
+export function bayrakKumasi(M, { en = 9, boy = 6, nx = 42, ny = 28 } = {}) {
+  const n = (nx + 1) * (ny + 1), poz = new Float32Array(n * 3), onceki = new Float32Array(n * 3), sabit = new Uint8Array(n);
+  const id = (i, j) => j * (nx + 1) + i;
+  for (let j = 0; j <= ny; j++) for (let i = 0; i <= nx; i++) {
+    const k = id(i, j) * 3; poz[k] = (i / nx) * en; poz[k + 1] = -(j / ny) * boy; poz[k + 2] = 0.002 * Math.sin(i + j);
+    onceki.set(poz.subarray(k, k + 3), k); if (i === 0) sabit[id(i, j)] = 1;
+  }
+  const baglar = [], bag = (a, b) => { const dx = poz[b * 3] - poz[a * 3], dy = poz[b * 3 + 1] - poz[a * 3 + 1]; baglar.push([a, b, Math.hypot(dx, dy)]); };
+  for (let j = 0; j <= ny; j++) for (let i = 0; i <= nx; i++) {
+    if (i < nx) bag(id(i, j), id(i + 1, j)); if (j < ny) bag(id(i, j), id(i, j + 1));
+    if (i < nx && j < ny) { bag(id(i, j), id(i + 1, j + 1)); bag(id(i + 1, j), id(i, j + 1)); }
+    if (i < nx - 1) bag(id(i, j), id(i + 2, j)); if (j < ny - 1) bag(id(i, j), id(i, j + 2));
+  }
+  const geo = new THREE.BufferGeometry(), uv = [], idx = [];
+  for (let j = 0; j <= ny; j++) for (let i = 0; i <= nx; i++) uv.push(i / nx, 1 - j / ny);
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { const a = id(i, j), b = id(i + 1, j), c = id(i, j + 1), d = id(i + 1, j + 1); idx.push(a, c, b, b, c, d); }
+  geo.setAttribute('position', new THREE.BufferAttribute(poz, 3)); geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); geo.setIndex(idx);
+  geo.computeVertexNormals();
+  const dokuma = dokumaNormali(); dokuma.repeat.set(70, 46);
+  const malz = new THREE.MeshPhysicalMaterial({ map: bayrakDokusu(), normalMap: dokuma, normalScale: new THREE.Vector2(0.35, 0.35), side: THREE.DoubleSide,
+    roughness: 0.58, sheen: 0.7, sheenRoughness: 0.45, sheenColor: new THREE.Color('#ff9a9a') });
+  const mesh = new THREE.Mesh(geo, malz); mesh.castShadow = true; mesh.receiveShadow = true;
+  const kuvvet = new Float32Array(n * 3), a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), nn = new THREE.Vector3(), w = new THREE.Vector3();
+  let birikim = 0;
+  const ADIM = 1 / 90, SONUM = 0.985, KUTLE = 0.11;
+  function adim(dt, ruzgar, saat) {   // ruzgar: 0.45..1.7 (Konya); rüzgâr +x yönünde eser
+    birikim = Math.min(birikim + dt, 0.1);
+    while (birikim >= ADIM) {
+      birikim -= ADIM;
+      const esinti = 1 + 0.35 * Math.sin(saat * 0.9) + 0.2 * Math.sin(saat * 2.3 + 1.7) + 0.12 * Math.sin(saat * 5.1);
+      w.set(1, 0.06 * Math.sin(saat * 1.3), 0.1 + 0.16 * Math.sin(saat * 0.7 + 0.5)).normalize().multiplyScalar((7.5 + ruzgar * 6) * esinti);
+      kuvvet.fill(0);
+      for (let t = 0; t < idx.length; t += 3) {
+        const i0 = idx[t], i1 = idx[t + 1], i2 = idx[t + 2];
+        a.fromArray(poz, i0 * 3); b.fromArray(poz, i1 * 3); c.fromArray(poz, i2 * 3);
+        nn.subVectors(c, a).cross(b.sub(a)); const alan = nn.length() || 1; nn.multiplyScalar(1 / alan);
+        const f = nn.dot(w) * alan * 0.07;
+        for (const ii of [i0, i1, i2]) { kuvvet[ii * 3] += nn.x * f; kuvvet[ii * 3 + 1] += nn.y * f; kuvvet[ii * 3 + 2] += nn.z * f; }
+      }
+      const dt2 = ADIM * ADIM;
+      for (let i = 0; i < n; i++) {
+        if (sabit[i]) continue;
+        const k = i * 3;
+        for (let e = 0; e < 3; e++) {
+          const p = poz[k + e], hiz = (p - onceki[k + e]) * SONUM;
+          // Basınç (yüzey normaline) + hava sürüklemesi (kumaş rüzgârla aynı hıza çekilir) + yer çekimi
+          // Arkaya doğru ilerleyen girdap: bayrağın ucuna doğru büyüyen yanal çırpıntı
+          const girdap = e === 2 ? Math.sin(poz[k] * 1.15 - saat * (6 + ruzgar * 3) + poz[k + 1] * 0.35) * 2.6 * (poz[k] / en) * esinti : 0;
+          const we = (e === 0 ? w.x : e === 1 ? w.y : w.z) + girdap;
+          const ivme = kuvvet[k + e] / KUTLE + (we - hiz / ADIM) * 2.2 + (e === 1 ? -9.8 : 0);
+          onceki[k + e] = p; poz[k + e] = p + hiz + ivme * dt2;
+        }
+      }
+      for (let it = 0; it < 4; it++) for (const [p, q, L] of baglar) {
+        const kp = p * 3, kq = q * 3, dx = poz[kq] - poz[kp], dy = poz[kq + 1] - poz[kp + 1], dz = poz[kq + 2] - poz[kp + 2];
+        const d = Math.hypot(dx, dy, dz) || 1e-6, fark = (d - L) / d, sp = sabit[p], sq = sabit[q];
+        if (sp && sq) continue;
+        const oran = sp || sq ? 1 : 0.5;
+        if (!sp) { poz[kp] += dx * fark * oran; poz[kp + 1] += dy * fark * oran; poz[kp + 2] += dz * fark * oran; }
+        if (!sq) { poz[kq] -= dx * fark * oran; poz[kq + 1] -= dy * fark * oran; poz[kq + 2] -= dz * fark * oran; }
+      }
+    }
+    geo.attributes.position.needsUpdate = true; geo.computeVertexNormals(); geo.computeBoundingSphere();
+  }
+  // Başlangıçta biraz çalıştır ki ilk karede bayrak düz bir levha gibi durmasın
+  for (let i = 0; i < 240; i++) adim(1 / 90, 1, i / 90);
+  return { mesh, adim };
 }
