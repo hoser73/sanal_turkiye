@@ -57,6 +57,12 @@ const EFEKT = {
   ek: () => { nota({ tur: 'sine', f0: 320, f1: 160, sure: 0.16, duzey: 0.16 }); nota({ tur: 'triangle', f0: 784, sure: 0.12, duzey: 0.05, gecikme: 0.1 }); },
   besle: () => [0, 0.11, 0.2].forEach((g, i) => nota({ tur: 'square', f0: 620 + i * 60, f1: 480, sure: 0.07, duzey: 0.04, gecikme: g })),
   seviye: () => [523, 659, 784, 1047, 1319].forEach((f, i) => nota({ tur: 'triangle', f0: f, sure: i === 4 ? 0.5 : 0.16, duzey: 0.09, gecikme: i * 0.11 })),
+  // Balık tutma: suya düşüş, ısırma, makara cırcırı, misina kopması
+  atis: () => { gurultu({ sure: 0.45, f0: 900, f1: 3200, duzey: 0.07 }); nota({ tur: 'sine', f0: 700, f1: 1400, sure: 0.3, duzey: 0.03 }); },
+  su: () => { gurultu({ sure: 0.35, f0: 1400, f1: 300, duzey: 0.14 }); nota({ tur: 'sine', f0: 260, f1: 90, sure: 0.22, duzey: 0.1 }); },
+  isirdi: () => { nota({ tur: 'sine', f0: 420, f1: 880, sure: 0.09, duzey: 0.12 }); nota({ tur: 'sine', f0: 420, f1: 880, sure: 0.09, duzey: 0.12, gecikme: 0.12 }); },
+  makara: () => nota({ tur: 'square', f0: 2400, f1: 1800, sure: 0.02, duzey: 0.025 }),
+  kopma: () => { nota({ tur: 'sawtooth', f0: 1800, f1: 200, sure: 0.18, duzey: 0.08 }); gurultu({ sure: 0.15, f0: 5000, f1: 1500, duzey: 0.08 }); },
 };
 export function ses(tur) {
   if (!sesAcik || !baglam() || bag.state !== 'running') return;

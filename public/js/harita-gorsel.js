@@ -63,9 +63,9 @@ function emojiResmi(emoji, boyut = 26, rozet = true) {
   return c;
 }
 
+// Eksik simge ve desenler istendiği anda çizilir (MapLibre 6: çözücü; uyarı üretmez). Eski sürümlerde olaya düşülür.
 export function simgeleriBagla(map) {
-  map.on('styleimagemissing', (e) => {
-    const id = e.id;
+  const coz = (id) => {
     if (map.hasImage(id)) return;
     let c = null;
     if (DESEN[id]) c = DESEN[id]();
@@ -73,7 +73,9 @@ export function simgeleriBagla(map) {
     else if (id.startsWith('e:')) c = emojiResmi(id.slice(2), 24, true);
     else if (id.startsWith('ec:')) c = emojiResmi(id.slice(3), 30, false);
     if (c) map.addImage(id, resimVerisi(c), { pixelRatio: ORAN });
-  });
+  };
+  if (typeof map.setMissingStyleImageResolver === 'function') map.setMissingStyleImageResolver(coz);
+  else map.on('styleimagemissing', (e) => coz(e.id));
 }
 
 // ---------- Gökyüzü, gece ve şehir ışıkları

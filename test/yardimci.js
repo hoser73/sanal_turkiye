@@ -14,6 +14,7 @@ function ortamKur(ad) {
   process.env.KIMLIK_HIZ_CARPANI = '50';
   process.env.HAVA_KAYNAGI = 'sahte';
   process.env.GUNLUK_SESSIZ = '1';      // beklenen hata günlükleri test çıktısını kirletmesin (dosyaya yine yazılır)
+  process.env.HATIRLATMA = 'kapali';     // hatırlatma zamanlayıcısı testte elle çağrılır
   process.env.YAPAY_ZEKA = 'kapali';     // testler gerçek API çağırmaz; yz testi sahte yanıt verici takar
   return dizin;
 }

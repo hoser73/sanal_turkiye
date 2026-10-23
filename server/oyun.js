@@ -1,7 +1,7 @@
 // Oyun motoru (modüler monolit, plan §13.2): parsel, imar, inşaat, tarım, pazar, görev.
 // Bütün kurallar SUNUCUDA denetlenir (§3.2); her değişiklik tek atomik işlemde yapılır (§8.4).
 const db = require('./db');
-const { IMAR, IMAR_KAYNAK_NOTU, YAPILAR, URUNLER, TARIM, NPC_PAZAR, HESAP, GOREVLER, BELEDIYE, BOZULMA, BAKIM, HAVA } = require('./config/rules');
+const { IMAR, IMAR_KAYNAK_NOTU, YAPILAR, URUNLER, TARIM, NPC_PAZAR, HESAP, GOREVLER, BELEDIYE, BOZULMA, BAKIM, HAVA, CARSI } = require('./config/rules');
 const L = require('./lib/ledger');
 const I = require('./harita/izgara');
 const belediye = require('./belediye');
@@ -194,10 +194,11 @@ function parselKarti(id, userId, komsuImar = {}) {
       saglik: saglik(s, t), bakimMaliyeti: bakimMaliyeti(s, t), etkisiz: s.status === 'ACTIVE' && saglik(s, t) < BAKIM.etkisizEsik,
       hayvan: require('./ciftlik').hayvanDurumu(s, t) })),
     susler: require('./ciftlik').parselSusleri(id),
+    komsuluk: require('./komsuluk').parselIliskisi(userId, id),
     susSecenekleri: benim ? require('./ciftlik').susSecenekleri(userId) : null,
     bakim: { toplam: L.yuvarla(yapilar.reduce((a, s) => a + bakimMaliyeti(s, t), 0)), esik: BAKIM.etkisizEsik, yipranma: BAKIM.yipranmaGunluk },
     ekin: ekin && { ...ekinDurumu(ekin, yapilar, t),
-      sulamaMaliyeti: sulamaBirimi(yapilar, hizmetler) * verimKati(p) },
+      sulamaMaliyeti: L.yuvarla(sulamaBirimi(yapilar, hizmetler, p.plaka) * verimKati(p)) },
     tarimMi: p.zoning_type === 'TARIM',
     uretim: require('./uretim').parselUretimi(id, userId),
     ...require('./kira').parselKira(id, userId),
@@ -205,10 +206,11 @@ function parselKarti(id, userId, komsuImar = {}) {
     afetKati: ekin?.afet_kati ?? 1,
     simge: require('./simge').parselSimgesi(id, userId),
     hava: require('./dunya').ilHavasi(p.plaka),
+    iklim: require('./iklim').parselIklimi(p.plaka, t),
     mevsim: (({ kod, ad, ikon }) => ({ kod, ad, ikon }))(require('./dunya').mevsim(t)),
     urunSecenekleri: p.zoning_type === 'TARIM' ? Object.entries(URUNLER).filter(([, u]) => !u.mamul).map(([kod, u]) => ({
       kod, uygun: !u.bolgeler || u.bolgeler.includes(p.plaka), bolgeAd: u.bolgeAd || null,
-      buyume: require('./dunya').buyumeKati(kod, aktifYapiVar(yapilar, 'SERA', t), t) })) : null,
+      buyume: require('./dunya').buyumeKati(kod, aktifYapiVar(yapilar, 'SERA', t), t, p.plaka) })) : null,
     insaatSecenekleri,
     komsular,
     gecmis,
@@ -265,13 +267,15 @@ const insaatBaslat = db.transaction((userId, id, tip) => {
   belediye.belediyePayi(p.ilce_id, y.maliyet, 'ruhsatPayi', 'ruhsat harcı', tx);
   const t = simdi();
   // Belediyenin yol bakımı yaptığı mahallede inşaat daha kısa sürer
+  // Nalburdan alınan kalıp seti varsa kendiliğinden kullanılır: inşaat kısalır
+  const kalip = require('./carsi').stoktanKullan(userId, 'KALIP_SETI', `Kalıp seti: ${y.ad} (${id})`, tx);
   const sure = Math.round(y.sureMs * (belediye.mahalleHizmetleri(p.region_id).has('YOL_BAKIMI') ? 1 - BELEDIYE.etki.insaatKisalma : 1)
-    * (1 - require('./uretim').meslekBonusu(userId, 'MIMAR')));
+    * (1 - require('./uretim').meslekBonusu(userId, 'MIMAR')) * (kalip ? 1 - CARSI.etki.kalipKisalma : 1));
   const yapiId = yapiEkle.run(id, userId, tip, y.taban, y.taban * y.kat, t, t + sure).lastInsertRowid;
   L.denetim({ anahtar: `STRUCTURE_STARTED:${yapiId}`, aktor: userId, eylem: 'STRUCTURE_STARTED', varlik: id,
     sonra: { tip, maliyet: y.maliyet }, bolge: p.region_id, herkese: true });
   const gorev = gorevTamamla(userId, 'ILK_YAPI', tx);
-  return { tamam: true, yapiId, bitis: t + sure, gorev };
+  return { tamam: true, yapiId, bitis: t + sure, gorev, kalip };
 });
 
 // ---------- Tarım (§5) ----------
@@ -286,11 +290,12 @@ const bakimMaliyeti = (s, t = simdi()) => L.yuvarla((YAPILAR[s.type]?.maliyet ||
 function aktifYapiVar(yapilar, tip, t = simdi()) {
   return yapilar.some((s) => s.type === tip && s.status === 'ACTIVE' && saglik(s, t) >= BAKIM.etkisizEsik);
 }
-// Sulama birim maliyeti: su deposu yarıya, belediyenin sulama kanalı ayrıca yarıya indirir
-function sulamaBirimi(yapilar, hizmetler) {
+// Sulama birim maliyeti: su deposu yarıya, belediyenin sulama kanalı ayrıca yarıya indirir; kurak ilde (gerçek hava) ayrıca indirim
+function sulamaBirimi(yapilar, hizmetler, plaka = null) {
   let b = TARIM.sulamaMaliyeti;
   if (aktifYapiVar(yapilar, 'SU_DEPOSU')) b /= 2;
   if (hizmetler.has('SULAMA_KANALI')) b *= 1 - BELEDIYE.etki.sulamaIndirim;
+  if (plaka) b *= 1 - require('./iklim').kuraklik(plaka).indirim;
   return L.yuvarla(b);
 }
 function verimKati(p) {
@@ -310,6 +315,7 @@ function ekinDurumu(e, yapilar, t = simdi()) {
     sonrakiSulamaMs: e.last_watered_at ? Math.max(0, e.last_watered_at + TARIM.sulamaAraligiMs - t) : 0,
     ...tazelik(e, yapilar, t),
     don: !!e.don, yagmurAt: e.yagmur_at || null, mevsim: e.mevsim || null,
+    ortuBitis: e.ortu_bitis && e.ortu_bitis > t ? e.ortu_bitis : null, gubre: !!e.gubre, ilac: !!e.ilac,
   };
 }
 // Olgun ekin: taze süre boyunca tam verim, sonra doğrusal düşüş, sonunda çürüme (ambar taze süreyi uzatır)
@@ -336,7 +342,7 @@ const ek = db.transaction((userId, id, urun) => {
   L.harca(userId, u.tohum * kat, `Tohum: ${u.ad} ×${kat} (${id})`, tx);
   const t = simdi();
   const dunya = require('./dunya');
-  const buyume = dunya.buyumeKati(urun, aktifYapiVar(q.yapilar.all(id), 'SERA', t), t);
+  const buyume = dunya.buyumeKati(urun, aktifYapiVar(q.yapilar.all(id), 'SERA', t), t, p.plaka);
   const m = dunya.mevsim(t);
   db.prepare(`INSERT INTO crops (parcel_id, user_id, crop_type, planted_at, ready_at, mevsim) VALUES (?, ?, ?, ?, ?, ?)`)
     .run(id, userId, urun, t, t + Math.round(u.sureMs * buyume), m.kod);
@@ -359,13 +365,13 @@ const sula = db.transaction((userId, id) => {
     throw new OyunHatasi(429, 'Toprak hâlâ nemli; biraz sonra tekrar sula');
   }
   const kat = verimKati(p);
-  const birim = sulamaBirimi(yapilar, belediye.mahalleHizmetleri(p.region_id));
+  const birim = sulamaBirimi(yapilar, belediye.mahalleHizmetleri(p.region_id), p.plaka);
   const tx = L.yeniTx();
-  L.harca(userId, birim * kat, `Sulama/enerji (${id})`, tx);
+  L.harca(userId, L.yuvarla(birim * kat), `Sulama/enerji (${id})`, tx);
   const r = db.prepare(`UPDATE crops SET waterings = waterings + 1, last_watered_at = ? WHERE id = ? AND waterings = ?`).run(t, e.id, e.waterings);
   if (r.changes !== 1) throw new OyunHatasi(409, 'Eşzamanlı işlem, tekrar deneyin');
   const gorev = gorevTamamla(userId, 'ILK_SULAMA', tx);
-  return { tamam: true, maliyet: birim * kat, gorev };
+  return { tamam: true, maliyet: L.yuvarla(birim * kat), gorev };
 });
 
 const hasat = db.transaction((userId, id) => {
@@ -386,7 +392,7 @@ const hasat = db.transaction((userId, id) => {
   bonus += require('./uretim').meslekBonusu(userId, 'CIFTCI');
   bonus += require('./kooperatif').hasatPrimi(userId);
   const miktar = durum.tazelik === 'CURUDU' ? 0
-    : Math.max(1, Math.round(u.verim * verimKati(p) * (0.4 + 0.6 * sulamaOrani) * (1 + bonus) * durum.verimOrani * (e.don ? HAVA.donVerimKati : 1) * (e.afet_kati ?? 1)));
+    : Math.max(1, Math.round(u.verim * verimKati(p) * (0.4 + 0.6 * sulamaOrani) * (1 + bonus) * durum.verimOrani * (e.don ? HAVA.donVerimKati : 1) * (e.afet_kati ?? 1) * (e.gubre ? 1 + CARSI.etki.gubreBonus : 1)));
   // Çift hasat engeli: yalnızca GROWING durumdaki kayıt güncellenir
   const r = db.prepare(`UPDATE crops SET status = 'HARVESTED', harvested_qty = ? WHERE id = ? AND status = 'GROWING'`).run(miktar, e.id);
   if (r.changes !== 1) throw new OyunHatasi(409, 'Bu ekin zaten hasat edildi');
@@ -412,14 +418,18 @@ const bakimYap = db.transaction((userId, id) => {
   const t = simdi();
   const yapilar = q.yapilar.all(id).filter((s) => s.status === 'ACTIVE' && saglik(s, t) < 100);
   if (!yapilar.length) throw new OyunHatasi(409, 'Bakım gerektiren yapı yok');
-  const tutar = Math.max(1, L.yuvarla(yapilar.reduce((a, s) => a + bakimMaliyeti(s, t), 0)));
   const tx = L.yeniTx();
-  L.harca(userId, tutar, `Yapı bakımı (${id})`, tx);
-  belediye.belediyePayi(p.ilce_id, tutar, 'ruhsatPayi', 'bakım ruhsat payı', tx);
+  // Nalburdan alınan bakım kiti varsa bakım ücretsiz
+  const kit = require('./carsi').stoktanKullan(userId, 'BAKIM_KITI', `Bakım kiti (${id})`, tx);
+  const tutar = kit ? 0 : Math.max(1, L.yuvarla(yapilar.reduce((a, s) => a + bakimMaliyeti(s, t), 0)));
+  if (!kit) {
+    L.harca(userId, tutar, `Yapı bakımı (${id})`, tx);
+    belediye.belediyePayi(p.ilce_id, tutar, 'ruhsatPayi', 'bakım ruhsat payı', tx);
+  }
   const guncelle = db.prepare(`UPDATE structures SET bakim_at = ? WHERE id = ?`);
   for (const s of yapilar) guncelle.run(t, s.id);
   L.denetim({ aktor: userId, eylem: 'STRUCTURES_MAINTAINED', varlik: id, sonra: { adet: yapilar.length, tutar }, bolge: p.region_id });
-  return { tamam: true, tutar, adet: yapilar.length };
+  return { tamam: true, tutar, adet: yapilar.length, kit };
 });
 
 // ---------- NPC pazarı (§5.2: sınırlı taban talep) ----------
@@ -441,11 +451,14 @@ function pazarDurumu() {
 }
 const npcSat = db.transaction((userId, urun, miktar) => {
   if (!bul(URUNLER, urun)) throw new OyunHatasi(400, 'Bilinmeyen ürün');
+  if (URUNLER[urun].dukkan) throw new OyunHatasi(422, `${URUNLER[urun].ad} dükkân ürünüdür; NPC tüccar almaz`);
   require('./ekonomi').envanterBozulmasi(userId);
   if (!Number.isInteger(miktar) || miktar < 1 || miktar > 10000) throw new OyunHatasi(400, 'Geçersiz miktar');
   const gun = bugun();
   const satilan = talepOku.get(gun, urun)?.sold || 0;
-  const kalan = NPC_PAZAR.gunlukTalep - satilan;
+  const kisisel = db.prepare(`SELECT sold FROM npc_kisisel WHERE day = ? AND user_id = ? AND item_id = ?`).get(gun, userId, urun)?.sold || 0;
+  // Ortak limit ya da oyuncunun kişisel tabanı (hangisi büyükse)
+  const kalan = Math.max(NPC_PAZAR.gunlukTalep - satilan, (NPC_PAZAR.kisiselTaban || 0) - kisisel);
   if (kalan <= 0) throw new OyunHatasi(409, 'NPC tüccarın bugünkü alım limiti doldu; yarın tekrar dene', 'TALEP_DOLDU');
   const adet = Math.min(miktar, kalan);
   // Ortalama fiyat: satış ilerledikçe fiyat düşer (sınırsız geri alım yok)
@@ -457,6 +470,8 @@ const npcSat = db.transaction((userId, urun, miktar) => {
   L.envanterDegis(userId, urun, -adet, 'NPC pazar satışı', tx);
   if (tutar > 0) L.aktar({ kaynak: 'SYS:NPC', hedef: L.hesap(userId), tutar, sebep: `${adet} ${URUNLER[urun].ad} satışı`, tx });
   talepYaz.run(gun, urun, adet);
+  db.prepare(`INSERT INTO npc_kisisel (day, user_id, item_id, sold) VALUES (?, ?, ?, ?)
+              ON CONFLICT(day, user_id, item_id) DO UPDATE SET sold = sold + excluded.sold`).run(gun, userId, urun, adet);
   L.denetim({ anahtar: `TRADE_SETTLED:${tx}`, aktor: userId, eylem: 'TRADE_SETTLED', varlik: urun,
     sonra: { adet, tutar, karsi: 'NPC' }, herkese: false });
   const gorev = gorevTamamla(userId, 'ILK_SATIS', tx);
@@ -565,6 +580,7 @@ function haritaParselleri(userId, bbox) {
             && e.waterings < (URUNLER[e.crop_type]?.sulama || 0) && (!e.last_watered_at || t - e.last_watered_at > TARIM.sulamaAraligiMs) ? 1 : 0,
           hh: s.owner_user_id ? (require('./ciftlik').parselHayvanHazir(s.id, t) ? 1 : 0) : 0,
           ss: s.owner_user_id ? require('./ciftlik').susKodu(s.id) : '',
+          or: e && e.ortu_bitis > t ? 1 : 0,   // tarla örtüsü (3B tünel)
           // 3B sahne için yapı ve ekin özeti (istemci yapilar3d.js)
           yp: yapilar.map((x) => `${x.type}:${x.status === 'ACTIVE' ? 1 : 0}`).join(','),
           kz: s.owner_user_id && !s.is_npc ? kozmetikKodu(s.owner_user_id) : '',
@@ -600,5 +616,5 @@ module.exports = {
   parselKarti, parselEdin, insaatBaslat, ek, sula, hasat, bakimYap, npcSat, ziyaret, saglik, aktifYapiVar, birimFiyat,
   oyuncuOzeti, cuzdanHareketleri, haberAkisi, haritaParselleri, bolgeler, ilIstatistikleri, pazarDurumu,
   insaatUygunluk, imarKullanimi, birincilBedel, bekleyenleriIsle,
-  parselGetir, sahibiOlmali, gelismislikSkoru, ekinDurumu, bul,
+  parselGetir, sahibiOlmali, gelismislikSkoru, ekinDurumu, bul, verimKati,
 };

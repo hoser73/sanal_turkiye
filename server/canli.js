@@ -74,8 +74,11 @@ function kanalSayilariniYay(kanallar) {
 yol.on('bildirim', (b) => {
   for (const ws of istemciler) if (ws.kullanici?.id === b.userId) gonder(ws, { tip: 'bildirim', metin: b.metin, link: b.link });
 });
+// Herkese açık olay: haritadaki canlı baloncuklar için parsel kimliği (konum) gider; kimin yaptığı gitmez, yalnızca alıcının kendisi mi
+const PARSEL_KIMLIGI = /^TR-\d{7}-\d{7}$/;
 yol.on('olay', (o) => {
-  for (const ws of istemciler) gonder(ws, { tip: 'olay', eylem: o.eylem, bolge: o.bolge });
+  const parsel = typeof o.varlik === 'string' && PARSEL_KIMLIGI.test(o.varlik) ? o.varlik : undefined;
+  for (const ws of istemciler) gonder(ws, { tip: 'olay', eylem: o.eylem, bolge: o.bolge, parsel, ben: !!o.aktor && ws.kullanici?.id === o.aktor });
 });
 yol.on('sohbet', ({ kanal, mesaj }) => {
   for (const ws of istemciler) {

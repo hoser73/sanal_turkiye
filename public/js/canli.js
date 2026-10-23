@@ -33,8 +33,19 @@ export function kanallaraAbone(liste) {
 export async function servisCalisaniKaydet(gitFn) {
   if (!('serviceWorker' in navigator)) return null;
   try {
-    const kayit = await navigator.serviceWorker.register('/sw.js');
+    const ilkKontrol = !!navigator.serviceWorker.controller;
+    const kayit = await navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' });
     navigator.serviceWorker.addEventListener('message', (e) => { if (e.data?.tip === 'git' && e.data.link) gitFn(e.data.link); });
+    // Yeni sürüm yayımlanınca açık sekmeler eski kodla kalmasın: yeni servis çalışanı devralınca sayfa bir kez yenilenir
+    // (ilk kurulumda değil). Uzun süre açık kalan sekmeler için yarım saatte bir sürüm denetlenir.
+    let yenilendi = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!ilkKontrol || yenilendi) return;
+      yenilendi = true;
+      location.reload();
+    });
+    setInterval(() => { if (!document.hidden) kayit.update().catch(() => {}); }, 30 * 60_000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) kayit.update().catch(() => {}); });
     return kayit;
   } catch (e) { console.warn('Servis çalışanı kaydedilemedi', e); return null; }
 }

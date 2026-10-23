@@ -76,7 +76,7 @@ function denetim({ anahtar = null, aktor = null, eylem, varlik = null, once = nu
     sonra == null ? null : JSON.stringify(sonra),
     bolge, herkese ? 1 : 0);
   const olaylar = require('./olaylar');
-  if (herkese) olaylar.yay('olay', { eylem, bolge, varlik });
+  if (herkese) olaylar.yay('olay', { eylem, bolge, varlik, aktor });   // aktor yalnızca sunucu içinde (canli.js 'ben' bayrağı için)
   if (aktor) olaylar.yay('eylem', { eylem, aktor, bolge, varlik });
 }
 

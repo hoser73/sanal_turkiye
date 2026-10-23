@@ -73,11 +73,13 @@ const uretimBaslat = db.transaction((userId, parcelId, govde = {}) => {
   const enerji = r.enerji * parti * (oyun.aktifYapiVar(yapilar, 'GUNES_PANELI') ? 0.5 : 1);
   if (enerji > 0) L.harca(userId, enerji, `Üretim enerjisi: ${URUNLER[kod].ad}`, tx);
   const t = simdi();
-  const sure = Math.round(r.sureMs * parti * (1 - meslekBonusu(userId, 'ZANAATKAR')));
+  // Rüzgârlı havada (ilin gerçek ölçümü) değirmen daha hızlı öğütür
+  const ruzgar = r.tesis === 'DEGIRMEN' ? require('./iklim').ruzgarKati(p.plaka, t) : 1;
+  const sure = Math.round(r.sureMs * parti * (1 - meslekBonusu(userId, 'ZANAATKAR')) * ruzgar);
   const id = db.prepare(`INSERT INTO uretimler (user_id, parcel_id, structure_id, recete, parti, cikti, baslangic, bitis) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
     .run(userId, p.id, s.id, kod, parti, r.cikti * parti, t, t + sure).lastInsertRowid;
   L.denetim({ aktor: userId, eylem: 'PRODUCTION_STARTED', varlik: p.id, sonra: { recete: kod, parti }, bolge: p.region_id });
-  return { tamam: true, id, bitis: t + sure, enerji };
+  return { tamam: true, id, bitis: t + sure, enerji, ruzgarli: ruzgar < 1 };
 });
 
 const uretimTopla = db.transaction((userId, uretimId) => {

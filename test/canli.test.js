@@ -161,3 +161,17 @@ test('PWA: servis çalışanı ve çevrimdışı sayfası sunulur', async () => 
     assert.equal((await fetch(taban + yol)).status, 200, `önbellek listesindeki ${yol} sunulmalı`);
   }
 });
+
+test('canlı dünya: herkese açık olay parsel konumunu taşır; eylemi yapanı söylemez, yalnızca alıcının kendisi mi', async () => {
+  const a = await oyuncu('baloncu'), b = await oyuncu('izleyici');
+  const [wa, wb, wz] = await Promise.all([soket(a), soket(b), soket(null)]);
+  await Promise.all([wa.bekle('merhaba'), wb.bekle('merhaba'), wz.bekle('merhaba')]);
+  const id = hucreBul('TARIM');
+  assert.equal((await a(`/api/parsel/${id}/edin`, {})).durum, 200);
+  const k = (m) => m.tip === 'olay' && m.eylem === 'PARCEL_ACQUIRED' && m.parsel === id;
+  const [ma, mb, mz] = await Promise.all([wa.bekle(k), wb.bekle(k), wz.bekle(k)]);
+  assert.equal(ma.ben, true);
+  assert.equal(mb.ben, false);
+  assert.equal(mz.ben, false, 'ziyaretçi');
+  for (const m of [ma, mb, mz]) assert.deepEqual(Object.keys(m).sort(), ['ben', 'bolge', 'eylem', 'parsel', 'tip']);
+});

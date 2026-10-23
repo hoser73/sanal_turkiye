@@ -151,6 +151,18 @@ export function binaKur(ctx) {
     }
     return birlestir(p);
   })();
+  // Tarla örtüsü: tarlayı boydan boya kaplayan yarım silindir plastik tünel ve kemerleri (y ölçeklenmez: 2,4 m yüksek)
+  const ortuGeo = new THREE.CylinderGeometry(1, 1, S - 2.4, 18, 1, true, 0, Math.PI).rotateZ(Math.PI / 2).scale(1, 2.4, S / 2 - 1.6);
+  const ortuMalz = new THREE.MeshLambertMaterial({ color: '#f4fbff', transparent: true, opacity: 0.62, side: THREE.DoubleSide, depthWrite: false });
+  const kemerGeo = (() => {
+    const p = [];
+    for (let i = 0; i < 6; i++) {
+      const x = -(S / 2 - 1.4) + (i * (S - 2.8)) / 5;
+      p.push({ geo: new THREE.TorusGeometry(1, 0.025, 4, 16, Math.PI).rotateY(Math.PI / 2).scale(1, 2.4, S / 2 - 1.6), renk: '#9aa7ad', yer: [x, 0, 0] });
+    }
+    return birlestir(p);
+  })();
+  const kemerMalz = new THREE.MeshLambertMaterial({ vertexColors: true });
   const citMalz = { benim: new THREE.MeshLambertMaterial({ vertexColors: true, color: '#d9a640' }), diger: new THREE.MeshLambertMaterial({ vertexColors: true, color: '#8a5a32' }) };
   const panelGeo = new THREE.BoxGeometry(1.9, 0.08, 1.05), depoGeo = new THREE.CylinderGeometry(0.32, 0.32, 1.7, 8).rotateZ(Math.PI / 2);
   let binalar = [], parselGrup = null, sonFc = null;
@@ -305,7 +317,7 @@ export function binaKur(ctx) {
     const isaretListesi = [];
     const hucreM = (40075016.686 * Math.cos((ctx.cografi(0, 0)[1] * Math.PI) / 180)) / G.N;
     for (const f of sonFc.features) {
-      const { gx, gy, z, yp, ek, kz, ss, s: sahip, e: ekinDurum, su, hh } = f.properties;
+      const { gx, gy, z, yp, ek, kz, ss, s: sahip, e: ekinDurum, su, hh, or: ortu } = f.properties;
       if (!yp && !ek && !kz && !ss && !sahip) continue;
       const [lng, lat] = G.merkez(gx, gy);
       const [x, zz] = ctx.yerel(lng, lat);
@@ -320,6 +332,13 @@ export function binaKur(ctx) {
         const cit = new THREE.Mesh(citGeo, sahip === 1 ? citMalz.benim : citMalz.diger);
         plaka.userData.paylasimli = cit.userData.paylasimli = true;
         g.add(plaka, cit);
+        if (ortu) {
+          const tunel = new THREE.Mesh(ortuGeo, ortuMalz), kemer = new THREE.Mesh(kemerGeo, kemerMalz);
+          tunel.position.y = kemer.position.y = 0.1;
+          tunel.renderOrder = 2;
+          tunel.userData.paylasimli = kemer.userData.paylasimli = true;
+          g.add(tunel, kemer);
+        }
       }
       g.position.set(x, ctx.yukseklik(x, zz) + (sahip ? 0.25 : 0.05), zz);   // sahipli: hafif yükseltilmiş tarla yatağı
       // Kendi parselimde baloncuk: hasat hazır, sulama bekliyor, hayvan ürünü hazır

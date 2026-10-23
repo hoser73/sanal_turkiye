@@ -13,6 +13,10 @@ export function hesapKur(baglam) {
   $('#hesapModal').addEventListener('click', hesapTik);
   $('#hesapModal').addEventListener('submit', hesapGonder);
   $('#hesapModal').addEventListener('close', () => { kurulum = null; kurtarma = null; });
+  // E-posta doğrulama rozeti: tıklayınca açıklama ve yeniden gönder açılır, dışarı tıklayınca kapanır
+  const dogrulamaAc = (ac) => { $('#dogrulamaAyrinti').hidden = !ac; $('#dogrulamaAc').setAttribute('aria-expanded', String(ac)); };
+  $('#dogrulamaAc').addEventListener('click', () => dogrulamaAc($('#dogrulamaAyrinti').hidden));
+  document.addEventListener('click', (e) => { if (!e.target.closest('#dogrulamaSerit')) dogrulamaAc(false); });
   $('#dogrulamaYeniden').addEventListener('click', async () => {
     try { const r = await api('/api/eposta/yeniden', {}); tost(r.zatenDogrulandi ? 'Adresin zaten doğrulanmış' : 'Doğrulama bağlantısı gönderildi'); ctx.yenile(); } catch (e) { tost(e.message, 'hata'); }
   });
@@ -187,6 +191,13 @@ function oyunAyarlari(h) {
     </section>
     <section><h3>Bildirim sesi</h3>
       <label class="onay"><input type="checkbox" data-h="ses" ${a.bildirimSesi ? 'checked' : ''}> <span>Yeni bildirimde kısa bir ses çal</span></label>
+    </section>
+    <section><h3>Çiftlik hatırlatmaları</h3>
+      <label class="onay"><input type="checkbox" data-h="hatirlatma" ${a.hatirlatma !== false ? 'checked' : ''}> <span>Hasat hazır olunca, hayvan ürünleri birikince ve sipariş süresi dolmak üzereyken haber ver (gece 23.00–08.00 arası gönderilmez)</span></label>
+    </section>
+    <section><h3>Rehber</h3>
+      <p class="kucuk">Hasan Dayı'nın ilk adımlar rehberini baştan başlat.</p>
+      <button type="button" class="dugme ince" data-h="rehber">🧑‍🌾 Rehberi yeniden başlat</button>
     </section>`;
 }
 
@@ -215,12 +226,14 @@ async function hesapTik(e) {
     await islem(() => api('/api/kozmetik/al', { kod: b.dataset.kod }), 'Kozmetik alındı'); await ctx.yenile(); return hesapAc();
   }
   if (hh === 'koz-sec') { await islem(() => api('/api/kozmetik/sec', { tur: b.dataset.tur, kod: b.dataset.kod || null }), 'Görünüm güncellendi'); await ctx.yenile(); return hesapAc(); }
+  if (hh === 'rehber') { window.dispatchEvent(new CustomEvent('rehber-yeniden')); $('#hesapModal')?.close(); return; }
   if (hh === 'sure') { await islem(() => api('/api/hesap/ayarlar', { sureHatirlatici: Number(b.dataset.d) }), 'Hatırlatıcı güncellendi'); await ctx.yenile(); return hesapAc(); }
 }
 async function ayarDegisti(e) {
   const hh = e.target.dataset?.h;
-  if (hh === 'sohbet' || hh === 'ses') {
-    await islem(() => api('/api/hesap/ayarlar', hh === 'sohbet' ? { sohbet: e.target.checked } : { bildirimSesi: e.target.checked }), 'Ayar kaydedildi');
+  if (hh === 'sohbet' || hh === 'ses' || hh === 'hatirlatma') {
+    const govde = { sohbet: { sohbet: e.target.checked }, ses: { bildirimSesi: e.target.checked }, hatirlatma: { hatirlatma: e.target.checked } }[hh];
+    await islem(() => api('/api/hesap/ayarlar', govde), 'Ayar kaydedildi');
     await ctx.yenile();
   }
 }

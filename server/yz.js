@@ -116,8 +116,9 @@ async function gazete(mahalleId) {
   }) : null;
   const icerik = yz || yerelGazete(m, olaylar, hava);
   const kaynak = yz ? 'claude' : 'yerel';
-  db.prepare(`INSERT OR REPLACE INTO yz_onbellek (anahtar, icerik, kaynak, created_at) VALUES (?, ?, ?, ?)`).run(anahtar, JSON.stringify(icerik), kaynak, Date.now());
-  return { ...icerik, kaynak, tarih: Date.now() };
+  const t = Date.now();   // önbellek kaydı ile dönen tarih aynı an olmalı
+  db.prepare(`INSERT OR REPLACE INTO yz_onbellek (anahtar, icerik, kaynak, created_at) VALUES (?, ?, ?, ?)`).run(anahtar, JSON.stringify(icerik), kaynak, t);
+  return { ...icerik, kaynak, tarih: t };
 }
 
 // ---------- Tarla danışmanı

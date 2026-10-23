@@ -35,6 +35,13 @@ onay istenir ve onay kaydı (`yasal_onaylar`) sürümüyle saklanır.
    (`gunluk/hatalar.jsonl`) ve yedeklerin saklama süresi (şu an yedekler 14 gün).
 9. **Çerezler:** Yalnızca zorunlu çerez ve yerel depolama kullanılıyor; çerez bandı gerekmediği teyidi.
 10. **Moderasyon kararlarına itiraz:** İtiraz kanalı ve süresi; iki kişi kuralı ve herkese açık karar kaydının metinlere yansıtılması.
+11. **Sponsor işletmeler (banka, nalbur, market, zirai bayi):** Her türden tek marka. Sözleşmede marka, logo ve şube verisinin
+    kullanım lisansı, süresi ve bitince kaldırılacağı yer almalı (sistem bitiş tarihinde markayı kendiliğinden kaldırır).
+    Oyunda "Sponsor" etiketiyle gösteriliyor; ticari reklam ve haksız ticari uygulamalar mevzuatı açısından yeterliliği
+    (gizli reklam yasağı) teyit edilmeli. **Banka sponsorluğu:** oyundaki "banka" akçe ile çalışır, nakde çevrilmez; bunun
+    gerçek bankacılık, kredi ya da yatırım hizmeti olmadığı metinlerde açıkça yazmalı; banka reklamına ilişkin BDDK/TBB
+    düzenlemeleri ve 13–17 yaş oyunculara banka reklamı gösterilmesi değerlendirilmeli (mevcut tasarım: 18 yaş altı oyun içi
+    kredi kullanamaz, marka herkese görünür). Sponsorla oyuncu verisi paylaşılmıyor; paylaşılacaksa KVKK aydınlatma ve açık rıza gerekir.
 
 ## Teknik olarak hazır olanlar (metinlerde atıf yapılabilir)
 

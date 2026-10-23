@@ -2,7 +2,6 @@ import { api, esc, sayi, akce, sure, zamanOnce, tost, ApiHatasi, tamlayan } from
 import { haritaKur } from './harita.js';
 import { kaynaklariAyarla } from './stil.js';
 import { GRAFIK, varsayilanGrafik } from './dunya3d.js';
-import { girisOynayacakMi } from './sinematik.js';
 import { sahneKur } from './sahne3d.js';
 import { mahallePaneli as mahalleSekmesi, yenidenSayimHTML } from './secim-ui.js';
 import { belediyePaneli as belediyeSekmesi } from './belediye-ui.js';
@@ -15,6 +14,11 @@ import { meslekBolumu, kooperatifBolumu, albumBolumu } from './topluluk-ui.js';
 import { paylas, zamanYolculugu } from './foto.js';
 import { hayvanSatiri, susBolumu, ciftlikBolumu } from './ciftlik-ui.js';
 import { ses, sesDurumu, sesAyarla, muzikAyarla } from './ses.js';
+import { komsularBolumu, parselKomsuDugmeleri, urunGonderFormu, yoreselBolumu, etkinlikBolumu, etkinlikSeridi } from './komsuluk-ui.js';
+import { balikOyunu } from './balik-ui.js';
+import { havaSeridi, havaPenceresi, iklimSatiri, ortuSatiri } from './hava-ui.js';
+import { carsiGirisi, dukkanHTML, bankaHTML } from './carsi-ui.js';
+import { rehberKur } from './rehber.js';
 
 const $ = (s, kok = document) => kok.querySelector(s);
 const $$ = (s, kok = document) => [...kok.querySelectorAll(s)];
@@ -111,27 +115,33 @@ async function basla() {
 
   lejantCiz();
   panelCiz();
-  kipDugmesiCiz(kipOku());
+  // Açılış hep düz (2B) Türkiye görünümü; kayıtlı 3B tercihi yalnızca konumlu bağlantıyla (#konum, ?parsel) açılınca uygulanır
+  const baslangicKip = /konum=/.test(location.hash) || new URLSearchParams(location.search).has('parsel') ? kipOku() : '2d';
+  kipDugmesiCiz(baslangicKip);
   if (tokenler.sifirla) { sifirlamaTokeni = tokenler.sifirla; authAc('sifirla'); }
   else if (durum.ikinciAdimBekleniyor) authAc('ikiAdim');
-  // Karşılama harita yüklenirken hazır olsun; giriş uçuşu oynayacaksa uçuştan sonra açılır
-  const karsilamaBekle = !girisli() && !tokenler.sifirla && !durum.ikinciAdimBekleniyor && gorunumTercihi() !== 'harita' && girisOynayacakMi();
-  if (!tokenler.sifirla && !durum.ikinciAdimBekleniyor && !girisli() && !karsilamaBekle) $('#karsilama').showModal();
+  // Karşılama harita yüklenirken hazır olsun
+  if (!tokenler.sifirla && !durum.ikinciAdimBekleniyor && !girisli()) $('#karsilama').showModal();
   durum.harita = await haritaKur($('#harita'), {
     parselTik: parselSec,
+    carsiTik: (k) => { durum.carsiAlt = k; sekmeSec('carsi'); },
     ilTik: ilSec,
     ilceTik: ilceSec,
     mahalleAlanTik: mahalleAlanSec,
     mahalleTik: mahalleAc,
     belediyeTik: belediyeAc,
     konumDegisti,
-    kip: kipOku(),
+    kip: baslangicKip,
     tema: gorunumTercihi(),
     grafik: tercihOku('st-grafik', varsayilanGrafik()),
   });
+  // Rehber (Hasan Dayı) ve etkinlik şeridi
+  durum.rehber = rehberKur({ durum, harita: durum.harita, parselSec, sekmeSec, ciftlikAlt });
+  durum.rehber.guncelle();
+  etkinlikYenile();
   gorunumMenusuCiz();
-  const ucus = durum.harita.girisUcusu();
-  if (karsilamaBekle) (ucus || Promise.resolve()).then(() => { if (!girisli() && !$('#karsilama').open) $('#karsilama').showModal(); });
+  durum.harita.yoreselGoster(durum.kurallar.yoresel);
+  carsiSubeleriYukle();
   $('#harita').addEventListener('kip', (e) => kipDugmesiCiz(e.detail));
   // Işık: gerçek saat (gece karanlık, alacakaranlık turuncu) ya da hep gündüz; tercih tarayıcıda saklanır
   const isikCiz = (a) => { $('#isikDugme').textContent = a === 'gunduz' ? '☀️' : '🌗'; $('#isikDugme').title = a === 'gunduz' ? 'Işık: hep gündüz' : 'Işık: gerçek saat'; };
@@ -157,7 +167,7 @@ async function basla() {
   servisCalisaniKaydet(baglantiyaGit);
   havaYenile();
   durum.harita.gunesGuncelle();
-  setInterval(() => { if (!document.hidden) { havaYenile(); durum.harita.gunesGuncelle(); } }, 10 * 60_000);
+  setInterval(() => { if (!document.hidden) { havaYenile(); havaSeridiYenile({ zorla: true }); durum.harita.gunesGuncelle(); } }, 10 * 60_000);
   durum.harita.map.on('moveend', () => durum.harita.gunesGuncelle());
   sohbetKanallariniYenile();
   const git = new URLSearchParams(location.hash.slice(1)).get('git');
@@ -171,6 +181,23 @@ async function basla() {
 
 async function havaYenile() {
   try { durum.harita?.havaGoster((await api('/api/hava')).iller); } catch { /* hava isteğe bağlıdır */ }
+}
+// Çiftliğin havası şeridi (haritanın üstünde): giriş yapmış ve tarlası olan oyuncuya. Dakikada en çok bir istek.
+let havaSeridiZaman = 0;
+async function havaSeridiYenile({ zorla = false } = {}) {
+  let serit = document.getElementById('havaSerit');
+  if (!girisli()) { durum.benimHavam = null; if (serit) serit.innerHTML = ''; return; }
+  if (!zorla && Date.now() - havaSeridiZaman < 60_000) return;
+  havaSeridiZaman = Date.now();
+  try { durum.benimHavam = await api('/api/hava/benim'); } catch { return; }
+  if (!serit) { serit = document.createElement('div'); serit.id = 'havaSerit'; $('#harita')?.appendChild(serit); }
+  serit.innerHTML = havaSeridi(durum.benimHavam);
+  if ($('#genelModal').open && $('#genelGovde .hava-penceresi')) $('#genelGovde').innerHTML = `<div class="hava-penceresi">${havaPenceresi(durum.benimHavam)}</div>`;
+}
+async function havaPenceresiAc() {
+  if (!girisli()) { tost('Çiftliğinin havasını görmek için giriş yap', 'hata'); return; }
+  await havaSeridiYenile({ zorla: true });
+  if (durum.benimHavam) genelPencere(`<div class="hava-penceresi">${havaPenceresi(durum.benimHavam)}</div>`);
 }
 async function ilIstatistikYenile() {
   try { durum.harita?.ilIstatistikleri(await api('/api/istatistik/iller')); } catch { /* sonraki turda */ }
@@ -191,6 +218,8 @@ async function benYenile({ sessiz = false } = {}) {
     durum.ben = null;
   }
   ustCiz();
+  durum.rehber?.guncelle();
+  havaSeridiYenile();
   hesapDurumuCiz(durum.ben);
   durum.harita?.benimParsellerim(durum.ben?.portfoy || []);
 }
@@ -245,7 +274,8 @@ async function mahalleAlanSec(ilceId, yerId, lngLat) {
   try {
     const r = await api(`/api/ilce/${ilceId}/mahalle`, { yerId });
     durum.harita.yereGit({ merkez: [lngLat.lng, lngLat.lat], zoom: 14.6 });
-    mahalleAc(r.id);
+    if (r.id) mahalleAc(r.id);
+    else tost(`📍 ${r.ad}: henüz oyuncu yok. Giriş yapıp ilk parseli sen edinebilirsin.`);
   } catch (e) { tost(e.message, 'hata'); }
 }
 
@@ -420,11 +450,28 @@ function sekmeSec(ad) {
 async function panelCiz() {
   const kap = $('#panelIcerik');
   const ciz = {
-    parsel: parselPaneli, arazilerim: arazilerimPaneli, yonetim: yonetimPaneli, gorevler: gorevlerPaneli, pazar: pazarPaneli, haberler: haberlerPaneli,
+    parsel: parselPaneli, arazilerim: arazilerimPaneli, yonetim: yonetimPaneli, gorevler: gorevlerPaneli, carsi: carsiPaneli, pazar: pazarPaneli, haberler: haberlerPaneli,
   }[durum.sekme];
   kap.innerHTML = await ciz();
   if (durum.sekme === 'parsel' && durum.kart) sahneyiGoster();
 }
+
+// ---------- Çarşı: banka, nalbur, market, zirai bayi (her türden tek işletme; sponsor markası sunucudan)
+async function carsiPaneli() {
+  const k = durum.carsiAlt;
+  try {
+    if (!k) return carsiGirisi(await api('/api/carsi'));
+    if (k === 'BANKA') return girisli() ? bankaHTML(await api('/api/banka')) : girisIste('Bankayı kullanmak için giriş yap');
+    return dukkanHTML(await api(`/api/carsi/${encodeURIComponent(k)}`), { girisli: girisli(), bakiye: durum.ben?.bakiye || 0, envanter: durum.ben?.envanter || [], kurallar: durum.kurallar });
+  } catch (e) { return `<p class="kucuk">${esc(e.message)}</p>`; }
+}
+async function carsiSubeleriYukle() {
+  try {
+    const [subeler, c] = await Promise.all([api('/api/carsi/subeler'), api('/api/carsi')]);
+    durum.harita?.carsiGoster(subeler, c.isletmeler);
+  } catch { /* şubeler süs; yüklenmezse harita yine çalışır */ }
+}
+const stokta = (kod) => (durum.ben?.envanter || []).find((i) => i.item_id === kod)?.miktar || 0;
 
 function sahneyiGoster() {
   const yer = $('#sahne3d');
@@ -491,6 +538,7 @@ function parselPaneli() {
       <p class="kucuk">${esc(imar.aciklama)}</p></div>`);
   } else {
     parcalar.push(`<div class="kutu"><div class="satir"><div><div class="kucuk">Kullanım hakkı</div><b>${esc(k.sahip.ad)}</b>${k.sahip.unvan ? ` <span class="kucuk">· ${esc(k.sahip.unvan)}</span>` : ''}${k.sahip.demoSakin ? ' <span class="demo-rozet" title="Oyunun canlandırdığı demo sakin">demo</span>' : k.sahip.npc ? ' <span class="kucuk">(demo komşu)</span>' : ''}</div>
+      ${parselKomsuDugmeleri(k)}
       ${girisli() ? `<div class="satir-dugmeler"><button class="dugme ince" data-eylem="ziyaret">👋 Ziyaret et</button>
         ${k.sahip.npc ? '' : `<button type="button" class="bag sessiz" data-eylem="sikayet" data-tur="PARSEL" data-id="${esc(k.id)}" data-baslik="Parsel ${esc(k.id)}">bildir</button>`}</div>` : ''}</div>
       ${k.durum === 'FROZEN' ? '<p class="kucuk uyari-metin">❄️ Bu parsel moderasyon incelemesi süresince dondurulmuştur.</p>' : ''}</div>`);
@@ -526,7 +574,7 @@ function parselPaneli() {
           ? `<div class="kucuk">İnşaatta · <span data-bitis="${y.bitis}">${sure(y.bitis - sunucuSimdi())}</span></div>`
           : `<div class="kucuk">Sağlık %${y.saglik}${y.etkisiz ? ' · <b class="kirmizi-metin">bakımsız: etkisi durdu</b>' : ''}</div>
              <div class="cubuk ince ${saglikRenk(y.saglik)}"><span style="width:${y.saglik}%"></span></div>
-             ${hayvanSatiri(y, { ben, yem: (durum.ben?.envanter || []).find((i) => i.item_id === 'YEM')?.miktar || 0, simdi: sunucuSimdi })}`}</div></li>`).join('')}</ul>
+             ${hayvanSatiri(y, { ben, yem: stokta('YEM'), asi: stokta('ASI'), simdi: sunucuSimdi })}`}</div></li>`).join('')}</ul>
       ${ben && k.bakim.toplam > 0 ? `<div class="satir" style="margin-top:8px"><span class="kucuk">Yapılar günde ${k.bakim.yipranma} puan yıpranır; %${k.bakim.esik} altında etkileri durur.</span>
         <button class="dugme ince" data-eylem="bakim" ${durum.ben.bakiye < k.bakim.toplam ? 'disabled' : ''}>🔧 Bakım yap (${akce(k.bakim.toplam)})</button></div>` : ''}`);
   }
@@ -616,7 +664,9 @@ function uretimBolumu(k) {
       <button class="dugme ince ${bitti ? 'altin' : ''}" data-eylem="uretim-topla" data-id="${x.id}" ${bitti ? '' : 'disabled'}>Topla</button></li>`;
   };
   const mesgul = new Set(u.surenler.map((x) => x.tesis));
-  return `<h3 class="bolum">Üretim</h3>
+  const ruzgar = k.iklim?.ruzgar?.degirmenHizli && u.receteler.some((r) => r.tesis === 'DEGIRMEN')
+    ? `<p class="kucuk rozet-hava">🌬️ ${esc(k.il)} rüzgârlı (${k.iklim.ruzgar.kmh} km/s): değirmen %25 hızlı öğütüyor.</p>` : '';
+  return `<h3 class="bolum">Üretim</h3>${ruzgar}
     ${u.surenler.length ? `<ul class="liste">${u.surenler.map(suren).join('')}</ul>` : ''}
     <ul class="liste" style="margin-top:8px">${u.receteler.map((r) => {
       const yeter = Math.min(...r.girdi.map((g) => Math.floor(g.stok / g.adet)));
@@ -631,7 +681,7 @@ function uretimBolumu(k) {
 // İlin gerçek havası ve mevsim (Open-Meteo, il merkezi)
 function havaSatiri(k) {
   if (!k.hava && !k.mevsim) return '';
-  return `<div class="hava-satiri">${k.mevsim ? `<span>${k.mevsim.ikon} ${esc(k.mevsim.ad)}</span>` : ''}${k.hava ? `<span>${k.hava.ikon} ${k.hava.sicaklik}° · ${esc(k.hava.durum)}${k.hava.yagis ? ` · ${k.hava.yagis} mm` : ''}</span><span class="kucuk">${esc(k.il)} merkezi, şu an</span>` : ''}</div>`;
+  return `<div class="hava-satiri">${k.mevsim ? `<span>${k.mevsim.ikon} ${esc(k.mevsim.ad)}</span>` : ''}${k.hava ? `<span>${k.hava.ikon} ${k.hava.sicaklik}° · ${esc(k.hava.durum)}${k.hava.yagis ? ` · ${k.hava.yagis} mm` : ''}</span><span class="kucuk">${esc(k.il)} merkezi, şu an</span>` : ''}</div>${iklimSatiri(k)}`;
 }
 function tarlaBolumu(k) {
   const e = k.ekin;
@@ -646,7 +696,7 @@ function tarlaBolumu(k) {
         const yoresel = u.bolgeler ? `<span class="yoresel ${s.uygun ? '' : 'disi'}">${s.uygun ? 'yöresel' : `yalnızca ${esc(u.bolgeAd)}`}</span>` : '';
         return `<button type="button" data-eylem="ek" data-urun="${kod}" ${!s.uygun || durum.ben.bakiye < u.tohum * kat ? 'disabled' : ''}>
           <span class="ikon">${u.ikon}</span><b>${esc(u.ad)}</b>${yoresel}
-          <span class="kucuk">${akce(u.tohum * kat)} · ${sure(Math.round(u.sureMs * s.buyume))}${s.buyume !== 1 ? ` <span class="${s.buyume > 1 ? 'kirmizi-metin' : 'yesil-metin'}">(${k.mevsim.ikon}×${s.buyume})</span>` : ''}</span>
+          <span class="kucuk">${akce(u.tohum * kat)} · ${sure(Math.round(u.sureMs * s.buyume))}${s.buyume !== 1 ? ` <span class="${s.buyume > 1 ? 'kirmizi-metin' : 'yesil-metin'}">(${k.mevsim.ikon}${k.iklim?.gunesli ? '☀️' : ''}×${s.buyume})</span>` : ''}</span>
           <span class="kucuk">💧 ${u.sulama} sulama${u.donHassas ? ' · ❄️ dona hassas' : ''}</span>
         </button>`;
       }).join('')}</div></div>`;
@@ -667,9 +717,22 @@ function tarlaBolumu(k) {
       <button class="dugme ${olgun ? 'altin' : ''} ince" data-eylem="hasat" ${olgun ? '' : 'disabled'}>${e.tazelik === 'CURUDU' ? '🧹 Tarlayı temizle' : '🧺 Hasat et'}</button>
     </div>
     ${!e.otomatikSulama && e.sulama < e.gerekenSulama ? '<p class="kucuk">Eksik sulama verimi düşürür. Sulama hattı kurarsan otomatik sulanır; yağmur da açık tarlayı sular.</p>' : ''}
+    ${e.tazelik !== 'CURUDU' ? ortuSatiri(k, { ...e, donHassas: !!durum.kurallar.urunler[e.tip]?.donHassas }, (k.iklim?.ortu.birimMaliyet || 0) * kat) : ''}
+    ${zirai(k, e, olgun)}
     ${e.don ? '<p class="kucuk kirmizi-metin">❄️ Bu ekin don gördü: verim %25 düşük olacak. Sera kurarsan sonraki ekinler korunur.</p>' : ''}
     ${e.yagmurAt ? `<p class="kucuk">🌧️ Son yağmur tarlanı ${zamanOnce(e.yagmurAt)} suladı.</p>` : ''}
   </div>`;
+}
+
+// Zirai bayi ürünleri: gübre (olgunlaşmadan), bitki koruma ilacı; durum rozetleri
+function zirai(k, e, olgun) {
+  const rozet = [e.gubre ? '🧪 gübreli (+%20 hasat)' : '', e.ilac ? '🛡️ ilaçlı (don/dolu/sağanak koruması)' : ''].filter(Boolean);
+  const dugmeler = !k.kullanimHakkim || e.tazelik === 'CURUDU' ? [] : [
+    !e.gubre && !olgun && stokta('GUBRE') ? `<button class="dugme ince" data-eylem="carsi-kullan" data-urun="GUBRE">🧪 Gübre ver (${stokta('GUBRE')})</button>` : '',
+    !e.ilac && stokta('ILAC') ? `<button class="dugme ince" data-eylem="carsi-kullan" data-urun="ILAC">🛡️ İlaçla (${stokta('ILAC')})</button>` : '',
+  ].filter(Boolean);
+  if (!rozet.length && !dugmeler.length) return '';
+  return `<div class="zirai-satir">${rozet.map((r) => `<span class="rozet-hava">${r}</span>`).join('')}${dugmeler.join('')}</div>`;
 }
 
 // ---------- Arazilerim ----------
@@ -713,10 +776,10 @@ function envanterHTML() {
   if (!env.length) return '<p class="kucuk">Envanterin boş. Hasat ettiğin ürünler burada görünür.</p>';
   return `<ul class="liste">${env.map((i) => `
     <li class="liste-oge"><span class="ikon">${i.ikon}</span><div class="govde"><b>${esc(i.ad)}</b><span class="kucuk">${sayi(i.miktar)} adet${i.gunlukBozulma ? ` · depoda günde %${sayi(i.gunlukBozulma * 100)} bozulur` : ''}</span></div>
-      <form class="sat-form" data-urun="${esc(i.item_id)}">
+      ${durum.kurallar.urunler[i.item_id]?.dukkan ? '<span class="kucuk">dükkân ürünü</span>' : `<form class="sat-form" data-urun="${esc(i.item_id)}">
         <input type="number" name="miktar" min="1" max="${i.miktar}" value="${i.miktar}" aria-label="Satış miktarı">
         <button class="dugme ince" type="submit">Sat</button>
-      </form></li>`).join('')}</ul>`;
+      </form>`}</li>`).join('')}</ul>`;
 }
 
 async function cuzdanYukle() {
@@ -728,9 +791,22 @@ async function cuzdanYukle() {
 
 // ---------- Görevler ----------
 async function gorevlerPaneli() {
-  if (!girisli()) return girisIste('Seviye, günlük ödül, siparişler ve köy yarışması seni bekliyor');
+  if (!girisli()) return girisIste('Seviye, günlük ödül, siparişler, komşular ve yöresel ürünler seni bekliyor');
+  const alt = durum.ciftlikAlt || 'ciftlik';
+  const etkinlik = durum.etkinlik?.aktif;
+  const segment = `<div class="segment" role="tablist">
+    <button type="button" data-eylem="ciftlik-alt" data-alt="ciftlik" aria-selected="${alt === 'ciftlik'}">🌾 Çiftlik</button>
+    <button type="button" data-eylem="ciftlik-alt" data-alt="komsular" aria-selected="${alt === 'komsular'}">🤝 Komşular</button>
+    <button type="button" data-eylem="ciftlik-alt" data-alt="yoresel" aria-selected="${alt === 'yoresel'}">📔 Yöresel</button>
+    <button type="button" data-eylem="ciftlik-alt" data-alt="etkinlik" aria-selected="${alt === 'etkinlik'}">${etkinlik ? etkinlik.ikon : '📅'} Etkinlik</button></div>`;
+  try {
+    if (alt === 'komsular') return segment + komsularBolumu(await api('/api/komsuluk'));
+    if (alt === 'yoresel') return segment + yoreselBolumu(await api('/api/yoresel'));
+    if (alt === 'etkinlik') { durum.etkinlik = await api('/api/etkinlik'); return segment + etkinlikBolumu(durum.etkinlik, { simdi: sunucuSimdi }); }
+  } catch (e) { return `${segment}<p class="kucuk">${esc(e.message)}</p>`; }
   let ciftlik = '';
   try { ciftlik = ciftlikBolumu(await api('/api/ciftlik'), { simdi: sunucuSimdi }); } catch { /* bağlantı yoksa yalnızca görevler */ }
+  ciftlik = segment + ciftlik;
   const g = durum.ben.gorevler;
   const biten = g.filter((x) => x.tamam).length;
   return `<h2 class="kart-baslik">Çiftliğim</h2>${ciftlik}<h3 class="bolum">İlk adımlar</h3>
@@ -983,6 +1059,22 @@ $('#panelIcerik').addEventListener('click', async (e) => {
       return eylem(`/api/parsel/${id}/ek`, { urun: b.dataset.urun }, `🌱 ${urunAd(b.dataset.urun)} ekildi`)
         .then((r) => { if (r?.tamam !== false && r) { durum.harita.efekt('ek', konum, '🌱'); ses('ek'); } });
     }
+    case 'carsi-ac':
+      durum.carsiAlt = b.dataset.kategori; $('#panelIcerik').scrollTop = 0; return panelCiz();
+    case 'carsi-geri':
+      durum.carsiAlt = null; return panelCiz();
+    case 'vadeli-kapat':
+      b.disabled = true;
+      return eylem(`/api/banka/vadeli/${b.dataset.id}/kapat`, {}, (r) => (r.bozuldu ? `↩️ Vadeli hesap bozuldu; ${akce(r.anapara)} cüzdanına döndü` : `🏦 Vadeli hesap kapandı: ${akce(r.anapara)} + ${akce(r.faiz)} getiri`));
+    case 'carsi-kullan':
+      b.disabled = true;
+      return eylem('/api/carsi/kullan', { urun: b.dataset.urun, parselId: durum.secili, yapiId: b.dataset.yapi ? Number(b.dataset.yapi) : undefined },
+        () => ({ GUBRE: '🧪 Gübre verildi: hasat %20 fazla olacak', ILAC: '🛡️ İlaçlandı: ekin dona, doluya ve sağanağa karşı korunuyor', ASI: '💉 Hayvanlar aşılandı: 7 gün boyunca +1 ürün' }[b.dataset.urun]));
+    case 'ortu':
+      b.disabled = true;
+      return eylem(`/api/parsel/${id}/ortu`, null, (r) => `⛺ Tarla örtüldü (${akce(r.maliyet)}); 12 saat korunuyor`).then(() => havaSeridiYenile({ zorla: true }));
+    case 'hava-ac':
+      return havaPenceresiAc();
     case 'sula': {
       const konum = durum.kart?.konum;
       return eylem(`/api/parsel/${id}/sula`, null, '💧 Tarla sulandı').then((r) => { if (r) { durum.harita.efekt('sula', konum); ses('sula'); } });
@@ -998,6 +1090,49 @@ $('#panelIcerik').addEventListener('click', async (e) => {
       return eylem(`/api/parsel/${id}/hasat`, null, (r) => `🧺 ${sayi(r.miktar)} ${urunAd(r.urun)} hasat ettin`)
         .then((r) => { if (r?.urun) { durum.harita.efekt('hasat', konum, urunIkon(r.urun)); ses('hasat'); } });
     }
+    // ---- Çiftliğim alt bölümleri, komşuluk, yöresel ürünler, etkinlik
+    case 'ciftlik-alt':
+      durum.ciftlikAlt = b.dataset.alt;
+      $('#panelIcerik').scrollTop = 0;
+      return panelCiz();
+    case 'etkinlik-ac':
+      return ciftlikAlt('etkinlik');
+    case 'arkadas-istek':
+      b.disabled = true;
+      return eylem('/api/arkadas/istek', { parselId: id }, (r) => (r.kabul ? `🤝 ${r.ad} ile artık komşusunuz` : `🤝 ${r.ad} adlı oyuncuya komşuluk isteği gönderildi`));
+    case 'arkadas-kabul':
+      b.disabled = true;
+      return eylem(`/api/arkadas/${b.dataset.id}/kabul`, null, (r) => `🤝 ${r.ad} ile artık komşusunuz`);
+    case 'arkadas-sil':
+      return eylem(`/api/arkadas/${b.dataset.id}/sil`, null, 'İstek kaldırıldı');
+    case 'yardim':
+    case 'komsuya-yardim': {
+      b.disabled = true;
+      const pid = b.dataset.parsel || id;
+      const konum = b.dataset.parsel ? null : durum.kart?.konum;
+      return eylem(`/api/parsel/${encodeURIComponent(pid)}/yardim`, null, (r) => (r.etki === 'SULADI' ? `💧 Komşunun tarlasını suladın (+${akce(r.odul)})` : `🌱 Komşunun tarlasının bakımını yaptın (+${akce(r.odul)})`))
+        .then((r) => { if (r?.tamam) { durum.harita.efekt('sula', konum); ses('sula'); } });
+    }
+    case 'komsuya-git':
+      durum.harita.parseleGit(b.dataset.parsel, { zoom: 17.6 });
+      return parselSec(b.dataset.parsel);
+    case 'hediye-gonder':
+      b.disabled = true;
+      return eylem('/api/hediye/gonder', { kullaniciId: Number(b.dataset.id) }, '🎁 Hediye gönderildi').then((r) => { if (r?.tamam) ses('para'); });
+    case 'hediye-al':
+      b.disabled = true;
+      return eylem(`/api/hediye/${b.dataset.id}/al`, null, (r) => (r.akce ? `🎁 Hediye: ${akce(r.akce)}` : `🎁 Hediye: ${sayi(r.adet)} ${r.ad}`)).then((r) => { if (r?.tamam) ses('hasat'); });
+    case 'urun-gonder-ac':
+      return genelPencere(urunGonderFormu(b.dataset.ad, b.dataset.id, durum.ben?.envanter || []));
+    case 'yoresel-uret':
+      b.disabled = true;
+      return eylem(`/api/yoresel/${b.dataset.kod}/uret`, null, (r) => `🏭 ${sayi(r.adet)} ${urunAd(r.urun)} üretildi`).then((r) => { if (r?.tamam) ses('hasat'); });
+    case 'yoresel-album':
+      b.disabled = true;
+      return eylem(`/api/yoresel/${b.dataset.kod}/album`, null, (r) => `📔 Albüme eklendi (+${akce(r.odul)})${r.bolgeTamam ? ` · ${r.bolgeTamam} tamamlandı: +${akce(r.bolgeOdulu)}` : ''}`).then((r) => { if (r?.tamam) ses(r.bolgeTamam ? 'seviye' : 'para'); });
+    case 'etkinlik-odul':
+      b.disabled = true;
+      return eylem('/api/etkinlik/odul', { gorev: Number(b.dataset.gorev) }, (r) => `🎉 Etkinlik ödülü: ${akce(r.odul)}${r.tp ? ` + ${r.tp} TP` : ''}`).then((r) => { if (r?.tamam) ses('seviye'); });
     // ---- Çiftlik: hayvanlar, süsler, ödüller, siparişler
     case 'hayvan-besle': {
       b.disabled = true;
@@ -1079,6 +1214,24 @@ $('#panelIcerik').addEventListener('input', (e) => {
 $('#panelIcerik').addEventListener('submit', (e) => {
   const v = (form) => Object.fromEntries(new FormData(form));
   const pid = durum.secili && encodeURIComponent(durum.secili);
+  // Çarşı: satın alma ve banka
+  if (e.target.matches('.carsi-al-form')) {
+    e.preventDefault();
+    const adet = Number(v(e.target).adet || 1);
+    return eylem('/api/carsi/satin-al', { urun: e.target.dataset.urun, adet }, (r) => `🛍️ ${r.marka}: ${adet > 1 ? `${adet} × ` : ''}${durum.kurallar.urunler[r.urun]?.ad || r.urun} alındı (${akce(r.tutar)})`);
+  }
+  if (e.target.matches('.vadeli-form')) {
+    e.preventDefault();
+    return eylem('/api/banka/vadeli', { tutar: Number(v(e.target).tutar) }, (r) => `🔒 Vadeli hesap açıldı; vadesinde ${akce(r.getiri)} getiri`);
+  }
+  if (e.target.matches('.kredi-form')) {
+    e.preventDefault();
+    return eylem('/api/banka/kredi', { tutar: Number(v(e.target).tutar) }, (r) => `🏦 ${akce(r.tutar)} kredi cüzdanına geçti; ${akce(r.geriOdeme)} geri ödenecek`);
+  }
+  if (e.target.matches('.kredi-ode-form')) {
+    e.preventDefault();
+    return eylem('/api/banka/kredi/ode', { tutar: Number(v(e.target).tutar) }, (r) => (r.kapandi ? '✅ Kredi kapandı' : `💳 ${akce(r.odeme)} ödendi; kalan borç ${akce(r.kalan)}`));
+  }
   if (e.target.matches('.ilan-form')) {
     e.preventDefault();
     const d = v(e.target);
@@ -1266,7 +1419,10 @@ function baglantiyaGit(link) {
   else if (tur === 'belediye' && deger) belediyeAc(deger);
   else if (tur === 'pazar') { durum.pazarAlt = deger || 'ilanlar'; sekmeSec('pazar'); }
   else if (tur === 'arazilerim') sekmeSec('arazilerim');
+  else if (tur === 'komsuluk') ciftlikAlt('komsular');
+  else if (tur === 'gorevler') ciftlikAlt('ciftlik');
   else if (tur === 'yonetim') location.href = '/yonetim.html';
+  else if (tur === 'carsi') { durum.carsiAlt = deger || null; sekmeSec('carsi'); }
 }
 document.addEventListener('click', (e) => {
   if (!e.target.closest('#bildirimKutu')) $('#bildirimKutu').hidden = true;
@@ -1387,7 +1543,8 @@ canliDinle('bildirim', (m) => {
   if (durum.ben?.hesap?.ayarlar?.bildirimSesi) ses('bildirim');
   benYenile({ sessiz: true });
 });
-canliDinle('olay', () => {
+canliDinle('olay', (m) => {
+  if (!m?.ben) durum.harita?.canliBaloncuk(m?.eylem, m?.parsel);
   clearTimeout(olayZamanlayici);
   olayZamanlayici = setTimeout(() => {
     if (document.hidden) return;
@@ -1427,3 +1584,68 @@ basla().catch((e) => {
 
 // Sevkiyat önizlemesi: alan değiştikçe sunucudan maliyet/süre/gelir tahmini
 $('#panelIcerik').addEventListener('change', (e) => { const f = e.target.closest('.sevk-form'); if (f) sevkiyatOnizle(f); });
+
+// ================= Çiftliğim alt bölümü, genel pencere, etkinlik şeridi, balık tutma, rehber =================
+function ciftlikAlt(alt) {
+  durum.ciftlikAlt = alt;
+  if (window.matchMedia('(max-width: 820px)').matches) panelBoyut('');
+  sekmeSec('gorevler');
+}
+function genelPencere(html) {
+  $('#genelGovde').innerHTML = html;
+  const d = $('#genelModal');
+  if (!d.open) d.showModal();
+  return d;
+}
+$('#genelModal').addEventListener('click', (e) => { if (e.target.closest('[data-kapat]') || e.target === e.currentTarget) e.currentTarget.close(); });
+// Ürün gönderme formu pencerede: gönderimi panel dağıtıcısına ilet
+$('#genelModal').addEventListener('submit', (e) => {
+  if (!e.target.matches('.urun-gonder-form')) return;
+  e.preventDefault();
+  const d = Object.fromEntries(new FormData(e.target));
+  $('#genelModal').close();
+  eylem('/api/urun/gonder', { kullaniciId: Number(e.target.dataset.id), urun: d.urun, adet: Number(d.adet) }, () => `📦 ${sayi(Number(d.adet))} ${urunAd(d.urun)} gönderildi`);
+});
+
+// Etkinlik şeridi (haritanın üstünde)
+async function etkinlikYenile() {
+  try { durum.etkinlik = await api('/api/etkinlik'); } catch { return; }
+  let serit = document.getElementById('etkinlikSerit');
+  if (!serit) { serit = document.createElement('div'); serit.id = 'etkinlikSerit'; $('#harita').appendChild(serit); }
+  serit.innerHTML = etkinlikSeridi(durum.etkinlik);
+}
+document.addEventListener('click', (e) => { if (e.target.closest('#etkinlikSerit [data-eylem="etkinlik-ac"]')) ciftlikAlt('etkinlik'); });
+document.addEventListener('click', (e) => { if (e.target.closest('#havaSerit [data-eylem="hava-ac"]')) havaPenceresiAc(); });
+// Hava penceresindeki tarlalar: örtü ser ya da tarlaya git
+$('#genelModal').addEventListener('click', async (e) => {
+  const b = e.target.closest('.hava-penceresi [data-eylem]');
+  if (!b || b.disabled) return;
+  const id = b.dataset.id;
+  if (b.dataset.eylem === 'git') { $('#genelModal').close(); durum.harita.parseleGit(id); return parselSec(id); }
+  if (b.dataset.eylem === 'ortu') {
+    b.disabled = true;
+    await eylem(`/api/parsel/${encodeURIComponent(id)}/ortu`, null, (r) => `⛺ Tarla örtüldü (${akce(r.maliyet)}); 12 saat korunuyor`);
+    havaSeridiYenile({ zorla: true });
+  }
+});
+
+// Balık tutma: 🎣 → haritada su seç → mini oyun
+let balikOyun = null;
+$('#oltaDugme').addEventListener('click', (e) => {
+  e.stopPropagation();
+  if (!durum.harita) return;
+  if (!girisli()) { tost('Balık tutmak için giriş yap', 'hata'); return; }
+  const acik = $('#oltaDugme').getAttribute('aria-pressed') === 'true';
+  if (acik) { durum.harita.oltaModu(null); $('#oltaDugme').setAttribute('aria-pressed', 'false'); return; }
+  $('#oltaDugme').setAttribute('aria-pressed', 'true');
+  tost('🎣 Haritada bir göle, nehre ya da kıyıya dokun');
+  durum.harita.oltaModu((lngLat) => {
+    $('#oltaDugme').setAttribute('aria-pressed', 'false');
+    const d = genelPencere('<h2 class="pencere-baslik">🎣 Balık tutma</h2><div id="balikAlani"></div>');
+    balikOyun?.kapat();
+    balikOyun = balikOyunu($('#balikAlani'), { api, ses, sonuc: () => benYenile({ sessiz: true }) });
+    balikOyun.at({ lon: lngLat.lng, lat: lngLat.lat });
+    d.addEventListener('close', () => { balikOyun?.kapat(); balikOyun = null; }, { once: true });
+  });
+});
+window.addEventListener('rehber-yeniden', () => durum.rehber?.yeniden());

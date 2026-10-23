@@ -43,3 +43,13 @@ button.d:disabled { opacity: .5; cursor: not-allowed; }
 .tost.hata { background: var(--tehlike); }
 .mono { font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
 @media (max-width: 700px) { th:nth-child(n+5), td:nth-child(n+5) { display: none; } }
+
+/* Sponsorlar */
+.sponsor-onizleme { display: flex; gap: 12px; align-items: center; padding: 10px 14px; border: 2px solid; border-radius: 12px; margin-bottom: 12px; }
+.sponsor-onizleme img { border-radius: 8px; object-fit: contain; background: #fff; }
+.sponsor-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; align-items: end; }
+.sponsor-form label { display: grid; gap: 4px; font-size: 13px; }
+.sponsor-form label.satir { display: flex; gap: 6px; align-items: center; }
+.sube-form textarea { width: 100%; font-family: ui-monospace, monospace; }
+.sponsor-form input:not([type=checkbox]):not([type=color]), .sube-form textarea { padding: 8px 10px; border: 1px solid var(--cizgi); border-radius: 9px; font: inherit; background: #fff; }
+.sponsor-form input[type=color] { width: 100%; height: 38px; border: 1px solid var(--cizgi); border-radius: 9px; background: #fff; }

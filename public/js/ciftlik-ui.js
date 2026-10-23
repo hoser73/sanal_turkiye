@@ -3,7 +3,7 @@
 import { esc, akce, sayi, sure } from './yardimci.js';
 
 // Barınak satırı (parsel kartındaki yapı listesinde)
-export function hayvanSatiri(y, { ben, yem = 0, simdi }) {
+export function hayvanSatiri(y, { ben, yem = 0, asi = 0, simdi }) {
   const h = y.hayvan;
   if (!h) return '';
   const durum = h.durum === 'HAZIR' ? `<b class="yesil-metin">${h.urunIkon} ${h.miktar} ${esc(h.urunAd)} hazır</b>`
@@ -12,7 +12,10 @@ export function hayvanSatiri(y, { ben, yem = 0, simdi }) {
   const dugme = !ben ? '' : h.durum === 'HAZIR'
     ? `<button class="dugme altin ince" data-eylem="hayvan-topla" data-id="${y.id}" data-ikon="${h.urunIkon}">${h.urunIkon} Topla</button>`
     : h.durum === 'AC' ? `<button class="dugme ince" data-eylem="hayvan-besle" data-id="${y.id}" title="${yem >= h.yem ? 'Envanterdeki yem kullanılır' : 'Eksik yem satın alınır'}">🌽 Yemle${yem < h.yem ? ` (${akce((h.yem - Math.min(yem, h.yem)) * 1.2)})` : ''}</button>` : '';
-  return `<div class="hayvan-satir"><span class="kucuk">${durum}</span>${dugme}</div>`;
+  // Zirai bayiden aşı: 7 gün her toplamada +1 ürün
+  const asiBilgi = h.asiBitis ? `<span class="kucuk yesil-metin">💉 aşılı · <span data-bitis="${h.asiBitis}">${sure(h.asiBitis - simdi())}</span></span>`
+    : ben && asi ? `<button class="dugme ince" data-eylem="carsi-kullan" data-urun="ASI" data-yapi="${y.id}" title="7 gün boyunca her toplamada +1 ürün">💉 Aşıla (${asi})</button>` : '';
+  return `<div class="hayvan-satir"><span class="kucuk">${durum}</span>${dugme}${asiBilgi}</div>`;
 }
 
 // Süs dükkânı (kendi parselimde)
@@ -55,7 +58,7 @@ export function ciftlikBolumu(c, { simdi }) {
   const y = c.yarisma;
   const yarisma = !y ? '<h3 class="bolum">🏆 Köy yarışması</h3><p class="kucuk">Bir parsel edinince mahallenin haftalık yarışmasına katılırsın.</p>'
     : `<h3 class="bolum">🏆 Köy yarışması · ${esc(y.mahalle)}</h3>
-      <p class="kucuk">Bu hafta en çok TP kazanan üç komşu ${y.odul.map((o) => akce(o)).join(' / ')} kazanır (en az ${y.minTp} TP). Bitiş: <span data-bitis="${simdi() + y.bitisMs}">${sure(y.bitisMs)}</span></p>
+      <p class="kucuk">Bu hafta mahallede en çok TP kazanan üç komşu ${y.odul.map((o) => akce(o)).join(' / ')} kazanır (en az ${y.minTp} TP; en az ${y.minKatilimci} oyuncu yarışmalı). Bitiş: <span data-bitis="${simdi() + y.bitisMs}">${sure(y.bitisMs)}</span></p>
       ${y.liste.length ? `<ol class="yarisma-liste">${y.liste.slice(0, 10).map((r) => `<li class="${r.ben ? 'ben' : ''}"><span>${['🥇', '🥈', '🥉'][r.sira - 1] || r.sira}</span><b>${esc(r.ad)}</b>${r.demo ? ' <span class="demo-rozet">demo</span>' : ''}<span class="kucuk">${sayi(r.tp)} TP</span></li>`).join('')}</ol>` : '<p class="kucuk">Bu hafta henüz puan yok.</p>'}
       ${y.gecenHafta.length ? `<p class="kucuk">Geçen hafta: ${y.gecenHafta.map((r) => `${['🥇', '🥈', '🥉'][r.sira - 1]} ${esc(r.ad)}`).join(' · ')}</p>` : ''}`;
   return seviye + gunluk + siparis + yarisma;

@@ -70,7 +70,9 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
 }));
 app.use(istekGunlugu);
-app.use(express.json({ limit: '50kb' }));
+// Yönetici marka güncellemesi logo taşır (≤150 KB); diğer bütün istekler 50 KB ile sınırlı
+const jsonKucuk = express.json({ limit: '50kb' }), jsonLogo = express.json({ limit: '260kb' });
+app.use((req, res, next) => (/^\/api\/yonetim\/isletme\//.test(req.path) ? jsonLogo : jsonKucuk)(req, res, next));
 app.use(cookieParser());
 // İmar karoları harita gezinirken çok sayıda istenir; ayrı ve daha geniş bir sınır
 app.use('/api/karo/', rateLimit({ windowMs: 60_000, limit: 2400, standardHeaders: 'draft-8', legacyHeaders: false }));
@@ -86,7 +88,7 @@ app.use(auth.kimlik);
 // Süresi dolan inşaat ve ilanları tembel biçimde işle (idempotent)
 app.use('/api/', (req, _res, next) => {
   if (req.path.startsWith('/karo/')) return next();
-  try { oyun.bekleyenleriIsle(); pazar.pazarBakim(); secim.secimBakim(); belediye.belediyeBakim(); moderasyon.gorevdenAlmaBakim(); ekonomi.borsaBakim(); dunya.sezonBakim(); dunya.havaBakim();
+  try { oyun.bekleyenleriIsle(); pazar.pazarBakim(); secim.secimBakim(); belediye.belediyeBakim(); moderasyon.gorevdenAlmaBakim(); ekonomi.borsaBakim(); dunya.sezonBakim(); dunya.havaBakim(); require('./carsi').bankaBakim();
     lojistik.lojistikBakim(); kira.kiraBakim(); referandum.referandumBakim();
     posta.postaBakim().catch(() => {});   // başarısız e-postaları arka planda yeniden dene
     next(); } catch (e) { next(e); }
@@ -128,6 +130,8 @@ push.rotalar(app, { h, auth });
 dunya.rotalar(app, { h, auth });
 kooperatif.rotalar(app, { h, auth });
 simge.rotalar(app, { h, auth });
+// Komşuluk, yöresel ürünler, etkinlikler, balık tutma, hatırlatmalar
+for (const m of ['./komsuluk', './yoresel', './etkinlik', './balik', './hatirlatma', './iklim', './carsi']) require(m).rotalar(app, { h, auth, hazir });
 yz.rotalar(app, { h, auth });
 kozmetik.rotalar(app, { h, auth });
 zaman.rotalar(app, { h });
@@ -137,7 +141,7 @@ referandum.rotalar(app, { h, auth });
 if (process.env.NODE_ENV !== 'production') app.get('/api/gelistirici/posta', h(() => posta.gelistirmeKutusu()));
 
 // ---- Statik oyun verisi
-app.get('/api/kurallar', h(() => ({ haritaKaynak: HARITA_KAYNAK, hayvanlar: require('./config/rules').HAYVANLAR, susler: require('./config/rules').SUSLER, receteler: RECETELER, meslekler: MESLEKLER, mevsimler: MEVSIMLER, lig: LIG, bozulma: BOZULMA, bakim: BAKIM, borsa: { ucretOrani: BORSA.ucretOrani, sureler: BORSA.sureler, minTutar: BORSA.minTutar }, birim: BIRIM, imar: IMAR, imarKaynakNotu: IMAR_KAYNAK_NOTU, yapilar: YAPILAR, urunler: URUNLER, hesap: HESAP,
+app.get('/api/kurallar', h(() => ({ haritaKaynak: HARITA_KAYNAK, yoresel: require('./config/rules').YORESEL, hayvanlar: require('./config/rules').HAYVANLAR, susler: require('./config/rules').SUSLER, receteler: RECETELER, meslekler: MESLEKLER, mevsimler: MEVSIMLER, lig: LIG, bozulma: BOZULMA, bakim: BAKIM, borsa: { ucretOrani: BORSA.ucretOrani, sureler: BORSA.sureler, minTutar: BORSA.minTutar }, birim: BIRIM, imar: IMAR, imarKaynakNotu: IMAR_KAYNAK_NOTU, yapilar: YAPILAR, urunler: URUNLER, hesap: HESAP,
   belediye: { projeler: BELEDIYE.projeler, gelir: BELEDIYE.gelir },
   pazar: { ucretOrani: PAZAR.ucretOrani, minUcret: PAZAR.minUcret, maxFiyat: PAZAR.maxFiyat, ilanSureleri: PAZAR.ilanSureleri,
     aliciKosullari: Object.fromEntries(Object.entries(PAZAR.aliciKosullari).map(([k, v]) => [k, v.ad])) } })));
@@ -146,9 +150,11 @@ app.get('/api/kurallar', h(() => ({ haritaKaynak: HARITA_KAYNAK, hayvanlar: requ
 app.get('/api/bolgeler', h(() => oyun.bolgeler()));
 // İl → ilçe → mahalle gezintisi (sınırlar ve oyun kuralıyla çıkarılan mahalle alanları)
 const bolgeHaritasi = require('./harita/bolgeler');
+// Ağır uçlar (ilçe taraması, karo arama): IP başına dakikada 20
+const agirSinir = rateLimit({ windowMs: 60_000, limit: Number(process.env.AGIR_HIZ_SINIRI || 20), standardHeaders: 'draft-8', legacyHeaders: false });
 app.get('/api/il/:plaka/ilceler', h((req, res) => { res.set('cache-control', 'public, max-age=3600'); return bolgeHaritasi.ilIlceleri(String(req.params.plaka)); }));
-app.get('/api/ilce/:id/mahalleler', h((req) => bolgeHaritasi.ilceMahalleleri(req.params.id)));
-app.post('/api/ilce/:id/mahalle', h((req) => bolgeHaritasi.mahalleBolgesiAc(req.params.id, req.body?.yerId)));
+app.get('/api/ilce/:id/mahalleler', agirSinir, h((req) => bolgeHaritasi.ilceMahalleleri(req.params.id)));
+app.post('/api/ilce/:id/mahalle', agirSinir, h((req) => bolgeHaritasi.mahalleBolgesiAc(req.params.id, req.body?.yerId, req.kullanici?.id ?? null)));
 // Çiftlik: hayvancılık, seviye, günlük ödül, siparişler, köy yarışması, süsler
 const ciftlik = require('./ciftlik');
 app.get('/api/ciftlik', auth.girisGerekli, h((req) => ciftlik.ozet(uid(req))));
@@ -301,6 +307,7 @@ if (require.main === module) {
   process.on('uncaughtException', (e) => { gunluk.error('yakalanmamış istisna', { hata: e }); setTimeout(() => process.exit(1), 200); });
   canli.bagla(sunucu);
   nufus.baslat();   // yaşayan nüfus: gerçek oyuncusu az mahallelerde demo sakinler
+  require('./hatirlatma').baslat();   // geri çağıran bildirimler (hasat, hayvan, sipariş)
   // Düzenli kapanış (docker stop / systemd): yeni bağlantıları kes, veritabanını kapat
   const kapat = (sinyal) => {
     gunluk.info('kapanıyor', { sinyal });

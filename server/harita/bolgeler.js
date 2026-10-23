@@ -11,6 +11,8 @@ const { mahalleBolgesi } = require('./parsel');
 const { OyunHatasi } = require('../lib/ledger');
 
 db.exec(`CREATE TABLE IF NOT EXISTS ilce_yer_taramasi (ilce_idx INTEGER PRIMARY KEY, at INTEGER NOT NULL)`);
+// Hesaplanan mahalle alanları kalıcı önbellekte: yer sayısı değişmedikçe yeniden hesaplanmaz (sunucu yeniden başlasa da)
+db.exec(`CREATE TABLE IF NOT EXISTS ilce_mahalle_alanlari (ilce_id INTEGER PRIMARY KEY, yer_sayisi INTEGER NOT NULL, veri TEXT NOT NULL, at INTEGER NOT NULL)`);
 const q = {
   ilceSatirlari: db.prepare(`SELECT id, parent_id, code, name, plaka, source_idx, attractiveness FROM regions WHERE type = 'ILCE' AND plaka = ?`),
   ilce: db.prepare(`SELECT id, parent_id, code, name, plaka, source_idx, attractiveness FROM regions WHERE type = 'ILCE' AND id = ?`),
@@ -39,30 +41,33 @@ function ilIlceleri(plaka) {
 }
 
 // ---------- İlçenin yerleşim noktaları: gazetteer imar karoları işlendikçe dolar; ilk istekte ilçenin tamamı
-// orta ölçekli karolardan (z12, ≈10 km) bir kez taranır. Aynı karolar mahalle atamasında da kullanılır.
+// orta ölçekli karolardan (z12, ≈10 km) bir kez taranır. Aynı anda tek ilçe taranır (karo kaynağı ve oyuncu istekleri
+// yorulmasın); karolardan biri alınamazsa ilçe "tarandı" sayılmaz, sonraki istekte yeniden denenir.
 const taramada = new Map();
+let taramaSirasi = Promise.resolve();
 async function yerleriTara(idx) {
   if (SAHTE || q.tarandi.get(idx)) return;
   if (taramada.has(idx)) return taramada.get(idx);
   const c = ilceler[idx];
-  const is = (async () => {
+  const is = (taramaSirasi = taramaSirasi.catch(() => {}).then(async () => {
+    if (q.tarandi.get(idx)) return;
     const [w, s, e, n] = c.bbox, Z = 12, N = 2 ** Z;
     const tx = (lon) => Math.floor(((lon + 180) / 360) * N);
     const ty = (lat) => { const r = (lat * Math.PI) / 180; return Math.floor(((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * N); };
     const karolar = [];
     for (let x = tx(w); x <= tx(e); x++) for (let y = ty(n); y <= ty(s); y++) karolar.push([x, y]);
     const yerler = new Map();
-    // Aynı anda en çok 6 karo
-    for (let i = 0; i < karolar.length; i += 6) {
-      await Promise.all(karolar.slice(i, i + 6).map(async ([x, y]) => {
-        try { yerleriTopla(await vektorKaro(Z, x, y), Z, x, y, yerler); } catch { /* karo alınamadıysa sonra yeniden denenir */ }
+    let eksik = 0;
+    for (let i = 0; i < karolar.length; i += 4) {
+      await Promise.all(karolar.slice(i, i + 4).map(async ([x, y]) => {
+        try { yerleriTopla(await vektorKaro(Z, x, y), Z, x, y, yerler); } catch { eksik++; }
       }));
     }
     db.transaction(() => {
       for (const y of yerler.values()) if (geometrideMi(y.lon, y.lat, c.geo)) q.yerYaz.run(y.id, y.ad, normalize(y.ad), y.sinif, y.lon, y.lat, idx);
-      q.taramaYaz.run(idx, Date.now());
+      if (!eksik) q.taramaYaz.run(idx, Date.now());
     })();
-  })().finally(() => taramada.delete(idx));
+  })).finally(() => taramada.delete(idx));
   taramada.set(idx, is);
   return is;
 }
@@ -78,6 +83,8 @@ async function ilceMahalleleri(ilceId) {
   const yerler = q.yerler.all(r.source_idx).filter((y) => y.sinif in MAHALLE_AGIRLIK);
   const anahtar = `${r.id}:${yerler.length}`;
   if (mahalleOnbellek.has(anahtar)) return mahalleOnbellek.get(anahtar);
+  const kalici = db.prepare(`SELECT veri FROM ilce_mahalle_alanlari WHERE ilce_id = ? AND yer_sayisi = ?`).get(r.id, yerler.length);
+  if (kalici) { const v = JSON.parse(kalici.veri); mahalleOnbellek.set(anahtar, v); return v; }
 
   const [w, s, e, n] = c.bbox;
   const kx = Math.cos((((s + n) / 2) * Math.PI) / 180);
@@ -148,17 +155,22 @@ async function ilceMahalleleri(ilceId) {
   const sonuc = { type: 'FeatureCollection', features, ilce: { id: r.id, ad: r.name, bbox: c.bbox, mahalleSayisi: dolgu.size } };
   mahalleOnbellek.set(anahtar, sonuc);
   if (mahalleOnbellek.size > 60) mahalleOnbellek.delete(mahalleOnbellek.keys().next().value);
+  db.prepare(`INSERT OR REPLACE INTO ilce_mahalle_alanlari (ilce_id, yer_sayisi, veri, at) VALUES (?, ?, ?, ?)`).run(r.id, yerler.length, JSON.stringify(sonuc), Date.now());
   return sonuc;
 }
 
-// Haritada tıklanan mahalle: oyun bölgesi henüz yoksa oluşturulur (parsel edinildiğinde oluşacağı gibi)
-function mahalleBolgesiAc(ilceId, yerId) {
+// Haritada tıklanan mahalle: oyun bölgesi varsa kimliği döner; yoksa yalnızca giriş yapmış oyuncu için oluşturulur
+// (parsel edinildiğinde oluşacağı gibi). Ziyaretçi isteği veritabanına satır yazmaz.
+function mahalleBolgesiAc(ilceId, yerId, userId = null) {
   const r = q.ilce.get(Number(ilceId));
   if (!r) throw new OyunHatasi(404, 'İlçe bulunamadı');
-  const y = q.yerler.all(r.source_idx).find((x) => x.id === String(yerId));
+  const y = db.prepare(`SELECT id, ad, sinif, lon, lat FROM yerler WHERE ilce_idx = ? AND id = ?`).get(r.source_idx, String(yerId ?? ''));
   if (!y) throw new OyunHatasi(404, 'Mahalle bulunamadı');
+  const var_ = db.prepare(`SELECT id FROM regions WHERE code = ?`).get(`${r.code}-${y.id}`);
+  if (var_) return { id: var_.id, ad: y.ad };
+  if (!userId) return { id: null, ad: y.ad };
   const id = db.transaction(() => mahalleBolgesi(r, ilceler[r.source_idx], y.lon, y.lat))();
-  return { id };
+  return { id, ad: y.ad };
 }
 
 module.exports = { ilIlceleri, ilceMahalleleri, mahalleBolgesiAc };

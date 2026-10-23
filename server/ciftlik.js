@@ -87,7 +87,7 @@ function tpEkle(userId, tp, eylem, bolge = null) {
   db.prepare(`UPDATE users SET tp = tp + ? WHERE id = ?`).run(tp, userId);
   const sonra = oyuncuSeviyesi(userId);
   if (sonra > once) {
-    require('./pazar').bildir(userId, `⭐ Seviye ${sonra} oldun! Seviye ödülün seni bekliyor.`, '#gorevler');
+    require('./pazar').bildir(userId, `⭐ Seviye ${sonra} oldun! Seviye ödülün seni bekliyor.`, 'gorevler');
     require('./lib/olaylar').yay('bildirim', { userId });
   }
 }
@@ -157,6 +157,7 @@ function hayvanDurumu(s, t = simdi()) {
   const beslendi = b?.durum === 'BESLENDI';
   return {
     hayvan: h.hayvan, ikon: h.ikon, sayi: h.sayi, urun: h.urun, urunAd: URUNLER[h.urun].ad, urunIkon: URUNLER[h.urun].ikon, miktar: h.miktar, yem: h.yem,
+    asiBitis: s.asi_bitis && s.asi_bitis > t ? s.asi_bitis : null,
     durum: !beslendi ? 'AC' : t >= b.hazir_at ? 'HAZIR' : 'BESLENDI', hazir: beslendi ? b.hazir_at : null, kalanMs: beslendi ? Math.max(0, b.hazir_at - t) : 0,
   };
 }
@@ -191,10 +192,12 @@ const topla = db.transaction((userId, structureId) => {
   const b = bakimSatiri(s.id);
   if (b?.durum !== 'BESLENDI') throw new OyunHatasi(409, 'Önce hayvanları yemle');
   if (simdi() < b.hazir_at) throw new OyunHatasi(409, 'Ürün henüz hazır değil');
-  L.envanterDegis(userId, h.urun, h.miktar, `${h.hayvan} ürünü: ${URUNLER[h.urun].ad}`);
+  // Zirai bayiden aşı yapılmış barınak her toplamada fazladan ürün verir
+  const miktar = h.miktar + (s.asi_bitis && s.asi_bitis > simdi() ? require('./config/rules').CARSI.etki.asiEk : 0);
+  L.envanterDegis(userId, h.urun, miktar, `${h.hayvan} ürünü: ${URUNLER[h.urun].ad}`);
   db.prepare(`UPDATE hayvan_bakim SET durum = 'AC', hazir_at = NULL WHERE structure_id = ?`).run(s.id);
-  L.denetim({ aktor: userId, eylem: 'ANIMAL_PRODUCE_COLLECTED', varlik: p.id, sonra: { urun: h.urun, miktar: h.miktar }, bolge: p.region_id });
-  return { tamam: true, urun: h.urun, miktar: h.miktar };
+  L.denetim({ aktor: userId, eylem: 'ANIMAL_PRODUCE_COLLECTED', varlik: p.id, sonra: { urun: h.urun, miktar }, bolge: p.region_id });
+  return { tamam: true, urun: h.urun, miktar, asili: miktar > h.miktar };
 });
 // Harita için: parselde toplanmayı bekleyen hayvan ürünü var mı
 function parselHayvanHazir(parcelId, t = simdi()) {
@@ -288,31 +291,39 @@ const siparisReddet = db.transaction((userId, siparisId) => {
 const HAFTA = 7 * 86400_000;
 const haftaNo = (t) => Math.floor((t - LIG.baslangic) / HAFTA);
 const haftaAraligi = (h) => [LIG.baslangic + h * HAFTA, LIG.baslangic + (h + 1) * HAFTA];
+// Sıralamaya yalnızca mahallede parseli olan oyuncular girer; başka mahallelerde komşu yardımıyla kazanılan TP sayılmaz
+const YARISMA_DISI = ['NEIGHBOR_HELPED', 'GIFT_SENT', 'DAILY_REWARD_CLAIMED', 'EVENT_REWARD_CLAIMED'];
 function siralama(regionId, h) {
   const [a, b] = haftaAraligi(h);
   return db.prepare(`SELECT k.user_id, u.display_name AS ad, u.is_npc AS npc, SUM(k.tp) AS tp FROM tp_kayitlari k JOIN users u ON u.id = k.user_id
-                     WHERE k.region_id = ? AND k.at >= ? AND k.at < ? GROUP BY k.user_id ORDER BY tp DESC, MIN(k.at) LIMIT 20`).all(regionId, a, b);
+                     WHERE k.region_id = ? AND k.at >= ? AND k.at < ? AND k.eylem NOT IN (${YARISMA_DISI.map(() => '?').join(',')})
+                       AND EXISTS (SELECT 1 FROM parcels p WHERE p.owner_user_id = k.user_id AND p.region_id = k.region_id)
+                     GROUP BY k.user_id ORDER BY tp DESC, MIN(k.at) LIMIT 20`).all(regionId, a, b, ...YARISMA_DISI);
 }
-// Geçen haftanın ödülleri bir kez dağıtılır (birincil anahtar ikinci dağıtımı engeller); demo sakinler ödül almaz
+// Geçen haftanın ödülleri bir kez dağıtılır (birincil anahtar ikinci dağıtımı engeller). Demo sakinler ödül almaz; en az
+// YARISMA.minKatilimci gerçek oyuncu yarışmamışsa ödül verilmez (tek kişilik mahallede kendi kendine kazanılmasın).
 const odulDagit = db.transaction((regionId, h) => {
   if (h < 0 || db.prepare(`SELECT 1 FROM yarisma_odulleri WHERE hafta = ? AND region_id = ?`).get(h, regionId)) return;
-  const kazananlar = siralama(regionId, h).filter((r) => !r.npc && r.tp >= YARISMA.minTp).slice(0, YARISMA.odul.length);
+  const gercek = siralama(regionId, h).filter((r) => !r.npc);
+  const katilimci = gercek.filter((r) => r.tp >= YARISMA.minTp);
+  const kazananlar = katilimci.length >= YARISMA.minKatilimci ? katilimci.slice(0, YARISMA.odul.length) : [];
   kazananlar.forEach((r, i) => {
     db.prepare(`INSERT INTO yarisma_odulleri (hafta, region_id, sira, user_id, tp, odul) VALUES (?, ?, ?, ?, ?, ?)`).run(h, regionId, i + 1, r.user_id, r.tp, YARISMA.odul[i]);
     L.odul(r.user_id, YARISMA.odul[i], `Köy yarışması ${i + 1}.lik ödülü`);
-    require('./pazar').bildir(r.user_id, `🏆 Köy yarışmasında ${i + 1}. oldun: ${YARISMA.odul[i]} akçe`, '#gorevler');
+    require('./pazar').bildir(r.user_id, `🏆 Köy yarışmasında ${i + 1}. oldun: ${YARISMA.odul[i]} akçe`, 'gorevler');
   });
   if (!kazananlar.length) db.prepare(`INSERT INTO yarisma_odulleri (hafta, region_id, sira, user_id, tp, odul) VALUES (?, ?, 0, (SELECT MIN(id) FROM users), 0, 0)`).run(h, regionId);
 });
 function yarisma(regionId, userId = null) {
   if (!regionId) return null;
+  if (!db.prepare(`SELECT 1 FROM regions WHERE id = ? AND type = 'MAHALLE'`).get(Number(regionId))) throw new OyunHatasi(404, 'Mahalle bulunamadı');
   const t = simdi(), h = haftaNo(t);
   odulDagit(regionId, h - 1);
   const liste = siralama(regionId, h).map((r, i) => ({ sira: i + 1, ad: r.ad, demo: !!r.npc, tp: r.tp, ben: r.user_id === userId }));
   const gecen = db.prepare(`SELECT y.sira, y.odul, y.tp, u.display_name AS ad FROM yarisma_odulleri y JOIN users u ON u.id = y.user_id
                             WHERE y.hafta = ? AND y.region_id = ? AND y.sira > 0 ORDER BY y.sira`).all(h - 1, regionId);
   const bolge = db.prepare(`SELECT name FROM regions WHERE id = ?`).get(regionId);
-  return { mahalle: bolge?.name, mahalleId: regionId, liste, gecenHafta: gecen, odul: YARISMA.odul, bitisMs: haftaAraligi(h)[1] - t, minTp: YARISMA.minTp };
+  return { mahalle: bolge?.name, mahalleId: regionId, liste, gecenHafta: gecen, odul: YARISMA.odul, bitisMs: haftaAraligi(h)[1] - t, minTp: YARISMA.minTp, minKatilimci: YARISMA.minKatilimci };
 }
 
 // ---------- Çiftlik süsleri
@@ -328,6 +339,7 @@ const susEkle = db.transaction((userId, parcelId, tur) => {
   const s = bul(SUSLER, tur);
   if (!s) throw new OyunHatasi(400, 'Geçersiz süs');
   seviyeKontrol(userId, s.minSeviye, s.ad);
+  if (s.etkinlik && !require('./etkinlik').etkinlikAktifMi(s.etkinlik)) throw new OyunHatasi(409, `${s.ad} yalnızca etkinlik süresince alınabilir`);
   const dolu = new Set(db.prepare(`SELECT yuva FROM parsel_susleri WHERE parcel_id = ?`).all(p.id).map((r) => r.yuva));
   if (dolu.size >= SUS_MAKS) throw new OyunHatasi(409, `Bir parselde en çok ${SUS_MAKS} süs olabilir`);
   let yuva = 0;
@@ -347,7 +359,10 @@ const susKaldir = db.transaction((userId, susId) => {
 });
 const susSecenekleri = (userId) => {
   const sv = oyuncuSeviyesi(userId);
-  return Object.entries(SUSLER).map(([kod, s]) => ({ kod, ad: s.ad, ikon: s.ikon, fiyat: s.fiyat, minSeviye: s.minSeviye, acik: sv >= s.minSeviye }));
+  const etkinlik = require('./etkinlik').aktifEtkinlik()?.kod;
+  // Etkinlik süsleri yalnızca kendi etkinliği sürerken listelenir
+  return Object.entries(SUSLER).filter(([, s]) => !s.etkinlik || s.etkinlik === etkinlik)
+    .map(([kod, s]) => ({ kod, ad: s.ad, ikon: s.ikon, fiyat: s.fiyat, minSeviye: s.minSeviye, acik: sv >= s.minSeviye, etkinlik: !!s.etkinlik }));
 };
 
 // Görevler sekmesi için tek özet

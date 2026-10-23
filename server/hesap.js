@@ -34,6 +34,7 @@ function ayarlarDegistir(userId, govde = {}) {
   }
   if (govde.sohbet !== undefined) a.sohbet = govde.sohbet === true;
   if (govde.bildirimSesi !== undefined) a.bildirimSesi = govde.bildirimSesi === true;
+  if (govde.hatirlatma !== undefined) a.hatirlatma = govde.hatirlatma === true;
   db.prepare(`UPDATE users SET ayarlar = ? WHERE id = ?`).run(JSON.stringify(a), userId);
   return { tamam: true, ayarlar: a };
 }

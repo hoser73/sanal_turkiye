@@ -71,11 +71,11 @@ async function komsuImarlari(x, y) {
 }
 
 // Belirli imarda, hedefe yakın, birbirinden aralıklı hücreler (NPC yerleşimi ve testler için)
-async function hucreAra(lon, lat, imarlar, adet, aralik = 2) {
+async function hucreAra(lon, lat, imarlar, adet, aralik = 2, maksYaricap = 96) {
   const merkez = I.hucre(lon, lat);
   const bulunan = [];
   const adaylar = [];
-  for (let r = 0; r <= 96 && adaylar.length < adet * 12; r += 1) {
+  for (let r = 0; r <= maksYaricap && adaylar.length < adet * 12; r += 1) {
     for (let dy = -r; dy <= r; dy++) {
       for (let dx = -r; dx <= r; dx++) {
         if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;

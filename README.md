@@ -1,4 +1,4 @@
-# Sanal Türkiye — prototip (v0.9, ulusal)
+# Sanal Türkiye — prototip (v0.13, ulusal)
 
 Yaşayan dijital ülke simülasyonu. **81 ilin tamamı açık**: gerçek Türkiye haritası üzerinde herhangi bir köye, mahalleye yakınlaşıp parsel edinebilir, tarla ekip yapı kurabilir, oyuncular arası pazarda alım satım yapabilirsin. Harita 2B ve 3B görünümlüdür.
 
@@ -10,7 +10,7 @@ Yaşayan dijital ülke simülasyonu. **81 ilin tamamı açık**: gerçek Türkiy
 npm install
 npm start            # http://localhost:3400
 npm run dev          # geliştirme: dosya değişince yeniden başlar, seçim takvimi hızlı (aşağıya bakın)
-npm test             # kabul testleri (114; ağ ve gerçek yapay zekâ kullanmaz; PostgreSQL testi gömülü PGlite ile)
+npm test             # kabul testleri (148; ağ ve gerçek yapay zekâ kullanmaz; PostgreSQL testi gömülü PGlite ile)
 npm run rol -- e-posta ADMIN   # yetkili rolü ver (MODERATOR / DENETCI / ADMIN; panel için 2FA zorunlu)
 npm run yedek        # çevrimiçi yedek (data/yedekler, gzip, bütünlük denetimi, 14 yedek döndürme)
 npm run geri-yukle -- data/yedekler/<dosya>.db.gz [--onayla]   # sunucu durdurulmuşken
@@ -34,6 +34,73 @@ Ortam değişkenleri (v0.6 eklemeleri): `TABAN_URL` (e-posta bağlantıları; ü
 `npm run dev` seçimleri tek başına denemek için `SECIM_HIZI=1440 SECIM_MIN_SECMEN=1 BELEDIYE_MIN_SECMEN=1` ile çalışır (1 oyun günü = 1 dakika): muhtarlık seçimi ≈ 8 dakika, belediye seçimi ≈ 12 dakika, meclis oylaması 1 dakika, proje yapımı 2–4 dakika, muhtarlık dönemi 30, belediye dönemi 90 dakika; günlük devlet katkısı dakikada bir işler. `npm start` gerçek süreleri kullanır.
 
 > Not: v0.1–0.2'nin Meram ızgarası ulusal ızgarayla uyumsuz olduğundan eski `data/sanalturkiye.db` dosyası kullanılmaz (silinmedi).
+
+## v0.13 — Çarşı: banka, nalbur, market, zirai bayi (sponsorluğa hazır)
+
+Gerçek hayattaki gibi işletmeler; **her türden oyunda tek işletme** vardır (sponsorluk anlaşması için). Anlaşma yapılana kadar
+varsayılan adla çalışır (Sanal Banka, Usta Nalbur, Mahalle Market, Bereket Zirai Bayi). Sözleşme imzalanınca yönetici
+**/yonetim.html → Sponsorlar** sekmesinden markanın adını, simgesini, logosunu (PNG/JPEG/WebP ≤150 KB; SVG kabul edilmez),
+renklerini, sloganını, web adresini ve sözleşme başlangıç/bitiş tarihlerini girer; "Sponsor" işaretliyse oyunda **Sponsor**
+etiketiyle görünür, bitiş tarihi geçince kendiliğinden varsayılan adına döner. Sponsorun gerçek şube listesi (`ad;enlem;boylam`)
+yüklenebilir; yüklenene kadar her il başkentinin merkezinde bir şube (koordinatlar `server/harita/il-merkezleri.js`, il sınırında doğrulanır).
+
+| İşletme | Ne var | Oyundaki etkisi |
+|---|---|---|
+| Banka | 7 günlük vadeli hesap (%2,5, toplam ≤ ₳10.000; bozdurursan getirisiz), 7 günlük kredi (%6; limit seviye + parsel + ödeme geçmişi; gecikmede günlük %1, en çok %20; vade geçince bakiyeden tahsil), kredi notu | 18 yaş altı ve 3 günden yeni hesap kredi alamaz; e-posta doğrulaması gerekir. Akçe nakde çevrilmez; gerçek bankacılık hizmeti değildir |
+| Nalbur / hırdavat | Kalıp seti, bakım kiti, tarla örtüsü, karbon kamış, örgü misina, sahte yem (rapala) | İnşaat %30 kısa; bakım ücretsiz; örtü stoktan; mücadelede sarma %20 hızlı; misina dayanımı +%12; sahte yemle atış ücretsiz (misina koparsa yem gider) |
+| Market | Hayvan yemi (20), karides yem (10), mısır yem (10); ürününü markete sat | Paketler tek tek almaktan ucuz; satış NPC pazarının günlük sınırlarıyla |
+| Zirai bayi + veteriner | Gübre, bitki koruma ilacı, hayvan aşısı | Hasat +%20; ekin don/dolu/sağanaktan korunur; barınak 7 gün her toplamada +1 ürün |
+
+Dükkân ürünleri envantere girer, bozulmaz, NPC tüccara satılmaz. Çarşı sekmesi ve haritada şube simgeleri (tıklayınca dükkân açılır).
+Uçlar: `GET /api/carsi`, `/api/carsi/:kategori`, `/api/carsi/subeler`, `POST /api/carsi/satin-al`, `/api/carsi/kullan`,
+`/api/banka` (+ `vadeli`, `vadeli/:id/kapat`, `kredi`, `kredi/ode`), yönetici: `GET /api/yonetim/isletmeler`, `PUT /api/yonetim/isletme/:kategori` (+ `/subeler`).
+Hukuki notlar: `docs/hukuk-kontrol-listesi.md` madde 11.
+
+## v0.11 — gerçek hava oyunun içinde
+
+v0.6'dan beri her ilin anlık havası (Open-Meteo) çekiliyor; yağmur açık tarlayı suluyor, don hassas ekine zarar veriyor, fırtına/sağanak/dolu/aşırı sıcak afet sayılıyor. v0.11 bunu oyuncunun önlem alabildiği bir döngüye çevirir:
+
+| Alan | Ne var | Nerede |
+|---|---|---|
+| Tahmin ve erken uyarı | Aynı Open-Meteo isteğiyle önümüzdeki 12 saat (saatlik) ve yarın (günlük) çekilir. 12 saatte don, dolu ya da sağanak bekleniyorsa o ilde etkilenecek ekini olan oyuncuya tek bildirim gider (aynı risk 12 saatte bir; sera ya da örtü varsa gitmez; don yalnızca hassas ürün için). Haritada il sıcaklığının yanında risk simgesi | `server/iklim.js` → `uyarilariGonder`, `server/dunya.js` → `tahminCikar` |
+| Tarla örtüsü | ⛺ 4 akçe × verim katı; 12 gerçek saat dona, doluya ve sağanağa karşı korur; seralı tarlada gerekmez; 3B'de tarlanın üstünde beyaz tünel | `POST /api/parsel/:id/ortu` |
+| Güneş | Açık/az bulutlu, 12–32° bir gündüzde ekilen açık tarla %15 hızlı büyür (ilin taze ölçümü) | `dunya.buyumeKati(…, plaka)` |
+| Rüzgâr | İl merkezinde rüzgâr 20 km/s'yi geçince değirmen %25 hızlı öğütür | `server/uretim.js` |
+| Kuraklık dengesi | Son 7 günde ölçümlerin %10'undan azı yağışlıysa ilde elle sulama %30 ucuz (yağmur bedava suladığından kurak il geride kalmasın); ölçüm geçmişi `hava_gecmisi` | `iklim.kuraklik` |
+| Afet desteği | 7 günde ikinci kez afetten etkilenen, e-postası doğrulanmış ve en az 7 günlük hesaba haftada bir ₳40 | `iklim.afetEtkilenenleri` |
+| Arayüz | Haritanın üstünde çiftliğinin ilinin havası ve "N tarla risk altında" şeridi; tıklayınca iller, riskler, tehdit altındaki tarlalar (örtü ser / git) ve kurallar; parsel kartında 12 saatlik risk, yarın, güneş/kuraklık rozetleri ve örtü satırı; açık gece güneş yerine ay | `hava-ui.js` |
+
+Hava verisi alınamazsa oyun tahminsiz devam eder: uyarı gitmez, güneş/rüzgâr bonusu verilmez, kimse ceza almaz.
+
+Aynı sürümde arayüz:
+- Oyun dünya küresi uçuşu olmadan doğrudan düz (2B) Türkiye görünümüyle açılır; kayıtlı 3B tercihi yalnızca konumlu bağlantıda uygulanır.
+- Ülke haritasında 25 ilin coğrafi işaretli ürün simgesi (il adının üstünde); il kartında yöresel ürün ve anlık hava.
+- Canlı dünya baloncukları: başka bir oyuncunun (demo sakinler dahil) görünür alandaki ekim, hasat, parsel edinme, yapı, üretim, komşu yardımı ve yöresel üretimi o parselde 3 saniyelik balonla görünür (aynı anda en çok 6; DOM işaretçisi, haritayı yeniden çizdirmez). Canlı olay parsel kimliğini taşır, eylemi yapanı taşımaz (`ben` yalnızca alıcının kendisi mi).
+- Balık tutma 3B (v0.12): iskeleden göl ya da deniz (three.js; su ve gökyüzü kendi gölgelendiricilerimizle: dalga normalleri, Fresnel yansıma, güneş parıltısı, şamandıra/balık halkaları). Gökyüzü yerin gerçek güneş konumuna göre gündüz/alacakaranlık/gece (ay, yıldız, iskele feneri), bulut, yağmur, kar ve sis ilin gerçek havasından. Türlere göre 3B balık modelleri (sazan pullu altın, alabalık benekli-pembe bantlı, levrek, lüfer, çipura altın alınlı, hamsi, kefal, altın balık). Takım: yem (solucan, mısır ₳1, karides ₳3, sahte yem ₳5), derinlik ve misina (ince: çok vurur ama kolay kopar; kalın: dayanıklı ama balık ürker); tür olasılığı ve vuruş hızı seçilen takıma göre önceden gösterilir. Balık aktivitesi gerçek saat (şafak/akşam iyi, öğle/gece durgun) ve havaya göre. Basılı tutup bırakarak atış gücü; türün davranışı mücadeleyi değiştirir (inatçı, kaçak, sıçrayan, çevik). WebGL yoksa 2B yedek (`balik-2b.js`). Sunucu: `GET /api/balik/ortam`, `GET /api/balik/takim`, atışta `yem/derinlik/misina` (`server/balik.js`, `rules.js` → `BALIK`).
+- Balık tutma yeniden: göl/deniz sahnesi, su altında yüzen balıklar, olta atışı, yalancı vuruşlar, ısırınca "Çek!" ile oltaya takma ve makara mücadelesi (basılı tut = sar; gerginlik yeşilde kalmalı, kırmızıda misina kopar, gevşekte balık kaçar; güçlü tür daha sert çırpınır), balık sudan sıçrayarak çıkar, tür/kg/kişisel rekor kartı. Sunucu: `cek` artık balığı oltaya takar (TAKILDI, yalnızca güç söylenir), `POST /api/balik/:id/cikar` mücadele sonucunu alır; en kısa mücadele süresi (taban + güç × adım) ve 60 sn üst sınır sunucuda; tür ve ağırlık çıkınca söylenir (`balik-ui.js`, `server/balik.js`).
+- E-posta doğrulama şeridi üst çubukta küçük bir "📧 E-postanı doğrula" rozetine dönüştü; tıklayınca açıklama ve yeniden gönder açılır.
+
+## v0.10 — rehber, komşuluk, yöresel ürünler, etkinlikler, balık
+
+| Alan | Ne var | Nerede |
+|---|---|---|
+| Rehber | Hasan Dayı (kendi SVG çizimimiz) yeni oyuncuya 8 adımda yol gösterir; adım ilk görevlerin durumundan çıkar, "Göster" haritayı uçurup ilgili düğmeyi ışıkla vurgular; yakındaki boş tarlayı önerir (`/api/oneri/tarla`); Hesabım → Oyun ayarları'ndan yeniden başlatılır | `rehber.js`, `server/hatirlatma.js` |
+| Hatırlatmalar | Hasat hazır, hayvan ürünü birikti, sipariş bitiyor: olay başına bir kez, oyuncu başına tek iletide; 23.00–08.00 sessiz; kapatılabilir; canlı bağlantı + web push | `server/hatirlatma.js` (`HATIRLATMA=kapali` zamanlayıcıyı kapatır) |
+| Komşuluk | Arkadaşlık (istek → kabul; demo sakinler hemen kabul eder ve arada hediye yollar), komşunun tarlasına yardım (sulama sayılır ya da olgunlaşma %10 kısalır; günlük sınırlar), günlük hediye, arkadaşa ürün gönderme | `server/komsuluk.js`, `komsuluk-ui.js` |
+| Yöresel ürünler | 25 coğrafi işaretli ürün (Malatya kayısısı, Rize çayı, Afyon kaymağı…), yalnızca kendi ilinde parseli olan günde bir parti üretir; 7 bölgelik albüm (ürün ve bölge ödülleri); borsada ve komşular arasında takas; üretim il ligine puan | `server/yoresel.js`, `rules.js` → `YORESEL` |
+| Etkinlikler | Her yıl aynı günlerde: Cumhuriyet Bayramı, Hıdırellez, Dünya Çiftçiler Günü, Hasat Şenliği, Yeni Yıl; kişisel görevler, Türkiye geneli ortak hedef, etkinliğe özel süs; ilerleme denetim kaydından sayılır; harita üstünde şerit | `server/etkinlik.js`, `rules.js` → `ETKINLIKLER` |
+| Balık tutma | 🎣 → göle, nehre ya da kıyıya dokun → şamandıra gömülünce "Çek!"; ısırma anı sunucuda belirlenir; tür yöreye göre (hamsi, lüfer, çipura, levrek, sazan, alabalık, Van'da inci kefali), nadiren altın balık; günde 20 atış | `server/balik.js`, `komsuluk-ui.js` |
+
+"Görevler" sekmesi **Çiftliğim** oldu: Çiftlik · Komşular · Yöresel · Etkinlik alt bölümleri.
+
+**Kötüye kullanım önlemleri** (güvenlik incelemesi sonrası):
+- Değer aktaran ya da başkasına bildirim gönderen işlemler (komşuluk isteği, yardım, hediye, ürün gönderme) doğrulanmış e-posta ister; hediye ve ürün gönderme seviye 3'ten itibaren.
+- Yardım yalnızca komşuya (arkadaşa); kiracı kendi ekinine yardım edemez. Aynı kişiye komşuluk isteği haftada bir, günde en çok 20 istek.
+- Köy yarışmasında yalnızca o mahallede parseli olanların, yardım/hediye/ödül dışı TP'si sayılır; ödül için en az 3 gerçek katılımcı gerekir.
+- İlçe mahalle taraması ve mahalle açma uçları IP başına dakikada 20 istekle sınırlı (`AGIR_HIZ_SINIRI`); tarama aynı anda tek ilçe, sonuç kalıcı önbellekte; ziyaretçi tıklaması veritabanına yazmaz. Tarla önerisi giriş ister ve yalnızca Türkiye içinde arar.
+- Balık tutmada suya düşmeyen atış da günlük hakkı tüketir; sayım ve kayıt tek işlemde.
+- NPC pazarı: ortak günlük limit dolsa da her oyuncudan ürün başına günde 25 adet alınır (yeni oyuncu ilk satışını yapabilsin).
+- Yeni sürüm yayımlanınca açık sekmeler kendiliğinden yenilenir (servis çalışanı devri); uzun açık sekmeler yarım saatte bir sürüm denetler.
 
 ## v0.9 — çiftlik oyunu
 

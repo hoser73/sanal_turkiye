@@ -4,7 +4,7 @@ import { api, esc, zamanOnce } from './yardimci.js';
 
 const $ = (s) => document.querySelector(s);
 let veri = null, sekme = 'sikayet', ekonomi = null;
-const SEKMELER = { sikayet: 'Şikâyetler', sohbet: 'İşaretli mesajlar', islem: 'İşlemler', secim: 'Seçim denetimi', meclis: 'Meclis kararları', dilekce: 'Dilekçeler', ekonomi: 'Ekonomi', sistem: 'Sistem' };
+const SEKMELER = { sikayet: 'Şikâyetler', sohbet: 'İşaretli mesajlar', islem: 'İşlemler', secim: 'Seçim denetimi', meclis: 'Meclis kararları', dilekce: 'Dilekçeler', ekonomi: 'Ekonomi', sistem: 'Sistem', sponsor: 'Sponsorlar' };
 const ms = (t) => (t ? zamanOnce(t) : '—');
 const cip = (d) => `<span class="cip ${esc(String(d).toLowerCase())}">${esc(d)}</span>`;
 function tost(m, tur = '') {
@@ -27,8 +27,9 @@ function ciz() {
     ['Oyuncu', o.oyuncu], ['Son 24 saatte aktif', o.aktif24], ['Açık şikâyet', o.acikSikayet, o.acikSikayet > 0], ['Onay bekleyen', o.onayBekleyen, o.onayBekleyen > 0],
     ['İşaretli işlem (7 gün)', o.supheliIslem, o.supheliIslem > 0], ['Askıda hesap', o.askida], ['Dondurulmuş parsel', o.donmusParsel],
   ].map(([a, b, d]) => `<div class="karo ${d ? 'dikkat' : ''}"><b>${b}</b><span>${a}</span></div>`).join('');
-  $('#sekmeler').innerHTML = Object.entries(SEKMELER).map(([k, v]) => `<button role="tab" data-sekme="${k}" aria-selected="${k === sekme}">${v}</button>`).join('');
-  $('#icerik').innerHTML = ({ sikayet, sohbet, islem, secim, meclis, dilekce, ekonomi: ekonomiCiz, sistem: sistemCiz })[sekme]();
+  const gorunur = Object.entries(SEKMELER).filter(([k]) => k !== 'sponsor' || veri.ben.rol === 'ADMIN');
+  $('#sekmeler').innerHTML = gorunur.map(([k, v]) => `<button role="tab" data-sekme="${k}" aria-selected="${k === sekme}">${v}</button>`).join('');
+  $('#icerik').innerHTML = ({ sikayet, sohbet, islem, secim, meclis, dilekce, ekonomi: ekonomiCiz, sistem: sistemCiz, sponsor: sponsorCiz })[sekme]();
 }
 
 function sikayet() {
@@ -114,6 +115,50 @@ function sistemCiz() {
         <td class="mono">${esc([h.yol, h.hataIletisi || h.hata?.ileti || h.yigin?.split('\n')[0] || ''].filter(Boolean).join(' · ')).slice(0, 200)}</td></tr>`).join('')}</tbody></table>` : '<p class="kucuk">Kayıtlı hata yok. 🎉</p>'}</div>`;
 }
 
+// ---------- Sponsorlar (yalnızca yönetici): her işletme türünden tek marka; sözleşme bitince varsayılana döner
+let sponsorlar = null;
+const tarihStr = (ms) => (ms ? new Date(ms + 3 * 3600e3).toISOString().slice(0, 10) : '');
+function sponsorCiz() {
+  if (!sponsorlar) {
+    api('/api/yonetim/isletmeler').then((x) => { sponsorlar = x; ciz(); }).catch((e) => { sponsorlar = { hata: e.message }; ciz(); });
+    return '<p class="kucuk">Yükleniyor…</p>';
+  }
+  if (sponsorlar.hata) return `<div class="kart"><p class="kucuk">${esc(sponsorlar.hata)}</p></div>`;
+  return `<div class="kart"><p class="kucuk" style="margin:0">Oyunda her türden <b>tek işletme</b> vardır. Sponsorluk sözleşmesi imzalanınca markanın adını, logosunu ve renklerini buraya gir;
+      "Sponsor" işaretliyken oyunda <b>Sponsor</b> etiketiyle gösterilir (ticari reklam açıkça belirtilir). Sözleşme bitiş tarihi geçince işletme kendiliğinden varsayılan adına döner.
+      Logo: PNG, JPEG ya da WebP, en çok 150 KB (SVG kabul edilmez).</p></div>
+    ${sponsorlar.map((x) => {
+      const k = x.kayit || {}, g = x.gorunen;
+      return `<div class="kart sponsor-kart"><div class="sponsor-onizleme" style="background:${esc(g.renk2)};border-color:${esc(g.renk)}">
+          ${g.logo ? `<img src="${esc(g.logo)}" alt="" width="40" height="40">` : `<span style="font-size:32px">${esc(g.ikon)}</span>`}
+          <div><b style="color:${esc(g.renk)}">${esc(g.ad)}</b> ${g.sponsor ? '<span class="cip">SPONSOR</span>' : ''}<div class="kucuk">${esc(x.tur)} · ${esc(g.slogan || '')}</div></div></div>
+        <form class="form sponsor-form" data-kategori="${x.kategori}">
+          <label>Marka adı<input name="ad" required minlength="2" maxlength="40" value="${esc(k.ad || '')}" placeholder="${esc(x.varsayilan.ad)}"></label>
+          <label>Simge (emoji)<input name="ikon" maxlength="4" value="${esc(k.ikon || '')}" placeholder="${esc(x.varsayilan.ikon)}"></label>
+          <label>Ana renk<input name="renk" type="color" value="${esc(k.renk || x.varsayilan.renk)}"></label>
+          <label>Zemin rengi<input name="renk2" type="color" value="${esc(k.renk2 || x.varsayilan.renk2)}"></label>
+          <label>Slogan<input name="slogan" maxlength="80" value="${esc(k.slogan ?? '')}" placeholder="${esc(x.varsayilan.slogan)}"></label>
+          <label>Web adresi (https)<input name="web" type="url" pattern="https://.*" value="${esc(k.web || '')}"></label>
+          <label>Sözleşme başlangıcı<input name="sozlesmeBas" type="date" value="${tarihStr(k.sozlesme_bas)}"></label>
+          <label>Sözleşme bitişi<input name="sozlesmeBit" type="date" value="${tarihStr(k.sozlesme_bit)}"></label>
+          <label>Logo<input name="logoDosya" type="file" accept="image/png,image/jpeg,image/webp"></label>
+          <label class="satir"><input type="checkbox" name="logoKaldir"> Logoyu kaldır</label>
+          <label class="satir"><input type="checkbox" name="sponsor" ${k.sponsor ? 'checked' : ''}> Sponsor (oyunda "Sponsor" etiketi)</label>
+          <div class="satir"><button class="d b">Kaydet</button><button type="button" class="d" data-k="sponsor-sifirla" data-kategori="${x.kategori}">Varsayılana döndür</button></div>
+        </form>
+        <details><summary>Şubeler (${x.gercekSube ? `${x.gercekSube} gerçek şube` : 'her il merkezinde bir şube'})</summary>
+          <form class="form sube-form" data-kategori="${x.kategori}"><label>Her satıra bir şube: <code>ad;enlem;boylam</code> (boş gönderirsen il merkezlerine döner)
+            <textarea name="liste" rows="5" placeholder="Kadıköy Şubesi;40.990;29.030"></textarea></label><button class="d b">Şubeleri yükle</button></form></details></div>`;
+    }).join('')}`;
+}
+async function put(yol, govde) {
+  const r = await fetch(yol, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(govde), credentials: 'same-origin' });
+  const v = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(v.hata || `Hata ${r.status}`);
+  return v;
+}
+const dosyaOku = (f) => new Promise((coz, red) => { const o = new FileReader(); o.onload = () => coz(o.result); o.onerror = red; o.readAsDataURL(f); });
+
 function ekonomiCiz() {
   if (!ekonomi) { api('/api/yonetim/ekonomi').then((e) => { ekonomi = e; ciz(); }).catch((e) => { ekonomi = { hata: e.message }; ciz(); }); return '<p class="kucuk">Yükleniyor…</p>'; }
   if (ekonomi.hata) return `<div class="kart"><p class="kucuk">${esc(ekonomi.hata)}</p></div>`;
@@ -155,6 +200,10 @@ document.addEventListener('click', async (e) => {
       case 'islem-karar':
         await api(`/api/yonetim/islem/${b.dataset.id}`, { onay: b.dataset.onay === '1' });
         tost(b.dataset.onay === '1' ? 'Onaylandı ve uygulandı' : 'Reddedildi'); await yukle(); break;
+      case 'sponsor-sifirla':
+        if (!confirm('Bu işletme varsayılan adına dönsün mü?')) break;
+        await put(`/api/yonetim/isletme/${b.dataset.kategori}`, { sifirla: true });
+        sponsorlar = null; tost('Varsayılana döndü'); ciz(); break;
       case 'yeniden-say': {
         const r = await api(`/api/secim/${b.dataset.id}/yeniden-say`);
         document.getElementById(`sayim-${b.dataset.id}`).textContent = r.uyumlu ? `✓ ilk sayımla uyumlu (${r.toplam} pusula)` : '✖ UYUŞMUYOR — incele';
@@ -164,6 +213,27 @@ document.addEventListener('click', async (e) => {
   } catch (err) { tost(err.message, 'hata'); } finally { b.disabled = false; }
 });
 document.addEventListener('submit', async (e) => {
+  if (e.target.matches('.sponsor-form, .sube-form')) {
+    e.preventDefault();
+    const f = e.target, k = f.dataset.kategori, v = Object.fromEntries(new FormData(f));
+    try {
+      if (f.matches('.sube-form')) {
+        const subeler = String(v.liste || '').split('\n').map((s) => s.trim()).filter(Boolean).map((s) => { const [ad, lat, lon] = s.split(';').map((x) => x.trim()); return { ad, lat: Number(lat), lon: Number(lon) }; });
+        const r = await put(`/api/yonetim/isletme/${k}/subeler`, { subeler });
+        tost(r.adet ? `${r.adet} şube yüklendi` : 'Şubeler il merkezlerine döndü');
+      } else {
+        const dosya = f.querySelector('[name=logoDosya]').files[0];
+        if (dosya && dosya.size > 150_000) throw new Error('Logo en çok 150 KB olabilir');
+        const eski = sponsorlar.find((x) => x.kategori === k)?.kayit?.logo || null;
+        const logo = v.logoKaldir ? null : dosya ? await dosyaOku(dosya) : eski;
+        await put(`/api/yonetim/isletme/${k}`, { ad: v.ad, ikon: v.ikon, renk: v.renk, renk2: v.renk2, slogan: v.slogan, web: v.web || null,
+          sozlesmeBas: v.sozlesmeBas || null, sozlesmeBit: v.sozlesmeBit || null, sponsor: !!v.sponsor, logo });
+        tost('Marka kaydedildi');
+      }
+      sponsorlar = null; ciz();
+    } catch (err) { tost(err.message, 'hata'); }
+    return;
+  }
   if (e.target.id !== 'islemForm') return;
   e.preventDefault();
   const v = Object.fromEntries(new FormData(e.target));

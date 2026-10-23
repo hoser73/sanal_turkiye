@@ -141,7 +141,8 @@ const YEM_FIYATI = 1.2;   // envanterde yem yoksa birim başına
 // Oyuncu seviyesi: eylemler tecrübe puanı (TP) kazandırır. Seviye n için toplam TP = 20 × n × (n − 1) (açık formül)
 const SEVIYE = {
   tp: { PARCEL_ACQUIRED: 10, CROP_PLANTED: 2, CROP_HARVESTED: 6, STRUCTURE_COMPLETED: 8, PRODUCTION_COLLECTED: 4, ANIMALS_FED: 1,
-    ANIMAL_PRODUCE_COLLECTED: 4, PARCEL_VISITED: 1, COMMODITY_TRADE: 2, TRADE_SETTLED: 5, DECORATION_PLACED: 2 },
+    ANIMAL_PRODUCE_COLLECTED: 4, PARCEL_VISITED: 1, COMMODITY_TRADE: 2, TRADE_SETTLED: 5, DECORATION_PLACED: 2,
+    NEIGHBOR_HELPED: 3, GI_PRODUCED: 5, FISH_CAUGHT: 2 },
   katsayi: 20, maks: 60,
   seviyeOdulu: (n) => 20 + n * 10,   // her yeni seviyede akçe
 };
@@ -155,7 +156,7 @@ const SIPARIS = {
     'Pazarcı Emine', 'Çoban Ali', 'Kahveci İsmail', 'Doktor Elif'],
 };
 // Haftalık köy yarışması: mahallede bu hafta en çok TP kazanan üç oyuncu ödül alır (hafta pazartesi 00:00 UTC başlar)
-const YARISMA = { odul: [150, 90, 50], minTp: 20 };
+const YARISMA = { odul: [150, 90, 50], minTp: 20, minKatilimci: 3 };
 // Çiftlik süsleri: parselde 3B görünür; seviyeyle açılır; parsel başına en çok 8
 const SUSLER = {
   CICEK_TARHI:   { ad: 'Çiçek tarhı',   ikon: '🌷', fiyat: 15, minSeviye: 1 },
@@ -166,8 +167,180 @@ const SUSLER = {
   ODUN_YIGINI:   { ad: 'Odun yığını',   ikon: '🪵', fiyat: 20, minSeviye: 3 },
   YEL_DEGIRMENI: { ad: 'Yel değirmeni', ikon: '🌬️', fiyat: 120, minSeviye: 5 },
   CESME:         { ad: 'Çeşme',         ikon: '⛲', fiyat: 90, minSeviye: 6 },
+  // Etkinlik süsleri: yalnızca etkinlik süresince satın alınır, sonra çiftlikte kalır
+  BAYRAK_DIREGI: { ad: 'Bayrak direği', ikon: '🇹🇷', fiyat: 10, minSeviye: 1, etkinlik: 'CUMHURIYET' },
+  DILEK_AGACI:   { ad: 'Dilek ağacı',   ikon: '🌳', fiyat: 15, minSeviye: 1, etkinlik: 'HIDIRELLEZ' },
+  HASAT_ARABASI: { ad: 'Hasat arabası', ikon: '🛒', fiyat: 25, minSeviye: 1, etkinlik: 'HASAT_SENLIGI' },
+  KARDAN_ADAM:   { ad: 'Kardan adam',   ikon: '⛄', fiyat: 10, minSeviye: 1, etkinlik: 'YILBASI' },
 };
 const SUS_MAKS = 8;
+
+// ---------- Komşuluk: arkadaşlık, tarla yardımı, hediye, ürün gönderme
+const KOMSULUK = {
+  maxArkadas: 60,
+  yardimGunluk: 10, parselYardimGunluk: 3, yardimOdul: 3, yardimKisaltma: 0.1,   // olgunlaşma süresinin %10'u
+  hediyeGunlukAlim: 20,
+  hediyeler: [{ urun: 'YEM', adet: 6 }, { urun: 'YEM', adet: 4 }, { urun: 'YUMURTA', adet: 3 }, { akce: 8 }, { akce: 5 }, { urun: 'UN', adet: 2 }],
+  gonderimGunlukAdet: 30,
+  // Kötüye kullanım sınırları: değer aktaran işlemler (hediye, ürün gönderme) için en düşük seviye; istek sınırları
+  gonderimMinSeviye: 3, istekGunluk: 20, istekTekrarMs: 7 * 24 * 3600_000,
+};
+
+// ---------- Coğrafi işaretli (yöresel) ürünler: yalnızca o ilde parseli olan üretir (günde bir parti),
+// koleksiyona eklenir ya da borsada başka illerin oyuncularıyla takas edilir. Bölge = coğrafi bölge (albüm sayfası).
+const YORESEL = {
+  MALATYA_KAYISISI:  { ad: 'Malatya kayısısı',      ikon: '🍑', il: '44', bolge: 'Doğu Anadolu',     girdi: { KAYISI: 4 } },
+  ERZINCAN_TULUMU:   { ad: 'Erzincan tulum peyniri', ikon: '🧀', il: '24', bolge: 'Doğu Anadolu',     girdi: { SUT: 5 } },
+  KARS_KASARI:       { ad: 'Kars kaşarı',           ikon: '🧀', il: '36', bolge: 'Doğu Anadolu',     girdi: { SUT: 6 } },
+  VAN_OTLU_PEYNIRI:  { ad: 'Van otlu peyniri',      ikon: '🧀', il: '65', bolge: 'Doğu Anadolu',     girdi: { SUT: 5 } },
+  ANTEP_FISTIGI:     { ad: 'Antep fıstığı',         ikon: '🥜', il: '27', bolge: 'Güneydoğu Anadolu', akce: 30 },
+  SIIRT_FISTIGI:     { ad: 'Siirt fıstığı',         ikon: '🥜', il: '56', bolge: 'Güneydoğu Anadolu', akce: 30 },
+  MARDIN_SABUNU:     { ad: 'Mardin bıttım sabunu',  ikon: '🧼', il: '47', bolge: 'Güneydoğu Anadolu', akce: 25 },
+  GIRESUN_FINDIGI:   { ad: 'Giresun fındığı',       ikon: '🌰', il: '28', bolge: 'Karadeniz',        girdi: { FINDIK: 4 } },
+  RIZE_CAYI:         { ad: 'Rize çayı',             ikon: '🍃', il: '53', bolge: 'Karadeniz',        girdi: { CAY: 4 } },
+  AMASYA_ELMASI:     { ad: 'Amasya elması',         ikon: '🍎', il: '05', bolge: 'Karadeniz',        girdi: { ELMA: 4 } },
+  TOKAT_YAPRAGI:     { ad: 'Tokat yaprağı',         ikon: '🍃', il: '60', bolge: 'Karadeniz',        girdi: { UZUM: 3 } },
+  SAFRANBOLU_SAFRANI:{ ad: 'Safranbolu safranı',    ikon: '🌼', il: '78', bolge: 'Karadeniz',        akce: 40 },
+  TASKOPRU_SARIMSAGI:{ ad: 'Taşköprü sarımsağı',    ikon: '🧄', il: '37', bolge: 'Karadeniz',        akce: 15 },
+  KAYSERI_PASTIRMASI:{ ad: 'Kayseri pastırması',    ikon: '🥩', il: '38', bolge: 'İç Anadolu',        akce: 35 },
+  KONYA_ETLI_EKMEK:  { ad: 'Konya etli ekmeği',     ikon: '🫓', il: '42', bolge: 'İç Anadolu',        girdi: { UN: 2 } },
+  AFYON_KAYMAGI:     { ad: 'Afyon kaymağı',         ikon: '🥛', il: '03', bolge: 'Ege',              girdi: { SUT: 4 } },
+  AYDIN_INCIRI:      { ad: 'Aydın inciri',          ikon: '🟤', il: '09', bolge: 'Ege',              akce: 25 },
+  MANISA_MESIRI:     { ad: 'Manisa mesir macunu',   ikon: '🍯', il: '45', bolge: 'Ege',              akce: 30 },
+  BURSA_SEFTALISI:   { ad: 'Bursa şeftalisi',       ikon: '🍑', il: '16', bolge: 'Marmara',          akce: 20 },
+  EZINE_PEYNIRI:     { ad: 'Ezine peyniri',         ikon: '🧀', il: '17', bolge: 'Marmara',          girdi: { SUT: 5 } },
+  EDIRNE_PEYNIRI:    { ad: 'Edirne beyaz peyniri',  ikon: '🧀', il: '22', bolge: 'Marmara',          girdi: { SUT: 4 } },
+  FINIKE_PORTAKALI:  { ad: 'Finike portakalı',      ikon: '🍊', il: '07', bolge: 'Akdeniz',          akce: 20 },
+  HATAY_KUNEFESI:    { ad: 'Hatay künefesi',        ikon: '🍮', il: '31', bolge: 'Akdeniz',          girdi: { UN: 2 }, akce: 10 },
+  ISPARTA_GULU:      { ad: 'Isparta gülü',          ikon: '🌹', il: '32', bolge: 'Akdeniz',          akce: 25 },
+  ADANA_KEBABI:      { ad: 'Adana kebabı',          ikon: '🍢', il: '01', bolge: 'Akdeniz',          akce: 30 },
+};
+const YORESEL_KURAL = { partiCikti: 2, albumOdul: 15, albumTp: 10, bolgeOdul: 100, tabanFiyat: 9 };
+
+// ---------- Balık tutma (mini oyun): göl, nehir ya da kıyıda olta atılır; ısırınca zamanında çekilirse balık tutulur
+const BALIK = {
+  gunlukAtis: 20, isirma: [2000, 6500], pencere: 900, tolerans: 450, altinOran: 0.02, altinOdul: 50,
+  // Çekince balık oltaya takılır, ardından mücadele: oyuncu makarayı sarar. Sunucu en kısa mücadele süresini ister
+  // (taban + güç × adım ms) ve süre aşımında balık kaçar. Mücadelenin kendisi istemcide oynanır.
+  mucadele: { tabanMs: 900, gucMs: 500, maksMs: 60_000 },
+  // Olta takımı: yem (türe göre çekicilik, kimi ücretli), derinlik (türün sevdiği su katmanı), misina (ince: daha çok ısırır ama
+  // kolay kopar; kalın: dayanıklı ama balık ürker). Uygun yem ve derinlik balığın daha çabuk ısırmasını sağlar.
+  yemler: {
+    SOLUCAN: { ad: 'Solucan', ikon: '🪱', fiyat: 0 }, MISIR: { ad: 'Mısır', ikon: '🌽', fiyat: 1 },
+    KARIDES: { ad: 'Karides', ikon: '🦐', fiyat: 3 }, SAHTE: { ad: 'Sahte yem', ikon: '🐟', fiyat: 5 },
+  },
+  derinlikler: { SIG: { ad: 'Sığ', m: 1 }, ORTA: { ad: 'Orta', m: 3 }, DERIN: { ad: 'Derin', m: 6 } },
+  misinalar: {
+    INCE: { ad: 'İnce 0,18 mm', isirma: 0.8, dayanim: 0.86 }, ORTA: { ad: 'Orta 0,25 mm', isirma: 1, dayanim: 1 },
+    KALIN: { ad: 'Kalın 0,35 mm', isirma: 1.3, dayanim: 1.22 },
+  },
+  // Balık aktivitesi: ilin gerçek saati ve havası ısırma süresini çarpar (küçük = daha çabuk ısırır)
+  aktivite: { safak: 0.7, aksam: 0.75, ogle: 1.15, gece: 1.3, bulutlu: 0.85, yagmur: 0.8, firtina: 1.45, ruzgar: 1.2, asiriSicaklik: 1.2,
+    min: 1500, maks: 15000 },
+  // guc: 1 (kolay) … 5 (çok güçlü); kg: ağırlık aralığı; davranis: mücadele biçimi (inatci: ağır ve sürekli çeker,
+  // kacak: ani uzun kaçışlar, sicrayan: sudan sıçrar, surucu: hafif ve çevik); yem/derinlik: tercih çarpanları
+  turler: {
+    HAMSI: { ad: 'Hamsi', ikon: '🐟', tabanFiyat: 1.2, guc: 1, kg: [0.02, 0.06], davranis: 'surucu',
+      yem: { SOLUCAN: 0.8, MISIR: 0.3, KARIDES: 1.3, SAHTE: 1 }, derinlik: { SIG: 1.5, ORTA: 1, DERIN: 0.4 } },
+    LUFER: { ad: 'Lüfer', ikon: '🐟', tabanFiyat: 3.2, guc: 4, kg: [0.4, 2.8], davranis: 'kacak',
+      yem: { SOLUCAN: 0.4, MISIR: 0.1, KARIDES: 1.2, SAHTE: 2 }, derinlik: { SIG: 1, ORTA: 1.4, DERIN: 0.7 } },
+    CIPURA: { ad: 'Çipura', ikon: '🐠', tabanFiyat: 2.6, guc: 3, kg: [0.3, 1.8], davranis: 'inatci',
+      yem: { SOLUCAN: 1.2, MISIR: 0.3, KARIDES: 1.8, SAHTE: 0.3 }, derinlik: { SIG: 0.6, ORTA: 1.2, DERIN: 1.3 } },
+    LEVREK: { ad: 'Levrek', ikon: '🐟', tabanFiyat: 2.8, guc: 3, kg: [0.4, 3.5], davranis: 'sicrayan',
+      yem: { SOLUCAN: 0.8, MISIR: 0.2, KARIDES: 1.5, SAHTE: 1.8 }, derinlik: { SIG: 1.2, ORTA: 1.2, DERIN: 0.7 } },
+    SAZAN: { ad: 'Sazan', ikon: '🐟', tabanFiyat: 1.4, guc: 2, kg: [0.8, 6], davranis: 'inatci',
+      yem: { SOLUCAN: 1.2, MISIR: 2.2, KARIDES: 0.4, SAHTE: 0.2 }, derinlik: { SIG: 0.5, ORTA: 1, DERIN: 1.6 } },
+    ALABALIK: { ad: 'Alabalık', ikon: '🐟', tabanFiyat: 2.4, guc: 3, kg: [0.3, 2.2], davranis: 'sicrayan',
+      yem: { SOLUCAN: 1.4, MISIR: 0.8, KARIDES: 0.5, SAHTE: 1.6 }, derinlik: { SIG: 1.3, ORTA: 1.1, DERIN: 0.6 } },
+    INCI_KEFALI: { ad: 'İnci kefali', ikon: '🐟', tabanFiyat: 2, guc: 1, kg: [0.05, 0.3], davranis: 'surucu',
+      yem: { SOLUCAN: 1.3, MISIR: 1, KARIDES: 0.8, SAHTE: 0.5 }, derinlik: { SIG: 1.3, ORTA: 1, DERIN: 0.6 } },
+    ALTIN_BALIK: { ad: 'Altın balık', ikon: '🐡', tabanFiyat: 12, nadir: true, guc: 5, kg: [0.5, 1.5], davranis: 'kacak',
+      yem: { SOLUCAN: 1, MISIR: 1, KARIDES: 1, SAHTE: 1 }, derinlik: { SIG: 1, ORTA: 1, DERIN: 1 } },
+  },
+  // Kıyı bölgeleri (plaka): denizde tutulan tür
+  deniz: {
+    KARADENIZ: { iller: ['39', '22', '34', '41', '81', '67', '74', '78', '37', '57', '55', '52', '28', '61', '53', '08'], turler: { HAMSI: 0.7, LUFER: 0.3 } },
+    MARMARA: { iller: ['59', '10', '16', '77', '17'], turler: { LUFER: 0.5, LEVREK: 0.3, HAMSI: 0.2 } },
+    EGE: { iller: ['35', '09', '48', '45'], turler: { CIPURA: 0.55, LEVREK: 0.45 } },
+    AKDENIZ: { iller: ['07', '33', '01', '31', '80'], turler: { LEVREK: 0.5, CIPURA: 0.5 } },
+  },
+};
+// ---------- Çarşı: gerçek hayattaki gibi banka, nalbur, market, zirai bayi. Her türden oyunda TEK işletme vardır; sponsorluk
+// anlaşması yapılınca yönetim panelinden markanın adı, logosu ve renkleri girilir (sözleşme bitince varsayılana döner).
+// Ürünler envantere girer, NPC tüccara satılmaz, bozulmaz. "kalici" ürün elde oldukça etkisini sürdürür.
+const CARSI = {
+  kategoriler: {
+    BANKA:  { tur: 'Banka', ad: 'Sanal Banka', ikon: '🏦', renk: '#0b5e8c', renk2: '#e6f2fa', slogan: 'Akçen güvende, çiftliğin büyüsün' },
+    NALBUR: { tur: 'Nalbur / hırdavat', ad: 'Usta Nalbur', ikon: '🔨', renk: '#a5492a', renk2: '#fbeee6', slogan: 'Çividen kamışa her şey' },
+    MARKET: { tur: 'Market', ad: 'Mahalle Market', ikon: '🛒', renk: '#2f8a3c', renk2: '#eaf6ec', slogan: 'Taze, ucuz, yakın' },
+    ZIRAI:  { tur: 'Zirai bayi ve veteriner', ad: 'Bereket Zirai Bayi', ikon: '🌱', renk: '#5f7d1f', renk2: '#f1f6e4', slogan: 'Bol hasat, sağlıklı sürü' },
+  },
+  urunler: {
+    KALIP_SETI:   { dukkan: 'NALBUR', ad: 'Kalıp ve iskele seti', ikon: '🧱', fiyat: 40, etki: 'Bir sonraki inşaat %30 kısa sürer (inşaatta kendiliğinden kullanılır)' },
+    BAKIM_KITI:   { dukkan: 'NALBUR', ad: 'Bakım kiti', ikon: '🧰', fiyat: 25, etki: 'Bir parseldeki yapıların bakımı ücretsiz (bakımda kendiliğinden kullanılır)' },
+    TARLA_ORTUSU: { dukkan: 'NALBUR', ad: 'Tarla örtüsü', ikon: '⛺', fiyat: 10, etki: 'Örtü sermek ücretsiz (örtü serince kendiliğinden kullanılır)' },
+    KARBON_KAMIS: { dukkan: 'NALBUR', ad: 'Karbon kamış', ikon: '🎣', fiyat: 120, kalici: true, etki: 'Balık mücadelesinde makara %20 hızlı sarar (kalıcı)' },
+    ORGU_MISINA:  { dukkan: 'NALBUR', ad: 'Örgü misina', ikon: '🧵', fiyat: 80, kalici: true, etki: 'Misina dayanımı +%12 (kalıcı)' },
+    SAHTE_YEM_TAKIMI: { dukkan: 'NALBUR', ad: 'Sahte yem (rapala)', ikon: '🐟', fiyat: 30, kalici: true, etki: 'Sahte yemle atış ücretsiz; misina koparsa sahte yem kaybolur' },
+    YEM_PAKETI:   { dukkan: 'MARKET', ad: 'Hayvan yemi (20 çuval)', ikon: '🌽', fiyat: 20, verir: { YEM: 20 }, etki: 'Besleme başına ödenen yem fiyatından %17 ucuz' },
+    KARIDES_PAKETI: { dukkan: 'MARKET', ad: 'Karides yem (10 atış)', ikon: '🦐', fiyat: 25, verir: { YEM_KARIDES: 10 }, etki: 'Atış başına ₳2,5 (tek tek ₳3)' },
+    MISIR_PAKETI: { dukkan: 'MARKET', ad: 'Mısır yem (10 atış)', ikon: '🌽', fiyat: 8, verir: { YEM_MISIR: 10 }, etki: 'Atış başına ₳0,8 (tek tek ₳1)' },
+    GUBRE:        { dukkan: 'ZIRAI', ad: 'Gübre', ikon: '🧪', fiyat: 12, kullan: 'EKIN', etki: 'Ekili tarlaya ver: hasat %20 fazla' },
+    ILAC:         { dukkan: 'ZIRAI', ad: 'Bitki koruma ilacı', ikon: '🛡️', fiyat: 15, kullan: 'EKIN', etki: 'Ekili tarlaya ver: ekin olgunlaşana kadar don, dolu ve sağanaktan korunur' },
+    ASI:          { dukkan: 'ZIRAI', ad: 'Hayvan aşısı', ikon: '💉', fiyat: 20, kullan: 'BARINAK', etki: 'Barınağa uygula: 7 gün boyunca her toplamada +1 ürün' },
+  },
+  // Pakette gelen sarf malzemeleri (envanterde görünür, yalnızca oyunda kullanılır)
+  sarf: { YEM_KARIDES: { ad: 'Karides yem', ikon: '🦐' }, YEM_MISIR: { ad: 'Mısır yem', ikon: '🌽' } },
+  etki: { kalipKisalma: 0.3, gubreBonus: 0.2, asiSureMs: 7 * 24 * 3600 * 1000, asiEk: 1, kamisSarma: 1.2, misinaDayanim: 0.12 },
+  // Banka: akçe nakde çevrilemez; gerçek bankacılık hizmeti değildir. Faiz oyun içi ödüldür (basılır), üst sınırlıdır.
+  banka: {
+    vadeliGun: 7, vadeliFaiz: 0.025, vadeliMin: 50, vadeliMaks: 10000,
+    krediGun: 7, krediFaiz: 0.06, gecikmeGunluk: 0.01, gecikmeMaks: 0.2,
+    krediTaban: 100, krediSeviyeBasi: 50, krediParselBasi: 60, krediMaks: 2500, krediMin: 20, minHesapGun: 3,
+  },
+  logoMaksBayt: 150_000,
+};
+for (const [kod, u] of Object.entries(CARSI.urunler)) URUNLER[kod] = { ad: u.ad, ikon: u.ikon, mamul: true, dukkan: u.dukkan, tabanFiyat: Math.round(u.fiyat * 0.5 * 100) / 100 };
+for (const [kod, u] of Object.entries(CARSI.sarf)) URUNLER[kod] = { ad: u.ad, ikon: u.ikon, mamul: true, dukkan: 'MARKET', sarf: true, tabanFiyat: 1 };
+for (const [kod, b] of Object.entries(BALIK.turler)) URUNLER[kod] = { ad: b.ad, ikon: b.ikon, tabanFiyat: b.tabanFiyat, nadir: b.nadir, mamul: true, balik: true };
+for (const [kod, y] of Object.entries(YORESEL)) URUNLER[kod] = { ad: y.ad, ikon: y.ikon, mamul: true, yoresel: y.il, tabanFiyat: YORESEL_KURAL.tabanFiyat };
+
+// ---------- Mevsimlik etkinlikler (her yıl aynı günler, AA-GG; bitiş dahil). Görev ilerlemesi denetim kaydından sayılır.
+const ETKINLIKLER = {
+  CUMHURIYET: { ad: 'Cumhuriyet Bayramı', ikon: '🇹🇷', bas: '10-20', bit: '11-02', renk: '#c8102e',
+    aciklama: 'Cumhuriyetimizin yıl dönümünü çiftlikte kutla: görevleri tamamla, bayrak direğini dik.',
+    gorevler: [{ ad: '10 hasat yap', eylem: 'CROP_HARVESTED', hedef: 10, odul: 50, tp: 15 },
+      { ad: '5 sipariş teslim et', eylem: 'ORDER_DELIVERED', hedef: 5, odul: 60, tp: 20 },
+      { ad: 'Çiftliğine bir süs yerleştir', eylem: 'DECORATION_PLACED', hedef: 1, odul: 20, tp: 5 }],
+    ortak: { ad: 'Türkiye genelinde 1923 sipariş teslimi', eylem: 'ORDER_DELIVERED', hedef: 1923, odul: 100 },
+    sus: 'BAYRAK_DIREGI' },
+  HIDIRELLEZ: { ad: 'Hıdırellez', ikon: '🌹', bas: '05-04', bit: '05-08', renk: '#d94b6a',
+    aciklama: 'Baharın gelişi: tohum ek, komşuna yardım et, dilek ağacına dileğini as.',
+    gorevler: [{ ad: '6 tarlaya tohum ek', eylem: 'CROP_PLANTED', hedef: 6, odul: 40, tp: 10 },
+      { ad: '3 komşuya yardım et', eylem: 'NEIGHBOR_HELPED', hedef: 3, odul: 40, tp: 10 }],
+    ortak: { ad: 'Türkiye genelinde 5000 ekim', eylem: 'CROP_PLANTED', hedef: 5000, odul: 80 },
+    sus: 'DILEK_AGACI' },
+  CIFTCILER_GUNU: { ad: 'Dünya Çiftçiler Günü', ikon: '🧑‍🌾', bas: '05-12', bit: '05-16', renk: '#5d9e34',
+    aciklama: '14 Mayıs: çiftçilerin emeğine selam olsun.',
+    gorevler: [{ ad: '15 hasat yap', eylem: 'CROP_HARVESTED', hedef: 15, odul: 60, tp: 15 },
+      { ad: 'Hayvanlarını 5 kez yemle', eylem: 'ANIMALS_FED', hedef: 5, odul: 40, tp: 10 }],
+    ortak: { ad: 'Türkiye genelinde 10.000 hasat', eylem: 'CROP_HARVESTED', hedef: 10000, odul: 80 } },
+  HASAT_SENLIGI: { ad: 'Hasat Şenliği', ikon: '🌾', bas: '09-10', bit: '09-24', renk: '#d9a531',
+    aciklama: 'Bereketli hasat zamanı: ambarları doldur, yöresel ürünlerini üret.',
+    gorevler: [{ ad: '20 hasat yap', eylem: 'CROP_HARVESTED', hedef: 20, odul: 70, tp: 20 },
+      { ad: '3 yöresel ürün partisi üret', eylem: 'GI_PRODUCED', hedef: 3, odul: 50, tp: 15 }],
+    ortak: { ad: 'Türkiye genelinde 20.000 hasat', eylem: 'CROP_HARVESTED', hedef: 20000, odul: 100 },
+    sus: 'HASAT_ARABASI' },
+  YILBASI: { ad: 'Yeni Yıl', ikon: '⛄', bas: '12-26', bit: '01-02', renk: '#3d8fdb',
+    aciklama: 'Komşularına hediye gönder, yeni yıla bereketle gir.',
+    gorevler: [{ ad: '5 hediye gönder', eylem: 'GIFT_SENT', hedef: 5, odul: 40, tp: 10 },
+      { ad: '5 sipariş teslim et', eylem: 'ORDER_DELIVERED', hedef: 5, odul: 60, tp: 20 }],
+    ortak: { ad: 'Türkiye genelinde 3000 hediye', eylem: 'GIFT_SENT', hedef: 3000, odul: 80 },
+    sus: 'KARDAN_ADAM' },
+};
+
+// Hatırlatmalar (geri çağıran bildirimler): sessiz saatlerde gönderilmez, aynı olay için bir kez
+const HATIRLATMA = { aralikMs: 60_000, sessiz: [23, 8], siparisUyariMs: 3600_000 };
 
 const KOOPERATIF = { kurulusBedeli: 100, maxUye: 12, minAktifUye: 3, satisPrimi: 0.06, adMin: 3, adMax: 40 };
 
@@ -215,6 +388,7 @@ BORSA.sureMs = (gun) => dk(gun * 24 * 60);
 // §5.2 NPC talebi: yalnızca sınırlı taban talep, sınırsız geri alım yok.
 const NPC_PAZAR = {
   gunlukTalep: 400,     // ürün başına, bütün oyuncular için günlük toplam NPC alım limiti
+  kisiselTaban: 25,     // ortak limit dolsa da her oyuncudan ürün başına günde bu kadar alınır (yeni oyuncu ilk satışını yapabilsin)
   fiyatAlt: 0.8,        // taban fiyat çarpanı alt sınırı
   fiyatUst: 1.2,
 };
@@ -254,6 +428,20 @@ const HAVA = {
   yagmurEsigi: 0.2,           // mm (son saat)
   donEsigi: 0,                // °C
   donVerimKati: 0.75,
+  // Erken uyarı: önümüzdeki saatlerin tahmini (Open-Meteo hourly) risk taşıyorsa tarlası etkilenecek oyuncuya haber verilir.
+  // Olgun ama hasat edilmemiş ekin de tarlada sayılır: uyarı "hasat et ya da örtü ser" demektir.
+  tahminSaat: 12,
+  uyariTekrarMs: 12 * 3600 * 1000,   // aynı oyuncuya aynı ilde aynı risk için en çok 12 saatte bir
+  // Açık, ılık bir gündüzde ekilen açık tarla daha hızlı büyür (sera zaten mevsimden etkilenmez)
+  gunes: { min: 12, max: 32, kodlar: [0, 1, 2], kati: 0.85 },
+  // Rüzgârlı havada değirmen daha hızlı öğütür (ölçüm: il merkezi, km/s)
+  ruzgar: { esik: 20, kati: 0.75 },
+  // Kuraklık dengesi: son 7 günde ölçümlerin %10'undan azı yağışlıysa ilde elle sulama %30 ucuz (yağmur bedava sular, kurak il geride kalmasın)
+  kuraklik: { gun: 7, minOlcum: 24, oran: 0.1, indirim: 0.3 },
+  // Afet desteği: 7 günde 2. kez afetten etkilenen doğrulanmış ve en az 7 günlük hesaba haftada bir destek (yeni hesaplarla toplanamasın)
+  afetDestegi: { gun: 7, esik: 2, tutar: 40, minHesapGun: 7 },
+  // Tarla örtüsü: ekini 12 saat dona, doluya ve sağanağa karşı korur. Gerçek saatle işler (hava gerçek zamanlıdır).
+  ortu: { ad: 'Tarla örtüsü', ikon: '⛺', birimMaliyet: 4, sureMs: 12 * 3600 * 1000, korur: ['DON', 'DOLU', 'SAGANAK'] },
 };
 
 // §8 oyuncular arası pazar
@@ -367,7 +555,7 @@ const LIG = {
   sezonMs: Math.round((28 * 24 * 3600 * 1000) / LIG_HIZI),
   baslangic: Date.UTC(2026, 0, 5),
   puanlar: { PARCEL_ACQUIRED: 5, STRUCTURE_COMPLETED: 4, CROP_HARVESTED: 3, PARCEL_TRADED: 4, PARCEL_VISITED: 1, MUHTAR_ANNOUNCEMENT: 1,
-    ELECTION_CLOSED: 15, PROJECT_COMPLETED: 12, STRUCTURES_MAINTAINED: 1, COMMODITY_TRADE: 1 },
+    ELECTION_CLOSED: 15, PROJECT_COMPLETED: 12, STRUCTURES_MAINTAINED: 1, COMMODITY_TRADE: 1, GI_PRODUCED: 3, NEIGHBOR_HELPED: 1 },
   gurbetOrani: 0.5,
   rozetMinPuan: 10,
   memleketBeklemeMs: 30 * 24 * 3600 * 1000,
@@ -464,4 +652,4 @@ const NUFUS = {
   baslangicBakiye: 500,
 };
 
-module.exports = { HAYVANLAR, YEM_FIYATI, SEVIYE, GUNLUK_ODUL, SIPARIS, YARISMA, SUSLER, SUS_MAKS, NUFUS, LOJISTIK, KIRA, ORTAKLIK, AFET, REFERANDUM, KOZMETIK, RECETELER, MESLEKLER, MESLEK, KOOPERATIF, LIG, MEVSIMLER, HAVA, BOLGE, BOZULMA, BAKIM, BORSA, GOREVDEN_ALMA, MODERASYON, YASAL, ROLLER, BIRIM, OYUN_HIZI, IMAR, IMAR_KAYNAK_NOTU, IL_CEKICILIK, YERLESIM_CEKICILIK, YAPILAR, URUNLER, TARIM, NPC_PAZAR, PAZAR, SECIM, SECIM_HIZI, BELEDIYE, ITIBAR, HESAP, GOREVLER };
+module.exports = { CARSI, KOMSULUK, YORESEL, YORESEL_KURAL, BALIK, ETKINLIKLER, HATIRLATMA, HAYVANLAR, YEM_FIYATI, SEVIYE, GUNLUK_ODUL, SIPARIS, YARISMA, SUSLER, SUS_MAKS, NUFUS, LOJISTIK, KIRA, ORTAKLIK, AFET, REFERANDUM, KOZMETIK, RECETELER, MESLEKLER, MESLEK, KOOPERATIF, LIG, MEVSIMLER, HAVA, BOLGE, BOZULMA, BAKIM, BORSA, GOREVDEN_ALMA, MODERASYON, YASAL, ROLLER, BIRIM, OYUN_HIZI, IMAR, IMAR_KAYNAK_NOTU, IL_CEKICILIK, YERLESIM_CEKICILIK, YAPILAR, URUNLER, TARIM, NPC_PAZAR, PAZAR, SECIM, SECIM_HIZI, BELEDIYE, ITIBAR, HESAP, GOREVLER };

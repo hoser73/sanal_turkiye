@@ -1,4 +1,4 @@
-// Sinematik kamera: oyuna giriş uçuşu (uzaydan Türkiye'ye) ve ünlü yerler turu (uçuş + yörünge + alt yazı).
+// Sinematik kamera: ünlü yerler turu (uçuş + yörünge + alt yazı). Oyun doğrudan Türkiye haritasıyla açılır; giriş uçuşu yok.
 // Kullanıcı haritaya dokunur, tekerlek çevirir ya da bir tuşa basarsa tur hemen durur. Hareket azaltma tercihine uyar.
 const hareketAz = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -36,31 +36,6 @@ function yaz(kap, baslik, alt) {
   requestAnimationFrame(() => el.classList.add('acik'));
 }
 
-// Giriş: oturumda bir kez, bağlantıda konum yoksa. Uzaydan dünya → Türkiye'ye süzülüş.
-// Sayfa açılırkenki adres: harita yüklenince kendi konumunu adrese yazar, karar ondan önceki hâle göre verilir
-const ILK_ADRES = { hash: location.hash, arama: location.search };
-export function girisOynayacakMi() {
-  let ilk = false;
-  try { ilk = !sessionStorage.getItem('st-giris'); } catch { /* özel pencere */ }
-  return ilk && !hareketAz() && !/konum=/.test(ILK_ADRES.hash) && !/parsel=/.test(ILK_ADRES.arama);
-}
-// Uçuş bitince (ya da kullanıcı keserse) çözülen söz; oynamayacaksa null
-export function girisUcusu(map, { hedefKutu, dolgu, kap }) {
-  if (!girisOynayacakMi()) return null;
-  try { sessionStorage.setItem('st-giris', '1'); } catch { /* özel pencere */ }
-  map.jumpTo({ center: [32, 30], zoom: 1.75, pitch: 0, bearing: -12 });
-  sinemaKipi(kap, 'giris-oynuyor', true);
-  yaz(kap, 'SANAL TÜRKİYE', 'Yaşayan dijital ülke');
-  return new Promise((coz) => {
-    let bitti = false;
-    const bitir = () => { if (bitti) return; bitti = true; sinemaKipi(kap, 'giris-oynuyor', false); setTimeout(() => yaz(kap, null), 600); coz(); };
-    setTimeout(() => {
-      map.fitBounds(hedefKutu, { padding: dolgu, duration: 5200, essential: true, curve: 1.3, pitch: 18, bearing: 0 });
-      map.once('moveend', bitir);
-    }, 900);
-    ['mousedown', 'wheel', 'touchstart'].forEach((t) => kap.addEventListener(t, () => { if (!bitti) { map.stop(); bitir(); } }, { once: true, passive: true }));
-  });
-}
 // Sinema sırasında harita üstü arayüz (lejant, ipucu) çekilir
 function sinemaKipi(kap, sinif, acik) {
   kap.classList.toggle(sinif, acik);

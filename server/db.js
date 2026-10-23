@@ -173,6 +173,14 @@ CREATE TABLE IF NOT EXISTS inventory_ledger (
 CREATE INDEX IF NOT EXISTS ix_inventory_user ON inventory_ledger(user_id, item_id);
 
 -- NPC taban talebi: gün + ürün başına satılan miktar (§5.2 sınırlı talep)
+-- Oyuncu başına günlük NPC satışı (kişisel taban için)
+CREATE TABLE IF NOT EXISTS npc_kisisel (
+  day     TEXT NOT NULL,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  item_id TEXT NOT NULL,
+  sold    INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (day, user_id, item_id)
+);
 CREATE TABLE IF NOT EXISTS npc_demand (
   day     TEXT NOT NULL,
   item_id TEXT NOT NULL,
@@ -697,6 +705,15 @@ CREATE TABLE IF NOT EXISTS push_abonelikleri (
   auth       TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE TABLE IF NOT EXISTS hava_gecmisi (plaka TEXT NOT NULL, gun TEXT NOT NULL, olcum INTEGER NOT NULL DEFAULT 0, yagisli INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (plaka, gun)) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS hava_uyarilari (user_id INTEGER NOT NULL REFERENCES users(id), plaka TEXT NOT NULL, tur TEXT NOT NULL, created_at INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS ix_hava_uyari ON hava_uyarilari(user_id, plaka, tur, created_at);
+CREATE TABLE IF NOT EXISTS afet_etkilenen (afet_id INTEGER NOT NULL REFERENCES afetler(id), user_id INTEGER NOT NULL REFERENCES users(id), created_at INTEGER NOT NULL, PRIMARY KEY (afet_id, user_id)) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS ix_afet_etkilenen_user ON afet_etkilenen(user_id, created_at);
+CREATE TABLE IF NOT EXISTS afet_destekleri (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), tutar REAL NOT NULL, created_at INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS ix_afet_destek_user ON afet_destekleri(user_id, created_at);
 `);
+kolonEkle('hava_durumu', 'tahmin', 'TEXT');        // JSON: önümüzdeki saatler + yarın (Open-Meteo)
+kolonEkle('crops', 'ortu_bitis', 'INTEGER');       // tarla örtüsü bu ana kadar korur
 
 module.exports = db;
