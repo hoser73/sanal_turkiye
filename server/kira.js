@@ -41,7 +41,6 @@ const kirala = db.transaction((userId, kiraId) => {
   const k = db.prepare(`SELECT * FROM kiralar WHERE id = ?`).get(Number(kiraId));
   if (!k || k.durum !== 'TEKLIF') throw new OyunHatasi(404, 'Kira teklifi bulunamadı');
   if (k.sahip_id === userId) throw new OyunHatasi(400, 'Kendi parselini kiralayamazsın');
-  require('./carsi').gecikmeEngeli(userId);
   if (simdi() > k.created_at + KIRA.teklifSuresiMs) throw new OyunHatasi(409, 'Teklifin süresi dolmuş');
   const toplam = k.gunluk * k.gun;
   const ucret = Math.max(1, Math.floor(toplam * KIRA.ucretOrani));

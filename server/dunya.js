@@ -9,7 +9,6 @@ const { OyunHatasi } = L;
 
 const simdi = () => Date.now();
 const bildir = (userId, metin, link) => require('./pazar').bildir(userId, metin, link);
-const sqlZaman = (ms) => new Date(ms).toISOString().replace('T', ' ').slice(0, 19);
 
 // ---------- Mevsim (Türkiye saatiyle ay)
 function mevsim(t = simdi()) {
@@ -176,92 +175,11 @@ const ilHavasi = (plaka) => {
   return { sicaklik: Math.round(h.sicaklik), yagis: h.yagis, ikon, durum, gunduz: !!h.gunduz };
 };
 
-// ---------- İl ligi ve sezonlar
-const sezonNo = (t = simdi()) => Math.floor((t - LIG.baslangic) / LIG.sezonMs) + 1;
-const sezonAraligi = (n) => ({ bas: LIG.baslangic + (n - 1) * LIG.sezonMs, son: LIG.baslangic + n * LIG.sezonMs });
-
-// Olayın ili: bölge mahalle ise iki üst, ilçe ise bir üst, il ise kendisi
-const IL_SQL = `CASE r.type WHEN 'MAHALLE' THEN (SELECT parent_id FROM regions WHERE id = r.parent_id) WHEN 'ILCE' THEN r.parent_id WHEN 'IL' THEN r.id END`;
-function puanlar(n) {
-  const { bas, son } = sezonAraligi(n);
-  const eylemler = Object.keys(LIG.puanlar);
-  const satirlar = db.prepare(`SELECT a.action, a.actor_id, ${IL_SQL} AS il_id, u.memleket_plaka FROM audit_events a
-                               JOIN regions r ON r.id = a.region_id JOIN users u ON u.id = a.actor_id
-                               WHERE a.public = 1 AND u.is_npc = 0 AND a.created_at >= ? AND a.created_at < ?
-                                 AND a.action IN (${eylemler.map(() => '?').join(',')})`).all(sqlZaman(bas), sqlZaman(son), ...eylemler);
-  const ilPlaka = new Map(db.prepare(`SELECT id, plaka FROM regions WHERE type = 'IL'`).all().map((r) => [r.plaka, r.id]));
-  const iller_ = new Map();   // il_id → { puan, oyuncular:Set, katki: Map(user → puan) }
-  const ekle = (ilId, userId, p) => {
-    if (!ilId) return;
-    const k = iller_.get(ilId) || { puan: 0, oyuncular: new Set(), katki: new Map() };
-    k.puan += p; k.oyuncular.add(userId); k.katki.set(userId, (k.katki.get(userId) || 0) + p);
-    iller_.set(ilId, k);
-  };
-  for (const s of satirlar) {
-    const p = LIG.puanlar[s.action];
-    ekle(s.il_id, s.actor_id, p);
-    const memleket = s.memleket_plaka && ilPlaka.get(s.memleket_plaka);
-    if (memleket && memleket !== s.il_id) ekle(memleket, s.actor_id, p * LIG.gurbetOrani);
-  }
-  return iller_;
-}
-// Lig tablosu 28 günlük olayları tarar: 60 sn önbellek (testlerde kapalı)
-const ligOnbellek = new Map();
-function ligTablosu(n = sezonNo()) {
-  const o = process.env.ONBELLEK !== 'kapali' && ligOnbellek.get(n);
-  if (o && Date.now() - o.t < 60_000) return o.v;
-  const v = ligTablosuHesapla(n);
-  ligOnbellek.set(n, { t: Date.now(), v });
-  return v;
-}
-function ligTablosuHesapla(n) {
-  const p = puanlar(n);
-  const adlar = new Map(db.prepare(`SELECT id, name, plaka FROM regions WHERE type = 'IL'`).all().map((r) => [r.id, r]));
-  const tablo = [...p].map(([ilId, k]) => ({ ilId, il: adlar.get(ilId)?.name, plaka: adlar.get(ilId)?.plaka, puan: Math.round(k.puan * 10) / 10,
-    oyuncu: k.oyuncular.size, ligPuani: Math.round((k.puan / Math.sqrt(Math.max(1, k.oyuncular.size))) * 10) / 10, katki: k.katki }))
-    .sort((a, b) => b.ligPuani - a.ligPuani || b.puan - a.puan);
-  tablo.forEach((x, i) => { x.sira = i + 1; });
-  return tablo;
-}
-
-// Biten sezonun sonucu ilk erişimde bir kez yazılır; ilk üç ilin katkı veren oyuncularına rozet verilir
-function sezonBakim() {
-  const n = sezonNo() - 1;
-  if (n < 1 || db.prepare(`SELECT 1 FROM ayarlar WHERE anahtar = ?`).get(`sezon_kapandi:${n}`)) return;
-  const tablo = ligTablosu(n);
-  db.transaction(() => {
-    if (db.prepare(`INSERT OR IGNORE INTO ayarlar (anahtar, deger) VALUES (?, ?)`).run(`sezon_kapandi:${n}`, String(simdi())).changes !== 1) return;
-    const ekle = db.prepare(`INSERT OR REPLACE INTO sezon_sonuclari (sezon, il_id, puan, oyuncu, lig_puani, sira) VALUES (?, ?, ?, ?, ?, ?)`);
-    for (const x of tablo) ekle.run(n, x.ilId, x.puan, x.oyuncu, x.ligPuani, x.sira);
-    const madalya = ['🥇', '🥈', '🥉'];
-    for (const x of tablo.slice(0, 3)) {
-      for (const [userId, katki] of x.katki) {
-        if (katki < LIG.rozetMinPuan) continue;
-        rozetVer(userId, `SEZON_${n}_${x.plaka}`, `${n}. sezon ${x.il} ${x.sira}.si`, madalya[x.sira - 1], `${x.il} il liginde ${x.sira}. oldu; katkın ${Math.round(katki)} puan.`);
-      }
-    }
-    L.denetim({ anahtar: `SEASON_CLOSED:${n}`, eylem: 'SEASON_CLOSED', varlik: `SEZON:${n}`, herkese: true, sonra: { ilk3: tablo.slice(0, 3).map((x) => x.il) } });
-  })();
-}
+// ---------- Rozetler (albüm ve başarımlar)
 function rozetVer(userId, kod, ad, ikon, aciklama) {
   const r = db.prepare(`INSERT OR IGNORE INTO rozetler (user_id, kod, ad, ikon, aciklama, created_at) VALUES (?, ?, ?, ?, ?, ?)`).run(userId, kod, ad, ikon, aciklama, simdi());
   if (r.changes) bildir(userId, `${ikon} Yeni rozet: ${ad}`, null);
   return !!r.changes;
-}
-
-function lig(userId) {
-  const n = sezonNo();
-  const { son } = sezonAraligi(n);
-  const tablo = ligTablosu(n);
-  const ben = userId ? db.prepare(`SELECT memleket_plaka FROM users WHERE id = ?`).get(userId) : null;
-  const benimKatkim = userId ? tablo.filter((x) => x.katki.has(userId)).map((x) => ({ il: x.il, puan: Math.round(x.katki.get(userId) * 10) / 10 })) : [];
-  const onceki = db.prepare(`SELECT s.*, r.name AS il FROM sezon_sonuclari s JOIN regions r ON r.id = s.il_id WHERE s.sezon = ? ORDER BY s.sira LIMIT 3`).all(n - 1);
-  return {
-    sezon: n, bitis: son, mevsim: (({ kod, ad, ikon }) => ({ kod, ad, ikon }))(mevsim()),
-    tablo: tablo.slice(0, 81).map(({ katki, ...x }) => x), benimKatkim, memleket: ben?.memleket_plaka || null, oncekiSezon: onceki,
-    formul: 'Lig puanı = toplam puan ÷ √(etkin oyuncu). Gurbetteki hemşehrinin eylemi memleketine de yarım puan yazar.',
-    puanlar: LIG.puanlar,
-  };
 }
 
 // ---------- Memleket / hemşehri
@@ -285,19 +203,18 @@ function memleketBilgisi(plaka, userId) {
   const hemsehri = db.prepare(`SELECT COUNT(*) c FROM users WHERE memleket_plaka = ? AND status = 'ACTIVE' AND is_npc = 0`).get(p).c;
   const gurbette = db.prepare(`SELECT COUNT(DISTINCT u.id) c FROM users u JOIN parcels pr ON pr.owner_user_id = u.id
                                WHERE u.memleket_plaka = ? AND pr.il_id <> ?`).get(p, il.id).c;
-  const sira = ligTablosu().find((x) => x.ilId === il.id);
-  return { il: il.name, plaka: p, hemsehri, gurbette, ligSirasi: sira?.sira ?? null, ligPuani: sira?.ligPuani ?? 0, hava: ilHavasi(p),
+  const sira = require('./hasat-yarisi').ilSirasi(il.id);
+  return { il: il.name, plaka: p, hemsehri, gurbette, yarisSirasi: sira?.sira ?? null, yarisPuani: sira?.ilPuani ?? 0, hava: ilHavasi(p),
     benimMemleketim: userId ? db.prepare(`SELECT memleket_plaka FROM users WHERE id = ?`).get(userId)?.memleket_plaka === p : false };
 }
 const rozetlerim = (userId) => db.prepare(`SELECT kod, ad, ikon, aciklama, created_at FROM rozetler WHERE user_id = ? ORDER BY id DESC`).all(userId);
 
 function rotalar(app, { h, auth }) {
   app.get('/api/hava', h(require('./lib/onbellek').ortakYanit(60_000, () => havaListesi())));
-  app.get('/api/lig', h((req) => lig(req.kullanici?.id ?? null)));
   app.get('/api/memleket/:plaka', h((req) => memleketBilgisi(req.params.plaka, req.kullanici?.id ?? null)));
   app.post('/api/hesap/memleket', auth.girisGerekli, h((req) => memleketSec(req.kullanici.id, req.body?.plaka)));
   app.get('/api/rozetlerim', auth.girisGerekli, h((req) => rozetlerim(req.kullanici.id)));
 }
 
-module.exports = { rotalar, mevsim, buyumeKati, havaBakim, uygula, havaListesi, ilHavasi, ligTablosu, lig, sezonNo, sezonAraligi, sezonBakim,
+module.exports = { rotalar, mevsim, buyumeKati, havaBakim, uygula, havaListesi, ilHavasi,
   memleketSec, memleketBilgisi, rozetVer, rozetlerim, afetleriUygula, sonAfetler, tahminCikar, wmo: WMO };

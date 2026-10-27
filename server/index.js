@@ -35,7 +35,7 @@ const posta = require('./posta');
 const imar = require('./harita/imar');
 const { parselHazirla, komsuImarlari, koordinatlar } = require('./harita/parsel');
 const { npcSeedEt } = require('./npc');
-const { IMAR, IMAR_KAYNAK_NOTU, YAPILAR, URUNLER, BIRIM, HESAP, PAZAR, BELEDIYE, BOZULMA, BAKIM, BORSA, MEVSIMLER, LIG, RECETELER, MESLEKLER } = require('./config/rules');
+const { IMAR, IMAR_KAYNAK_NOTU, YAPILAR, URUNLER, BIRIM, HESAP, PAZAR, BELEDIYE, BOZULMA, BAKIM, BORSA, MEVSIMLER, LIG, RECETELER, MESLEKLER, OZELLIK } = require('./config/rules');
 const { OyunHatasi } = require('./lib/ledger');
 const { gunluk, istekGunlugu, sonHatalar } = require('./lib/gunluk');
 const { ortakYanit } = require('./lib/onbellek');   // herkese aynı uçlar: kısa süreli önbellek
@@ -100,6 +100,9 @@ app.use(['/api/sifre', '/api/eposta', '/api/giris/2fa', '/api/2fa', '/api/hesap/
   rateLimit({ windowMs: 15 * 60_000, limit: kimlikSiniri(20), standardHeaders: 'draft-8', legacyHeaders: false }));
 // Oturum yalnızca API isteklerinde okunur (statik dosyalar için her seferinde oturum sorgusu yapılmaz)
 app.use((req, res, next) => (req.path.startsWith('/api/') ? auth.kimlik(req, res, next) : next()));
+// Siyaset kapalıyken (OZELLIK.siyaset) seçim, muhtarlık ve belediye uçları kapalıdır
+const SIYASI_YOLLAR = /^\/api\/(secim|vaat|proje|talep|mahalle|mahallelerim|belediye|belediyelerim|referandum|gorevden-alma|harita\/secimler|harita\/belediyeler)(\/|$)/;
+app.use((req, _res, next) => (OZELLIK.siyaset || !SIYASI_YOLLAR.test(req.path) ? next() : next(new OyunHatasi(404, 'Bu bölüm şimdilik kapalı', 'KAPALI'))));
 // Bakım işleri (süresi dolan inşaat, ilan, seçim, proje, borsa emri, hava, kira, referandum…). Eskiden her /api
 // isteğinde hepsi çalışıyordu (her istekte bir düzine tablo taraması). Artık en sık BAKIM_ARALIGI_MS'de bir (varsayılan
 // 1 sn; testte 0 = her istekte) ve ayrıca zamanlayıcıyla; her iş ayrı korunur: biri hata verirse istekler düşmez.
@@ -107,10 +110,10 @@ const BAKIM_ARALIGI = Number(process.env.BAKIM_ARALIGI_MS ?? 1000);
 const BAKIM_ISLERI = [
   ['inşaat', () => oyun.bekleyenleriIsle()], ['pazar', () => pazar.pazarBakim()], ['seçim', () => secim.secimBakim()],
   ['belediye', () => belediye.belediyeBakim()], ['görevden alma', () => moderasyon.gorevdenAlmaBakim()], ['borsa', () => ekonomi.borsaBakim()],
-  ['sezon', () => dunya.sezonBakim()], ['hava', () => dunya.havaBakim()], ['banka', () => require('./carsi').bankaBakim()],
+  ['hava', () => dunya.havaBakim()],
   ['lojistik', () => lojistik.lojistikBakim()], ['kira', () => kira.kiraBakim()], ['referandum', () => referandum.referandumBakim()],
   ['endeks', () => piyasa.endeksBakim()], ['hazine', () => piyasa.hazineBakim()], ['hasat yarışı', () => require('./hasat-yarisi').yarisBakim()],
-];
+].filter(([ad]) => OZELLIK.siyaset || !['seçim', 'belediye', 'görevden alma', 'referandum'].includes(ad));   // siyaset kapalıyken döngüler durur
 let sonBakim = 0;
 function bakim() {
   const t = Date.now();
@@ -168,12 +171,12 @@ yz.rotalar(app, { h, auth });
 kozmetik.rotalar(app, { h, auth });
 zaman.rotalar(app, { h });
 lojistik.rotalar(app, { h, auth });
-referandum.rotalar(app, { h, auth });
+if (OZELLIK.siyaset) referandum.rotalar(app, { h, auth });
 // Geliştirme posta kutusu: SMTP yokken doğrulama/sıfırlama iletileri burada görünür (üretimde kapalı)
 if (process.env.NODE_ENV !== 'production') app.get('/api/gelistirici/posta', h(() => posta.gelistirmeKutusu()));
 
 // ---- Statik oyun verisi
-app.get('/api/kurallar', h(ortakYanit(10 * 60_000, () => ({ haritaKaynak: HARITA_KAYNAK, yoresel: require('./config/rules').YORESEL, hayvanlar: require('./config/rules').HAYVANLAR, susler: require('./config/rules').SUSLER, receteler: RECETELER, meslekler: MESLEKLER, mevsimler: MEVSIMLER, lig: LIG, bozulma: BOZULMA, bakim: BAKIM, borsa: { ucretOrani: BORSA.ucretOrani, sureler: BORSA.sureler, minTutar: BORSA.minTutar }, birim: BIRIM, imar: IMAR, imarKaynakNotu: IMAR_KAYNAK_NOTU, yapilar: YAPILAR, urunler: URUNLER, hesap: HESAP,
+app.get('/api/kurallar', h(ortakYanit(10 * 60_000, () => ({ haritaKaynak: HARITA_KAYNAK, yoresel: require('./config/rules').YORESEL, hayvanlar: require('./config/rules').HAYVANLAR, susler: require('./config/rules').SUSLER, receteler: RECETELER, meslekler: MESLEKLER, mevsimler: MEVSIMLER, lig: LIG, ozellikler: OZELLIK, bozulma: BOZULMA, bakim: BAKIM, borsa: { ucretOrani: BORSA.ucretOrani, sureler: BORSA.sureler, minTutar: BORSA.minTutar }, birim: BIRIM, imar: IMAR, imarKaynakNotu: IMAR_KAYNAK_NOTU, yapilar: YAPILAR, urunler: URUNLER, hesap: HESAP,
   belediye: { projeler: BELEDIYE.projeler, gelir: BELEDIYE.gelir },
   pazar: { ucretOrani: PAZAR.ucretOrani, minUcret: PAZAR.minUcret, maxFiyat: PAZAR.maxFiyat, ilanSureleri: PAZAR.ilanSureleri,
     aliciKosullari: Object.fromEntries(Object.entries(PAZAR.aliciKosullari).map(([k, v]) => [k, v.ad])) } }))));

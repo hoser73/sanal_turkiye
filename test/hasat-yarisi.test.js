@@ -1,4 +1,4 @@
-// Kooperatif hasat yarışı (hasat-yarisi.js): üye eylemi takım puanı, günlük tavan, sandıklar, sıralama, haftalık sonuç bir kez.
+// Hasat yarışı (hasat-yarisi.js): üye eylemi takım ve il puanı, günlük tavan, sandıklar, sıralama, il sıralaması ve il ödülü, haftalık sonuç bir kez.
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
@@ -39,7 +39,7 @@ test('hazırlık: aynı ilde üç oyuncu, biri kooperatif kurar, ikisi katılır
 
 test('puan: üye eylemi takıma yazılır, üye olmayan ve demo puan almaz, günlük tavan', async () => {
   const [a, b, , yalniz] = oyuncular;
-  assert.equal(yaris.puanVer(yalniz.id, 'ORDER_DELIVERED'), 0, 'kooperatifi yok');
+  assert.equal(yaris.puanVer(yalniz.id, 'ORDER_DELIVERED'), Y.puanlar.ORDER_DELIVERED, 'kooperatifi yok ama ili için puan alır');
   for (let i = 0; i < Y.gunlukTavan + 3; i++) yaris.puanVer(a.id, 'CROP_HARVESTED');
   L.denetim({ aktor: b.id, eylem: 'ORDER_DELIVERED', varlik: 'deneme' });   // olay yolu üzerinden
   const d = (await a('/api/hasat-yarisi')).veri;
@@ -67,4 +67,25 @@ test('sonuç: sandık ödülü yalnızca yeterli katkı verenlere, ilk sıraya k
   assert.equal(Math.round(L.hesapBakiye(`KOOP:${koop}`) - kasaOnce), Y.kasaBonusu[0]);
   const sonuc = db.prepare('SELECT sira, sandik, bonus FROM koop_yaris_sonuc WHERE hafta = ? AND koop_id = ?').get(h - 1, koop);
   assert.deepEqual(sonuc, { sira: 1, sandik: 2, bonus: Y.kasaBonusu[0] });
+});
+
+test('il sıralaması: kooperatifsiz oyuncu da iline puan yazar; ilk üç ilin yeterli katkı verenlerine il ödülü', async () => {
+  const [a, , , yalniz] = oyuncular;
+  const d = (await yalniz('/api/hasat-yarisi')).veri;
+  assert.ok(d.benimIl, 'oyuncunun ili var (ilk tarlasının ili)');
+  assert.ok(d.benimIl.katkim >= Y.puanlar.ORDER_DELIVERED);
+  assert.equal(d.iller[0].ben, true);
+  assert.equal(d.iller[0].sira, 1);
+  // Geçmiş bir hafta: aynı ilde yalnız 100, a eşiğin altında
+  const h = yaris.haftaNo() - 8;
+  const ilId = d.benimIl && db.prepare("SELECT id FROM regions WHERE type = 'IL' AND plaka = ?").get(d.benimIl.plaka).id;
+  db.prepare('INSERT INTO koop_yaris_il (hafta, il_id, user_id, puan) VALUES (?, ?, ?, ?), (?, ?, ?, ?)').run(h, ilId, yalniz.id, 100, h, ilId, a.id, Y.minKatki - 1);
+  const once = [L.bakiye(yalniz.id), L.bakiye(a.id)];
+  assert.equal(yaris.sonuclandir(h), true);
+  assert.equal(Math.round(L.bakiye(yalniz.id) - once[0]), Y.ilOdulu[0]);
+  assert.equal(Math.round(L.bakiye(a.id) - once[1]), 0, 'katkı eşiğin altında');
+  const s = db.prepare('SELECT sira, oyuncu, il_puani FROM koop_yaris_il_sonuc WHERE hafta = ? AND il_id = ?').get(h, ilId);
+  assert.equal(s.sira, 1); assert.equal(s.oyuncu, 2);
+  assert.equal(s.il_puani, Math.round(((100 + Y.minKatki - 1) / Math.sqrt(2)) * 10) / 10);
+  assert.equal((await yalniz(`/api/memleket/${d.benimIl.plaka}`)).veri.yarisSirasi, 1);
 });

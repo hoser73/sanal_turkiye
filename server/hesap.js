@@ -104,7 +104,6 @@ function veriDisaAktar(userId) {
     bagliHesaplar: tum(`SELECT saglayici, email, created_at FROM kimlik_baglantilari WHERE user_id = ?`, userId),
     passkeyler: tum(`SELECT ad, tasima, created_at, son_kullanim FROM passkeyler WHERE user_id = ?`, userId),
     bankaVadeli: tum(`SELECT tutar, faiz, bas, vade, durum, kapandi_at FROM banka_vadeli WHERE user_id = ? ORDER BY id`, userId),
-    bankaKredi: tum(`SELECT ana, faiz, bas, vade, odenen, durum, kapandi_at FROM banka_kredi WHERE user_id = ? ORDER BY id`, userId),
     balikAtislari: tum(`SELECT * FROM balik_atislari WHERE user_id = ? ORDER BY id`, userId),
     kozmetikler: tum(`SELECT kod, created_at FROM kozmetikler WHERE user_id = ?`, userId),
     referandumImzalari: tum(`SELECT ref_id, created_at FROM referandum_imzalar WHERE user_id = ?`, userId),

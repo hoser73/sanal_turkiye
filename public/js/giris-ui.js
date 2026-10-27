@@ -124,7 +124,7 @@ export function girisKur({ api, tost, girisSonrasi, iller, rehberBaslat, sihirba
       <p class="acilis-alt"><button type="button" class="bag" data-a="ekran" data-e="memleket">Şimdilik geç →</button></p>`,
     memleket: () => `${adimCubugu(-1)}
       <h2 id="acilisBaslik">Memleketin neresi?</h2>
-      <p class="alt">Memleketinin il liginde puan toplarsın; hemşehrilerini görürsün. Tarlanı Türkiye'nin her yerinde açabilirsin.</p>${uyari()}
+      <p class="alt">Hasat yarışında puanın memleketine yazılır; hemşehrilerini görürsün. Tarlanı Türkiye'nin her yerinde açabilirsin.</p>${uyari()}
       <form class="form" data-f="memleket">
         <label>İl<select name="plaka" required><option value="">İl seç…</option>${iller().slice().sort((x, y) => x.name.localeCompare(y.name, 'tr')).map((il) => `<option value="${esc(il.plaka)}"${il.plaka === onerilenIl ? ' selected' : ''}>${esc(il.name)}</option>`).join('')}</select></label>
         <button type="button" class="dugme genis" data-a="konum">📍 Konumumu kullan</button>

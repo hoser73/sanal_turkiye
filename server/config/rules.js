@@ -302,12 +302,9 @@ const CARSI = {
   // Pakette gelen sarf malzemeleri (envanterde görünür, yalnızca oyunda kullanılır)
   sarf: { YEM_KARIDES: { ad: 'Karides yem', ikon: '🦐' }, YEM_MISIR: { ad: 'Mısır yem', ikon: '🌽' } },
   etki: { kalipKisalma: 0.3, gubreBonus: 0.2, asiSureMs: 7 * 24 * 3600 * 1000, asiEk: 1, kamisSarma: 1.2, misinaDayanim: 0.12 },
-  // Banka: akçe nakde çevrilemez; gerçek bankacılık hizmeti değildir. Faiz oyun içi ödüldür (basılır), üst sınırlıdır.
-  banka: {
-    vadeliGun: 7, vadeliFaiz: 0.025, vadeliMin: 50, vadeliMaks: 10000,
-    krediGun: 7, krediFaiz: 0.06, gecikmeGunluk: 0.01, gecikmeMaks: 0.2,
-    krediTaban: 100, krediSeviyeBasi: 50, krediParselBasi: 60, krediMaks: 2500, krediMin: 20, minHesapGun: 3,
-  },
+  // Banka: yalnızca vadeli hesap (kredi v0.41'de kaldırıldı: değer aktarma açıkları üretiyordu). Akçe nakde çevrilemez;
+  // gerçek bankacılık hizmeti değildir. Faiz oyun içi ödüldür (basılır), üst sınırlıdır.
+  banka: { vadeliGun: 7, vadeliFaiz: 0.025, vadeliMin: 50, vadeliMaks: 10000 },
   logoMaksBayt: 150_000,
 };
 for (const [kod, u] of Object.entries(CARSI.urunler)) URUNLER[kod] = { ad: u.ad, ikon: u.ikon, mamul: true, dukkan: u.dukkan, tabanFiyat: Math.round(u.fiyat * 0.5 * 100) / 100 };
@@ -326,6 +323,16 @@ const KOY_MEYDANI = {
   KUTUPHANE:    { ad: 'Halk kütüphanesi', ikon: '📚', seviye: 7, akce: 1050, malzeme: { EKMEK: 15, SUT: 20 }, sureMs: dk(90), etki: 'Günlük görev ödülü %20 fazla', oran: 1.2 },
   PTT:          { ad: 'Postane', ikon: '📮', seviye: 8, akce: 1300, malzeme: { EKMEK: 20, PEYNIR: 10 }, sureMs: dk(120), etki: 'Sipariş panosuna +1 müşteri', ek: 1 },
 };
+
+// ---------- Açılıp kapatılabilen bölümler. Siyaset (muhtarlık ve belediye seçimleri, meclis projeleri, referandum,
+// görevden alma) ancak yeterince gerçek oyuncu olunca anlam kazanır: SIYASET=acik ile açılır. Kapalıyken seçim ve proje
+// döngüleri durur, siyasi haberler ve ekranlar gizlenir; daha önce tamamlanmış belediye hizmetleri etkisini sürdürür.
+const OZELLIK = { siyaset: process.env.SIYASET === 'acik' };
+// Siyasi denetim kaydı eylemleri (siyaset kapalıyken haber akışında gösterilmez)
+const SIYASI_EYLEMLER = ['ELECTION_ANNOUNCED', 'CANDIDACY_OPENED', 'CANDIDATE_REGISTERED', 'CANDIDATE_WITHDRAWN', 'CAMPAIGN_STARTED', 'VOTING_OPENED',
+  'VOTING_CLOSED', 'VOTE_CAST', 'OBJECTION_FILED', 'ELECTION_CLOSED', 'ELECTION_ANNULLED', 'ELECTION_NO_CANDIDATE', 'OFFICE_VACATED', 'PROMISE_UPDATED',
+  'PROJECT_PROPOSED', 'COUNCIL_VOTE', 'PROJECT_APPROVED', 'PROJECT_REJECTED', 'PROJECT_COMPLETED', 'MUHTAR_REQUEST', 'MUHTAR_ANNOUNCEMENT', 'REQUEST_CLOSED',
+  'RECALL_STARTED', 'RECALL_SIGNED', 'RECALL_FAILED', 'RECALL_SUCCEEDED', 'REFERENDUM_PROPOSED', 'REFERENDUM_OPENED', 'REFERENDUM_VOTE', 'REFERENDUM_CLOSED'];
 
 // ---------- Motif bulmacası (bulmaca.js): Türk motifli taşlarla 3'lü eşleştirme. Bölümler sırayla açılır; bölüm
 // tanımı (tahta, hamle, hedefler, ot kaplı kareler) bölüm numarasından türetilir. Oyun istemcide oynanır; sunucu en kısa
@@ -412,6 +419,7 @@ const HASAT_YARISI = {
   sandiklar: [{ esik: 300, odul: 30, ad: 'Bakır sandık' }, { esik: 800, odul: 60, ad: 'Gümüş sandık' }, { esik: 1500, odul: 120, ad: 'Altın sandık' }],
   minKatki: 30,
   kasaBonusu: [500, 300, 150],
+  ilOdulu: [40, 25, 15],   // il sıralamasında ilk üç ilin en az minKatki veren oyuncularına
 };
 
 
@@ -644,16 +652,10 @@ const GOREVLER = [
   { kod: 'ILK_OY',     ad: 'Mahalle seçiminde oy kullan', odul: 15, ipucu: 'Mahalle sekmesinde oylama açıkken oy pusulanı doldur.' },
 ];
 
-// §7.3 il ligi ve sezonlar: oyuncuların il içindeki herkese açık eylemleri puan kazandırır. Açık formül:
-// lig puanı = toplam puan / √(etkin oyuncu) — kalabalık iller ile küçük illeri dengeler. Gurbetçinin eylemi memleketine de yarı puan yazar.
-const LIG_HIZI = Number(process.env.LIG_HIZI || 1);   // seçim hızından bağımsız; sezonlar varsayılan 28 gerçek gün
+// Haftalık takvim ve memleket: hafta numaraları baslangic'tan 7'şer gün (hasat yarışı, haftalık sipariş özeti). Eski 28
+// günlük il ligi v0.41'de hasat yarışının il sıralamasına katıldı.
 const LIG = {
-  sezonMs: Math.round((28 * 24 * 3600 * 1000) / LIG_HIZI),
   baslangic: Date.UTC(2026, 0, 5),
-  puanlar: { PARCEL_ACQUIRED: 5, STRUCTURE_COMPLETED: 4, CROP_HARVESTED: 3, PARCEL_TRADED: 4, PARCEL_VISITED: 1, MUHTAR_ANNOUNCEMENT: 1,
-    ELECTION_CLOSED: 15, PROJECT_COMPLETED: 12, STRUCTURES_MAINTAINED: 1, COMMODITY_TRADE: 1, GI_PRODUCED: 3, NEIGHBOR_HELPED: 1 },
-  gurbetOrani: 0.5,
-  rozetMinPuan: 10,
   memleketBeklemeMs: 30 * 24 * 3600 * 1000,
 };
 
@@ -752,4 +754,4 @@ const NUFUS = {
   baslangicBakiye: 500,
 };
 
-module.exports = { BULMACA, KOY_MEYDANI, HASAT_YARISI, MEVSIM_YOLU, PIYASA, CARSI, KOMSULUK, YORESEL, YORESEL_KURAL, BALIK, ETKINLIKLER, HATIRLATMA, HAYVANLAR, YEM_FIYATI, SEVIYE, GUNLUK_ODUL, SIPARIS, YARISMA, SUSLER, SUS_MAKS, NUFUS, LOJISTIK, KIRA, ORTAKLIK, AFET, REFERANDUM, KOZMETIK, RECETELER, MESLEKLER, MESLEK, KOOPERATIF, LIG, MEVSIMLER, HAVA, BOLGE, BOZULMA, BAKIM, BORSA, GOREVDEN_ALMA, MODERASYON, YASAL, ROLLER, BIRIM, OYUN_HIZI, IMAR, IMAR_KAYNAK_NOTU, IL_CEKICILIK, YERLESIM_CEKICILIK, YAPILAR, URUNLER, TARIM, NPC_PAZAR, PAZAR, SECIM, SECIM_HIZI, BELEDIYE, ITIBAR, HESAP, GOREVLER };
+module.exports = { OZELLIK, SIYASI_EYLEMLER, BULMACA, KOY_MEYDANI, HASAT_YARISI, MEVSIM_YOLU, PIYASA, CARSI, KOMSULUK, YORESEL, YORESEL_KURAL, BALIK, ETKINLIKLER, HATIRLATMA, HAYVANLAR, YEM_FIYATI, SEVIYE, GUNLUK_ODUL, SIPARIS, YARISMA, SUSLER, SUS_MAKS, NUFUS, LOJISTIK, KIRA, ORTAKLIK, AFET, REFERANDUM, KOZMETIK, RECETELER, MESLEKLER, MESLEK, KOOPERATIF, LIG, MEVSIMLER, HAVA, BOLGE, BOZULMA, BAKIM, BORSA, GOREVDEN_ALMA, MODERASYON, YASAL, ROLLER, BIRIM, OYUN_HIZI, IMAR, IMAR_KAYNAK_NOTU, IL_CEKICILIK, YERLESIM_CEKICILIK, YAPILAR, URUNLER, TARIM, NPC_PAZAR, PAZAR, SECIM, SECIM_HIZI, BELEDIYE, ITIBAR, HESAP, GOREVLER };

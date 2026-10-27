@@ -35,6 +35,12 @@ Ortam değişkenleri (v0.6 eklemeleri): `TABAN_URL` (e-posta bağlantıları; ü
 
 > Not: v0.1–0.2'nin Meram ızgarası ulusal ızgarayla uyumsuz olduğundan eski `data/sanalturkiye.db` dosyası kullanılmaz (silinmedi).
 
+## v0.41 — sadeleştirme: siyaset ayarla, kredi yok, tek haftalık yarış
+
+- **Siyaset ayarla açılır** (`OZELLIK.siyaset`, ortam değişkeni `SIYASET=acik`): muhtarlık ve belediye seçimleri, meclis projeleri, referandum ve görevden alma yeterince gerçek oyuncu olunca anlam kazanır. Kapalıyken (varsayılan) seçim/proje/referandum döngüleri ve demo sakinlerin siyaseti durur, uçlar 404 döner, Köy sekmesinde Yönetim yok, haritada seçim ve belediye işaretleri yok, haber akışında siyasi olay görünmez, "Mahalle seçiminde oy kullan" başlangıç görevi listelenmez. Daha önce tamamlanmış belediye hizmetleri (sulama kanalı, yol bakımı…) etkisini sürdürür. Testler siyaseti açık çalıştırır; kapalı hâli `test/siyaset.test.js` sınar.
+- **Banka kredisi kaldırıldı:** değer aktarma açıkları üretiyordu ve oyuna katkısı azdı. Banka yalnızca vadeli hesap; gecikmiş kredi engelleri ve kredi bakımı da gitti.
+- **İl ligi hasat yarışına katıldı:** ayrı 28 günlük il ligi yerine tek haftalık yarış. Oyuncunun işleri hem kooperatifine hem iline (memleketi; seçmediyse ilk tarlasının ili) puan yazar; kooperatifi olmayan da yarışır. İl puanı = toplam ÷ √oyuncu; ilk üç ilde en az 30 puan katanlara 40/25/15 akçe. Haberler → 🏁 Hasat yarışı.
+
 ## v0.40 — köy meydanı, sezon yolu, hasat yarışı, motif bulmacası, gece-gündüz
 
 Tür özellikleri (kasaba büyütme, takım yarışı, ödül yolu, eşleştirme bulmacası) kendi Türkiye temamızla uyarlandı.

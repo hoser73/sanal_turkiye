@@ -261,7 +261,6 @@ const teklifRed = db.transaction((userId, teklifId) => {
 const teklifVer = db.transaction((userId, ilanId, govde) => {
   const i = aktifIlanGetir(ilanId);
   if (i.seller_id === userId) throw new OyunHatasi(409, 'Kendi ilanına teklif veremezsin');
-  require('./carsi').gecikmeEngeli(userId);
   const p = oyun.parselGetir(i.parcel_id);
   aliciUygunMu(userId, i, p);
   const tutar = tamSayi(govde?.tutar, 'Teklif', 1, PAZAR.maxFiyat);
@@ -304,7 +303,6 @@ const teklifGeriCek = db.transaction((userId, ilanId) => {
 const hemenAl = db.transaction((userId, ilanId, govde) => {
   const i = aktifIlanGetir(ilanId);
   if (i.seller_id === userId) throw new OyunHatasi(409, 'Kendi ilanını satın alamazsın');
-  require('./carsi').gecikmeEngeli(userId);
   // İstemcinin gördüğü fiyat değiştiyse işlemi yapma (fiyat sürprizi yok)
   if (govde?.fiyat != null && Number(govde.fiyat) !== i.asking_price) {
     throw new OyunHatasi(409, `İstenen fiyat ₳${i.asking_price} olarak güncellendi; tekrar kontrol et`, 'FIYAT_DEGISTI');

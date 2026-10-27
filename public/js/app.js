@@ -14,8 +14,7 @@ import { parselPazarBolumu, pazarPaneli as pazarSekmesi, netOnizleme, borsaUrunS
 import { hesapKur, hesapDurumuCiz, urlTokenleri, epostaDogrula, sikayetAc, hesapAc } from './hesap-ui.js';
 import { canliBaslat, canliYenile, canliDinle, servisCalisaniKaydet } from './canli.js';
 import { sohbetKur, sohbetKanallariniYenile } from './sohbet-ui.js';
-import { ligPaneli } from './lig-ui.js';
-import { meslekBolumu, kooperatifBolumu, albumBolumu } from './topluluk-ui.js';
+import { meslekBolumu, kooperatifBolumu, albumBolumu, yarisKarti } from './topluluk-ui.js';
 import { hayvanSatiri, susBolumu, ciftlikBolumu } from './ciftlik-ui.js';
 import { ses, sesDurumu, sesAyarla, muzikAyarla } from './ses.js';
 import { komsularBolumu, parselKomsuDugmeleri, urunGonderFormu, yoreselBolumu, etkinlikBolumu, etkinlikSeridi } from './komsuluk-ui.js';
@@ -189,6 +188,8 @@ async function basla() {
   const [kurallar, bolgeler] = await Promise.all([api('/api/kurallar'), api('/api/bolgeler')]);
   durum.kurallar = kurallar;
   durum.bolgeler = bolgeler;
+  // Siyaset kapalıysa (sunucu ayarı) Yönetim sekmesi ve açılım kartı yok; Köy sekmesi yalnızca haberler
+  if (!siyasetAcik()) { delete SEKME_GRUP.haberler; delete SEKME_GRUP.yonetim; ACILIMLAR.splice(ACILIMLAR.findIndex((x) => x.kod === 'yonetim'), 1); }
   kaynaklariAyarla(kurallar.haritaKaynak);
   const tokenler = urlTokenleri();
   await benYenile({ sessiz: true });
@@ -210,6 +211,7 @@ async function basla() {
     mahalleAlanTik: mahalleAlanSec,
     mahalleTik: mahalleAc,
     belediyeTik: belediyeAc,
+    siyaset: siyasetAcik(),
     konumDegisti,
     kip: baslangicKip,
     tema: gorunumTercihi(),
@@ -373,7 +375,8 @@ async function mahalleAlanSec(ilceId, yerId, lngLat) {
   try {
     const r = await api(`/api/ilce/${ilceId}/mahalle`, { yerId });
     durum.harita.yereGit({ merkez: [lngLat.lng, lngLat.lat], zoom: 14.6 });
-    if (r.id) mahalleAc(r.id);
+    if (r.id && siyasetAcik()) mahalleAc(r.id);
+    else if (r.id) { mahalleAc(r.id); tost(`📍 ${r.ad || 'Mahalle'}`); }
     else tost(`📍 ${r.ad}: henüz oyuncu yok. Giriş yapıp ilk parseli sen edinebilirsin.`);
   } catch (e) { tost(e.message, 'hata'); }
 }
@@ -524,6 +527,7 @@ function ustCiz() {
 // ================= Panel =================
 // Sekmeler 4 ana bölümde toplanır (Çiftlik, Pazar, Köy, Ben); seçili parsel varsa başta "Parsel" görünür.
 // Pazar = pazar + çarşı, Köy = haberler + yönetim: bölümün üstünde alt sekmeler çıkar. İç sekme adları değişmedi.
+const siyasetAcik = () => !!durum.kurallar?.ozellikler?.siyaset;
 const SEKME_GRUP = { pazar: ['pazar', 'carsi'], carsi: ['pazar', 'carsi'], haberler: ['haberler', 'yonetim'], yonetim: ['haberler', 'yonetim'] };
 const ALT_AD = { pazar: '📈 Pazar', carsi: '🏪 Çarşı', haberler: '📰 Haberler', yonetim: '🏛️ Yönetim' };
 const grupBasi = (ad) => SEKME_GRUP[ad]?.[0] || ad;
@@ -648,9 +652,9 @@ function parselPaneli() {
   parcalar.push(`
     <p class="mono">${k.adaParsel ? `Ada ${k.adaParsel.ada} · Parsel ${k.adaParsel.parsel} · ` : ''}${esc(k.id)}</p>
     <h2 class="kart-baslik">${esc(k.mahalle)}</h2>
-    <p class="alt-yazi">${esc(k.ilce)} · ${esc(k.il)} <span class="plaka">${esc(k.plaka)}</span>
+    <p class="alt-yazi">${esc(k.ilce)} · ${esc(k.il)} <span class="plaka">${esc(k.plaka)}</span>${siyasetAcik() ? `
       · <button type="button" class="bag" data-eylem="mahalle-ac" data-id="${k.mahalleId}">🗳️ Mahalle</button>
-      · <button type="button" class="bag" data-eylem="belediye-ac" data-id="${k.belediyeId}">🏛️ Belediye</button></p>
+      · <button type="button" class="bag" data-eylem="belediye-ac" data-id="${k.belediyeId}">🏛️ Belediye</button>` : ''}</p>
     ${k.hizmetler?.length ? `<p class="hizmet-ciplar">${k.hizmetler.map((h) => `<span class="cip hizmet-cip" title="${esc(h.etki)}">${h.ikon} ${esc(h.ad)}</span>`).join('')}</p>` : ''}
     <span class="cip" style="background:${imar.renk}">${IMAR_IKON[imar.tip] || ''} ${esc(imar.ad)}</span>
     ${k.pazar?.ilan ? `<span class="cip satilik-cip">🏷️ Satılık · ${akce(k.pazar.ilan.fiyat)}</span>` : ''}
@@ -1008,11 +1012,13 @@ async function yonetimPaneli() {
 function mahalleAc(id) {
   durum.mahalleId = Number(id);
   sohbetKanallariniYenile();
+  if (!siyasetAcik()) return;
   durum.yonetimAlt = 'mahalle';
   if (window.matchMedia('(max-width: 820px)').matches) panelBoyut('');
   sekmeSec('yonetim');
 }
 function belediyeAc(id) {
+  if (!siyasetAcik()) return;
   durum.belediyeId = Number(id);
   durum.yonetimAlt = 'belediye';
   if (window.matchMedia('(max-width: 820px)').matches) panelBoyut('');
@@ -1029,16 +1035,16 @@ function pazarPaneli() {
 
 // ---------- Haber akışı (Türkiye / bulunduğun il) ----------
 async function haberlerPaneli() {
-  const lig = durum.akisFiltre === 'lig';
+  const lig = durum.akisFiltre === 'yaris';
   const ilModu = durum.akisFiltre === 'il' && durum.konum?.ilId;
   const ust = `<h2 class="kart-baslik">Haberler</h2>
     <div class="segment" role="tablist">
       <button type="button" data-eylem="akis-filtre" data-filtre="turkiye" aria-selected="${!ilModu && !lig}">Tüm Türkiye</button>
       <button type="button" data-eylem="akis-filtre" data-filtre="il" aria-selected="${!!ilModu}" ${durum.konum ? '' : 'disabled'}>${durum.konum ? esc(durum.konum.il) : 'Bulunduğun il'}</button>
-      <button type="button" data-eylem="akis-filtre" data-filtre="lig" aria-selected="${lig}">🏆 İl ligi</button>
+      <button type="button" data-eylem="akis-filtre" data-filtre="yaris" aria-selected="${lig}">🏁 Hasat yarışı</button>
     </div>
     ${!lig ? '<div class="satir zaman-satir"><span class="kucuk">Son 30 günde Türkiye nasıl büyüdü?</span><button type="button" class="dugme ince" data-eylem="ulke-zaman">▶ Zaman yolculuğu</button></div>' : ''}`;
-  if (lig) return ust + await ligPaneli({ ben: durum.ben, sunucuSimdi });
+  if (lig) return ust + yarisKarti(await api('/api/hasat-yarisi'));
   const akis = await api(`/api/akis${ilModu ? `?il=${durum.konum.ilId}` : ''}`);
   return `${ust}
     ${akis.length ? akis.map((a) => {
@@ -1448,14 +1454,6 @@ $('#panelIcerik').addEventListener('submit', (e) => {
   if (e.target.matches('.vadeli-form')) {
     e.preventDefault();
     return eylem('/api/banka/vadeli', { tutar: Number(v(e.target).tutar) }, (r) => `🔒 Vadeli hesap açıldı; vadesinde ${akce(r.getiri)} getiri`);
-  }
-  if (e.target.matches('.kredi-form')) {
-    e.preventDefault();
-    return eylem('/api/banka/kredi', { tutar: Number(v(e.target).tutar) }, (r) => `🏦 ${akce(r.tutar)} kredi cüzdanına geçti; ${akce(r.geriOdeme)} geri ödenecek`);
-  }
-  if (e.target.matches('.kredi-ode-form')) {
-    e.preventDefault();
-    return eylem('/api/banka/kredi/ode', { tutar: Number(v(e.target).tutar) }, (r) => (r.kapandi ? '✅ Kredi kapandı' : `💳 ${akce(r.odeme)} ödendi; kalan borç ${akce(r.kalan)}`));
   }
   if (e.target.matches('.ilan-form')) {
     e.preventDefault();

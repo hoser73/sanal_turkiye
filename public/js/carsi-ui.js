@@ -18,7 +18,7 @@ export function carsiGirisi(c) {
   return `<h2 class="kart-baslik">Çarşı</h2>
     <p class="alt-yazi">Her türden tek işletme var. Haritada şehir merkezlerinde şubelerini de görebilirsin.</p>
     <div class="carsi-liste">${c.isletmeler.map((m) => `<button type="button" class="carsi-kart" data-eylem="carsi-ac" data-kategori="${m.kategori}">
-      ${markaBasligi(m)}<span class="carsi-ne kucuk">${{ BANKA: 'Vadeli hesap, kredi', NALBUR: 'Kalıp seti, bakım kiti, örtü, olta takımı', MARKET: 'Yem paketleri, ürün satışı', ZIRAI: 'Gübre, bitki koruma, hayvan aşısı' }[m.kategori]}</span></button>`).join('')}</div>
+      ${markaBasligi(m)}<span class="carsi-ne kucuk">${{ BANKA: 'Vadeli hesap', NALBUR: 'Kalıp seti, bakım kiti, örtü, olta takımı', MARKET: 'Yem paketleri, ürün satışı', ZIRAI: 'Gübre, bitki koruma, hayvan aşısı' }[m.kategori]}</span></button>`).join('')}</div>
     <p class="kucuk">Akçe nakde çevrilemez; çarşıdaki alışverişler ve banka işlemleri yalnızca oyun içindir.</p>`;
 }
 
@@ -49,29 +49,19 @@ export function dukkanHTML(v, { girisli, bakiye, envanter = [], kurallar }) {
 
 // Banka
 export function bankaHTML(b) {
-  const k = b.kredi, B = b.kurallar;
+  const B = b.kurallar;
   const vadeliler = b.vadeliler.length ? `<ul class="liste">${b.vadeliler.map((v) => `<li class="liste-oge"><span class="ikon">${v.durum === 'ACIK' ? '🔒' : v.durum === 'KAPANDI' ? '✅' : '↩️'}</span>
       <div class="govde"><b>${akce(v.tutar)}</b><span class="kucuk">${v.durum === 'ACIK' ? (v.vadeDoldu ? 'Vadesi doldu' : `Vade: <span data-bitis="${v.vade}">${sure(v.vade - simdi())}</span>`) : v.durum === 'KAPANDI' ? `Getiri ${akce(v.getiri)} alındı` : 'Vadesinden önce bozduruldu'}
         · getiri %${sayi(v.faiz * 100)} (${akce(v.getiri)})</span></div>
       ${v.durum === 'ACIK' ? `<button class="dugme ince ${v.vadeDoldu ? 'altin' : ''}" data-eylem="vadeli-kapat" data-id="${v.id}">${v.vadeDoldu ? 'Getiriyi al' : 'Boz (getirisiz)'}</button>` : ''}</li>`).join('')}</ul>`
     : '<p class="kucuk">Vadeli hesabın yok.</p>';
-  const kredi = k ? `<div class="kutu ${k.gecikmede ? 'uyari' : ''}"><b>Açık kredi: ${akce(k.kalan)} borç</b>
-      <p class="kucuk" style="margin:4px 0">Çekilen ${akce(k.ana)} · toplam geri ödeme ${akce(k.toplam)}${k.gecikme ? ` + gecikme ${akce(k.gecikme)}` : ''} · ödenen ${akce(k.odenen)}<br>
-      ${k.gecikmede ? `<b class="kirmizi-metin">Vadesi ${k.gecGun} gün geçti; günlük %${sayi(B.gecikmeGunluk * 100)} gecikme bedeli işliyor.</b>` : `Vade: ${tarihGoster(k.vade)} (<span data-bitis="${k.vade}">${sure(k.vade - simdi())}</span>)`}</p>
-      <form class="kredi-ode-form satir"><input type="number" name="tutar" min="1" step="0.01" max="${k.kalan}" value="${Math.min(k.kalan, b.bakiye)}" aria-label="Ödeme tutarı"><button class="dugme ince altin">Öde</button></form></div>`
-    : b.engel ? `<p class="kucuk">${esc(b.engel)}</p>`
-      : `<form class="kredi-form satir"><label class="kucuk">Tutar<input type="number" name="tutar" min="${B.krediMin}" max="${b.limit}" value="${Math.min(b.limit, 200)}"></label>
-          <button class="dugme ince">Kredi çek</button></form>
-         <p class="kucuk">Limitin ${akce(b.limit)} (seviye, parsel sayısı ve geçmiş ödemelerine göre). ${B.krediGun} gün içinde %${sayi(B.krediFaiz * 100)} faiziyle geri ödenir; gecikmede günlük %${sayi(B.gecikmeGunluk * 100)} (en çok %${sayi(B.gecikmeMaks * 100)}) bedel işler ve vade geçince borç bakiyenden tahsil edilir.</p>`;
   return `<button type="button" class="bag geri-dugme" data-eylem="carsi-geri">← Çarşı</button>
     ${markaBasligi(b.marka)}
-    <div class="banka-ozet"><div><span class="kucuk">Vadesiz (cüzdan)</span><b>${akce(b.bakiye)}</b></div><div><span class="kucuk">Vadeli</span><b>${akce(b.acikVadeli)}</b></div>
-      <div><span class="kucuk">Kredi notu</span><b>${b.not}</b></div></div>
+    <div class="banka-ozet"><div><span class="kucuk">Vadesiz (cüzdan)</span><b>${akce(b.bakiye)}</b></div><div><span class="kucuk">Vadeli</span><b>${akce(b.acikVadeli)}</b></div></div>
     <h3 class="bolum">Vadeli hesap</h3>
     <p class="kucuk">${B.vadeliGun} gün kilitli kalır, vadesinde %${sayi(B.vadeliFaiz * 100)} getiri. Vadeden önce bozarsan getiri yok. Toplam en çok ${akce(B.vadeliMaks)}.</p>
     <form class="vadeli-form satir"><input type="number" name="tutar" min="${B.vadeliMin}" max="${Math.max(B.vadeliMin, Math.min(b.bakiye, B.vadeliMaks - b.acikVadeli))}" value="${Math.max(B.vadeliMin, Math.min(100, Math.floor(b.bakiye)))}" aria-label="Vadeli tutar">
       <button class="dugme ince" ${b.bakiye < B.vadeliMin ? 'disabled' : ''}>Vadeli hesap aç</button></form>
     ${vadeliler}
-    <h3 class="bolum">Kredi</h3>${kredi}
     <p class="kucuk banka-uyari">ℹ️ ${esc(b.uyari)}</p>`;
 }

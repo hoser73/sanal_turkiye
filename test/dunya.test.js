@@ -93,38 +93,15 @@ test('hava listesi: 81 il, mevsim ve atıf', async () => {
   assert.ok(h.iller.every((x) => x.ikon && Number.isFinite(x.sicaklik)));
 });
 
-test('il ligi: eylemler ilin puanına yazılır; gurbetçi memleketine yarım puan taşır; memleket değişimi sınırlı', async () => {
+test('memleket: seçilir, 30 gün değişmez; hemşehri ve gurbet sayılır', async () => {
   const c = await oyuncu('gurbetci');
   assert.equal((await c('/api/hesap/memleket', { plaka: '61' })).durum, 200);
   assert.equal((await c('/api/hesap/memleket', { plaka: '34' })).durum, 409, '30 gün dolmadan değişmez');
   assert.equal((await c('/api/ben')).veri.hesap.memleket.ad, 'Trabzon');
-  const h = hucreBul('TARIM');
-  await c(`/api/parsel/${h}/edin`, {});
-  const lig = (await c('/api/lig')).veri;
-  const konya = lig.tablo.find((x) => x.plaka === '42');
-  const trabzon = lig.tablo.find((x) => x.plaka === '61');
-  assert.ok(konya.puan >= LIG.puanlar.PARCEL_ACQUIRED);
-  assert.ok(trabzon, 'memleket gurbet puanı aldı');
-  assert.ok(lig.benimKatkim.some((k) => k.il === 'Konya'));
-  assert.equal(lig.memleket, '61');
+  await c(`/api/parsel/${hucreBul('TARIM')}/edin`, {});
   const m = (await c('/api/memleket/61')).veri;
   assert.ok(m.hemsehri >= 1);
   assert.ok(m.gurbette >= 1);
   assert.equal(m.benimMemleketim, true);
-});
-
-test('sezon kapanınca sonuç yazılır ve ilk üç ilin katkı verenlerine rozet verilir', async () => {
-  const c = await oyuncu('sampiyon');
-  for (let i = 0; i < 3; i++) { const h = hucreBul('TARIM', [29.0, 41.05]); await c(`/api/parsel/${h}/edin`, {}); }
-  const n = dunya.sezonNo();
-  const gercek = Date.now;
-  Date.now = () => gercek() + LIG.sezonMs;   // bir sonraki sezona geç
-  try { dunya.sezonBakim(); dunya.sezonBakim(); } finally { Date.now = gercek; }
-  const sonuc = db.prepare(`SELECT * FROM sezon_sonuclari WHERE sezon = ? ORDER BY sira`).all(n);
-  assert.ok(sonuc.length >= 2);
-  assert.equal(sonuc[0].sira, 1);
-  const rozet = (await c('/api/rozetlerim')).veri;
-  const istanbul = sonuc.find((x) => db.prepare(`SELECT plaka FROM regions WHERE id = ?`).get(x.il_id).plaka === '34');
-  if (istanbul.sira <= 3) assert.ok(rozet.some((r) => r.kod === `SEZON_${n}_34`));
-  assert.equal(db.prepare(`SELECT COUNT(*) c FROM audit_events WHERE action = 'SEASON_CLOSED' AND entity = ?`).get(`SEZON:${n}`).c, 1, 'sezon bir kez kapanır');
+  assert.equal((await c('/api/lig')).durum, 404, 'eski il ligi kaldırıldı');
 });

@@ -4,7 +4,7 @@
 // Mahallede gerçek oyuncu çoğaldığında parsellerini satışa çıkarıp taşınırlar; satılmayan parseller devlete döner.
 const db = require('./db');
 const L = require('./lib/ledger');
-const { NUFUS, URUNLER, YAPILAR, SECIM, BELEDIYE } = require('./config/rules');
+const { NUFUS, URUNLER, YAPILAR, SECIM, BELEDIYE, OZELLIK } = require('./config/rules');
 const { yol } = require('./lib/olaylar');
 
 const simdi = () => Date.now();
@@ -326,7 +326,7 @@ async function nufusDongusu({ yerlestirmeSiniri = 2 } = {}) {
                                 ORDER BY npc_sonraki LIMIT ?`).all(t, NUFUS.turBasinaEylem)) {
       if (sessiz(() => eylem(n))) rapor.eylem++;
     }
-    sessiz(siyaset);
+    if (OZELLIK.siyaset) sessiz(siyaset);
     sessiz(kendiliginden);
   } finally { calisiyor = false; }
   return rapor;

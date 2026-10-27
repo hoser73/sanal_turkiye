@@ -721,10 +721,6 @@ CREATE INDEX IF NOT EXISTS ix_sohbet_user ON sohbet_mesajlari(user_id, created_a
 CREATE TABLE IF NOT EXISTS hava_durumu (
   plaka TEXT PRIMARY KEY, sicaklik REAL, yagis REAL, kod INTEGER, ruzgar REAL, gunduz INTEGER, guncellendi INTEGER NOT NULL
 ) WITHOUT ROWID;
-CREATE TABLE IF NOT EXISTS sezon_sonuclari (
-  sezon INTEGER NOT NULL, il_id INTEGER NOT NULL REFERENCES regions(id), puan REAL NOT NULL, oyuncu INTEGER NOT NULL, lig_puani REAL NOT NULL, sira INTEGER NOT NULL,
-  PRIMARY KEY (sezon, il_id)
-) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS rozetler (
   id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), kod TEXT NOT NULL, ad TEXT NOT NULL, ikon TEXT NOT NULL,
   aciklama TEXT, created_at INTEGER NOT NULL, UNIQUE (user_id, kod)

@@ -115,7 +115,7 @@ function guvenlik(h) {
         <form class="form" data-form="2fa-kapat"><label>Parola<input name="sifre" type="password" autocomplete="current-password" required></label>
         <label>Kod ya da kurtarma kodu<input name="kod" autocomplete="one-time-code" required></label>
         <button class="dugme">Kapat</button></form></details>`
-    : `<p>Hesabını parolan çalınsa bile korur. ${h.rol !== 'OYUNCU' ? '<b>Yetkili hesaplarda zorunludur.</b>' : 'Muhtar ve belediye görevlileri için önerilir.'}</p>
+    : `<p>Hesabını parolan çalınsa bile korur. ${h.rol !== 'OYUNCU' ? '<b>Yetkili hesaplarda zorunludur.</b>' : 'Değerli arazilerin varsa önerilir.'}</p>
        <button type="button" class="dugme birincil" data-h="2fa-kur">İki adımlı doğrulamayı kur</button>`;
   return `${girisYollariBolumu(h)}
     <section><h3>İki adımlı doğrulama</h3>${ikiAdim}</section>

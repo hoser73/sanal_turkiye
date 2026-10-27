@@ -1,8 +1,9 @@
-// Kooperatif hasat yarışı: haftalık takım yarışı (haftalar il ligiyle aynı takvimde, LIG.baslangic'tan 7'şer gün).
-// Kooperatif üyesinin oyun eylemleri (olay yolu) kooperatifinin o haftaki puanına eklenir; aynı işten günde en çok
-// HASAT_YARISI.gunlukTavan kayıt sayılır. Hafta bitince bir kez sonuçlanır: ulaşılan takım sandıkları en az minKatki
-// puan veren üyelere akçe olarak dağıtılır; Türkiye sıralamasında ilk üç aktif kooperatifin ortak kasasına (KOOP:<id>)
-// bonus girer. Demo hesaplar puan almaz.
+// Hasat yarışı: oyunun tek haftalık yarışı (haftalar LIG.baslangic'tan 7'şer gün). Oyuncunun işleri (olay yolu) iki
+// yere puan yazar: kooperatifinin takım puanına ve ilinin puanına (memleketi; seçmediyse ilk tarlasının ili). Aynı işten
+// günde en çok HASAT_YARISI.gunlukTavan kayıt sayılır. Hafta bitince bir kez sonuçlanır: ulaşılan takım sandıkları en az
+// minKatki puan veren üyelere akçe olarak dağıtılır, Türkiye'de ilk üç aktif kooperatifin kasasına (KOOP:<id>) bonus girer;
+// il sıralamasında (il puanı = toplam ÷ √oyuncu, kalabalık il kazanmasın) ilk üç ilin yeterli katkı veren oyuncularına
+// ilOdulu verilir. (v0.41'e kadar ayrı bir 28 günlük il ligi vardı; bu yarışa katıldı.) Demo hesaplar puan almaz.
 const db = require('./db');
 const L = require('./lib/ledger');
 const { HASAT_YARISI: Y, KOOPERATIF, LIG } = require('./config/rules');
@@ -22,6 +23,14 @@ CREATE TABLE IF NOT EXISTS koop_yaris_sonuc (
   PRIMARY KEY (hafta, koop_id)
 ) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS koop_yaris_hafta (hafta INTEGER PRIMARY KEY, sonuclandi_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS koop_yaris_il (
+  hafta INTEGER NOT NULL, il_id INTEGER NOT NULL REFERENCES regions(id), user_id INTEGER NOT NULL REFERENCES users(id),
+  puan INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (hafta, il_id, user_id)
+) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS koop_yaris_il_sonuc (
+  hafta INTEGER NOT NULL, il_id INTEGER NOT NULL, sira INTEGER NOT NULL, puan INTEGER NOT NULL, oyuncu INTEGER NOT NULL, il_puani REAL NOT NULL,
+  odul INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (hafta, il_id)
+) WITHOUT ROWID;
 `);
 
 const HAFTA = 7 * 86_400_000, TR_SAAT = 3 * 3600_000;
@@ -43,15 +52,27 @@ const q = {
     WHERE y.hafta = ? GROUP BY y.koop_id ORDER BY puan DESC, MIN(y.koop_id)`),
   katkilar: db.prepare(`SELECT y.user_id, y.puan, u.display_name AS ad FROM koop_yaris y JOIN users u ON u.id = y.user_id
     WHERE y.hafta = ? AND y.koop_id = ? ORDER BY y.puan DESC`),
+  // Oyuncunun yarıştığı il: memleketi, seçmediyse ilk edindiği tarlanın ili
+  il: db.prepare(`SELECT COALESCE((SELECT r.id FROM regions r WHERE r.type = 'IL' AND r.plaka = u.memleket_plaka),
+      (SELECT p.il_id FROM parcels p WHERE p.owner_user_id = u.id ORDER BY p.rowid LIMIT 1)) AS il_id FROM users u WHERE u.id = ? AND u.is_npc = 0`),
+  ilEkle: db.prepare(`INSERT INTO koop_yaris_il (hafta, il_id, user_id, puan) VALUES (?, ?, ?, ?)
+    ON CONFLICT (hafta, il_id, user_id) DO UPDATE SET puan = puan + excluded.puan`),
+  iller: db.prepare(`SELECT y.il_id, r.name AS il, r.plaka, SUM(y.puan) AS puan, COUNT(*) AS oyuncu FROM koop_yaris_il y
+    JOIN regions r ON r.id = y.il_id WHERE y.hafta = ? GROUP BY y.il_id`),
+  ilKatkilar: db.prepare('SELECT user_id, puan FROM koop_yaris_il WHERE hafta = ? AND il_id = ?'),
 };
+// İl sıralaması: il puanı = toplam ÷ √oyuncu (eşitlikte toplam puan)
+const ilSiralamasi = (h) => q.iller.all(h).map((x) => ({ ...x, ilPuani: Math.round((x.puan / Math.sqrt(x.oyuncu)) * 10) / 10 }))
+  .sort((a, b) => b.ilPuani - a.ilPuani || b.puan - a.puan || a.il_id - b.il_id).map((x, i) => ({ ...x, sira: i + 1 }));
 
 function puanVer(userId, eylem, t = Date.now()) {
   const p = Y.puanlar[eylem];
   if (!p || !userId) return 0;
-  const u = q.uyelik.get(userId);
-  if (!u) return 0;
+  const u = q.uyelik.get(userId), il = q.il.get(userId)?.il_id;
+  if (!u && !il) return 0;
   if (q.gunluk.get(userId, gunAnahtari(t), eylem).adet > Y.gunlukTavan) return 0;
-  q.ekle.run(haftaNo(t), u.koop_id, userId, p);
+  if (u) q.ekle.run(haftaNo(t), u.koop_id, userId, p);
+  if (il) q.ilEkle.run(haftaNo(t), il, userId, p);
   return p;
 }
 yol.on('eylem', ({ eylem, aktor }) => {
@@ -82,6 +103,18 @@ const sonuclandir = db.transaction((h) => {
       } else if (no && no <= 3) bildir(`🏁 Hasat yarışında ${tk.ad} Türkiye ${no}. oldu!`);
     }
   }
+  // İller: ilk üç ilin en az minKatki veren oyuncularına il ödülü
+  for (const x of ilSiralamasi(h)) {
+    const odul = Y.ilOdulu[x.sira - 1] || 0;
+    db.prepare('INSERT INTO koop_yaris_il_sonuc (hafta, il_id, sira, puan, oyuncu, il_puani, odul) VALUES (?, ?, ?, ?, ?, ?, ?)').run(h, x.il_id, x.sira, x.puan, x.oyuncu, x.ilPuani, odul);
+    if (!odul) continue;
+    const tx = L.yeniTx();
+    for (const k of q.ilKatkilar.all(h, x.il_id)) {
+      if (k.puan < Y.minKatki) continue;
+      L.odul(k.user_id, odul, `Hasat yarışı: ${x.il} ${x.sira}.`, tx);
+      require('./pazar').bildir(k.user_id, `🗺️ Hasat yarışında ${x.il} Türkiye ${x.sira}. oldu! Katkın için +${odul} akçe`, 'arazilerim');
+    }
+  }
   return true;
 });
 let sonBakim = 0;
@@ -110,12 +143,23 @@ function durumu(userId, t = Date.now()) {
       uyeler: katki.map((k) => ({ ad: k.ad, puan: k.puan, ben: k.user_id === userId })),
     };
   }
+  const iller = ilSiralamasi(h), benimIlId = userId ? q.il.get(userId)?.il_id : null;
+  const benimIl = benimIlId ? (() => {
+    const x = iller.find((i) => i.il_id === benimIlId);
+    const r = db.prepare('SELECT name, plaka FROM regions WHERE id = ?').get(benimIlId);
+    const katkim = db.prepare('SELECT puan FROM koop_yaris_il WHERE hafta = ? AND il_id = ? AND user_id = ?').get(h, benimIlId, userId)?.puan || 0;
+    return { il: r.name, plaka: r.plaka, sira: x?.sira || null, ilPuani: x?.ilPuani || 0, katkim };
+  })() : null;
+  const gecenIller = db.prepare(`SELECT s.sira, s.il_puani AS ilPuani, r.name AS il FROM koop_yaris_il_sonuc s JOIN regions r ON r.id = s.il_id
+    WHERE s.hafta = ? ORDER BY s.sira LIMIT 3`).all(h - 1);
   const gecen = db.prepare(`SELECT s.sira, s.puan, s.sandik, s.bonus, k.ad FROM koop_yaris_sonuc s JOIN kooperatifler k ON k.id = s.koop_id
     WHERE s.hafta = ? AND s.sira IS NOT NULL ORDER BY s.sira LIMIT 3`).all(h - 1);
   return {
     hafta: h, bitis: haftaBitis(h), kalanMs: haftaBitis(h) - t, benim,
     siralama: sirali.slice(0, 10).map((x, i) => ({ sira: i + 1, ad: x.ad, il: x.il, puan: x.puan, uye: x.uye, ben: x.koop_id === uyelik?.koop_id })),
     gecenHafta: gecen, minKatki: Y.minKatki, kasaBonusu: Y.kasaBonusu, minUye: KOOPERATIF.minAktifUye,
+    iller: iller.slice(0, 10).map((x) => ({ sira: x.sira, il: x.il, plaka: x.plaka, ilPuani: x.ilPuani, puan: x.puan, oyuncu: x.oyuncu, ben: x.il_id === benimIlId })),
+    benimIl, gecenIller, ilOdulu: Y.ilOdulu,
     puanlar: Object.entries(Y.puanlar).map(([eylem, p]) => ({ eylem, puan: p })),
   };
 }
@@ -124,4 +168,7 @@ function rotalar(app, { h }) {
   app.get('/api/hasat-yarisi', h((req) => durumu(req.kullanici?.id ?? null)));
 }
 
-module.exports = { rotalar, durumu, puanVer, sonuclandir, yarisBakim, haftaNo };
+// Memleket bilgisi için: ilin bu haftaki yarış sırası
+const ilSirasi = (ilId, t = Date.now()) => { const x = ilSiralamasi(haftaNo(t)).find((i) => i.il_id === ilId); return x ? { sira: x.sira, ilPuani: x.ilPuani } : null; };
+
+module.exports = { rotalar, durumu, puanVer, sonuclandir, yarisBakim, haftaNo, ilSirasi };

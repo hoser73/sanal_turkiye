@@ -109,7 +109,7 @@ const KOY_EN_UZAK = 11;   // köy görünümünde en fazla bu kadar uzaklaşıl�
 // ---------- Kurulum ----------
 // koy: { merkez: [lon, lat], zoom } — harita ülke görünümü yerine oyuncunun köyünde açılır ve köy ölçeğinin altına
 // uzaklaşmaz (Türkiye haritası ana ekrandan kaldırıldı; ileride ayrı bir bölüm olacak)
-export async function haritaKur(kap, { parselTik, ilTik, ilceTik, mahalleAlanTik, mahalleTik, belediyeTik, carsiTik, konumDegisti, kip = '2d', tema = 'ciftlik', grafik = 'yuksek', koy = null }) {
+export async function haritaKur(kap, { parselTik, ilTik, ilceTik, mahalleAlanTik, mahalleTik, belediyeTik, carsiTik, konumDegisti, kip = '2d', tema = 'ciftlik', grafik = 'yuksek', koy = null, siyaset = false }) {
   const altlik = await altlikVarMi();
   // Ülke ölçeğinde kalmış eski bir #konum (ör. 4.18/…) açılışı bozmasın: yalnızca yakın plan bağlantılar korunur
   const baglantidaKonumVar = Number((/konum=([\d.]+)/.exec(location.hash) || [])[1] || 0) >= 6.5;
@@ -569,11 +569,11 @@ export async function haritaKur(kap, { parselTik, ilTik, ilceTik, mahalleAlanTik
     izgaraCiz();
     tarlalariYukle(b, z);
 
-    if (z >= 8.5) {
+    if (siyaset && z >= 8.5) {
       fetch(`/api/harita/belediyeler?bbox=${[b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].map((v) => v.toFixed(5)).join(',')}`, { credentials: 'same-origin' })
         .then((r) => (r.ok ? r.json() : bos())).then((fc) => map.getSource('belediyeler').setData(fc)).catch(() => {});
     }
-    if (z >= 10) {
+    if (siyaset && z >= 10) {
       fetch(`/api/harita/secimler?bbox=${[b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].map((v) => v.toFixed(5)).join(',')}`, { credentials: 'same-origin' })
         .then((r) => (r.ok ? r.json() : bos())).then((fc) => map.getSource('secimler').setData(fc)).catch(() => {});
     }

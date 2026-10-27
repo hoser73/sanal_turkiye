@@ -1,7 +1,7 @@
 // Oyun motoru (modüler monolit, plan §13.2): parsel, imar, inşaat, tarım, pazar, görev.
 // Bütün kurallar SUNUCUDA denetlenir (§3.2); her değişiklik tek atomik işlemde yapılır (§8.4).
 const db = require('./db');
-const { IMAR, IMAR_KAYNAK_NOTU, YAPILAR, URUNLER, TARIM, NPC_PAZAR, HESAP, GOREVLER, BELEDIYE, BOZULMA, BAKIM, HAVA, CARSI } = require('./config/rules');
+const { IMAR, IMAR_KAYNAK_NOTU, YAPILAR, URUNLER, TARIM, NPC_PAZAR, HESAP, GOREVLER, BELEDIYE, BOZULMA, BAKIM, HAVA, CARSI, OZELLIK, SIYASI_EYLEMLER } = require('./config/rules');
 const { adaParsel } = require('./harita/ada');
 const SIHIRBAZ_ILK_EKIN = () => require('./sihirbaz').SIHIRBAZ.ilkEkinMs;
 const L = require('./lib/ledger');
@@ -45,7 +45,7 @@ function gorevTamamla(userId, kod, tx) {
 }
 function gorevler(userId) {
   const biten = new Set(db.prepare(`SELECT quest_code FROM quest_progress WHERE user_id = ?`).all(userId).map((r) => r.quest_code));
-  return GOREVLER.map((g) => ({ ...g, tamam: biten.has(g.kod) }));
+  return GOREVLER.filter((g) => OZELLIK.siyaset || g.kod !== 'ILK_OY').map((g) => ({ ...g, tamam: biten.has(g.kod) }));   // seçim görevi siyasetle açılır
 }
 
 // ---------- Yapı tamamlama (tembel, idempotent) ----------
@@ -612,7 +612,7 @@ function haberAkisi({ ilId = null, limit = 30 } = {}) {
         CASE r.type WHEN 'MAHALLE' THEN rl.id WHEN 'ILCE' THEN ri.id WHEN 'IL' THEN r.id END AS il_id
       FROM audit_events a LEFT JOIN users u ON u.id = a.actor_id LEFT JOIN regions r ON r.id = a.region_id
         LEFT JOIN regions ri ON ri.id = r.parent_id LEFT JOIN regions rl ON rl.id = ri.parent_id
-      WHERE a.public = 1 ORDER BY a.id DESC LIMIT 400
+      WHERE a.public = 1 ${OZELLIK.siyaset ? '' : `AND a.action NOT IN (${SIYASI_EYLEMLER.map((x) => `'${x}'`).join(',')})`} ORDER BY a.id DESC LIMIT 400
     ) ${ilId ? 'WHERE il_id = ?' : ''} ORDER BY id DESC LIMIT ?`).all(...(ilId ? [ilId, limit] : [limit]));
   return satirlar.map((s) => ({ ...s, after: s.after_json ? JSON.parse(s.after_json) : null, after_json: undefined }));
 }

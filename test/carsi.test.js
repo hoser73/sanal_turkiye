@@ -1,5 +1,5 @@
 // Çarşı: her türden tek işletme (sponsor markası yönetici panelinden, sözleşme bitince varsayılan), şubeler, dükkân ürünleri ve
-// oyundaki etkileri (gübre, ilaç, aşı, kalıp seti, bakım kiti, örtü, balık takımı), banka (vadeli mevduat, kredi, gecikme, tahsilat).
+// oyundaki etkileri (gübre, ilaç, aşı, kalıp seti, bakım kiti, örtü, balık takımı), banka (vadeli mevduat).
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
@@ -204,31 +204,3 @@ test('banka: vadeli hesap (bozdurunca faiz yok, vadesinde getiri), üst sınır'
   assert.ok(ozet.uyari.includes('nakde çevrilemez'));
 });
 
-test('banka: kredi koşulları, limit, kısmi ödeme, gecikme bedeli, vadesinde tahsilat, kredi notu', async () => {
-  const c = await oyuncu();
-  assert.equal((await c('/api/banka/kredi', { tutar: 50 })).durum, 409, 'yeni hesap kredi alamaz');
-  db.prepare(`UPDATE users SET created_at = datetime('now', '-5 days') WHERE id = ?`).run(c.id);
-  const genc = await oyuncu(undefined, { dogumYili: new Date().getFullYear() - 15 });
-  db.prepare(`UPDATE users SET created_at = datetime('now', '-5 days') WHERE id = ?`).run(genc.id);
-  assert.match((await genc('/api/banka/kredi', { tutar: 50 })).veri.hata || '', /18 yaşından/);
-  const limit = (await c('/api/banka')).veri.limit;
-  assert.ok(limit >= CARSI.banka.krediTaban);
-  assert.equal((await c('/api/banka/kredi', { tutar: limit + 1 })).durum, 400);
-  const once = L.bakiye(c.id);
-  const k = (await c('/api/banka/kredi', { tutar: 100 })).veri;
-  assert.equal(L.bakiye(c.id), L.yuvarla(once + 100));
-  assert.equal(k.geriOdeme, L.yuvarla(100 * (1 + CARSI.banka.krediFaiz)));
-  assert.equal((await c('/api/banka/kredi', { tutar: 20 })).durum, 409, 'açık kredi varken yenisi yok');
-  const o1 = (await c('/api/banka/kredi/ode', { tutar: 50 })).veri;
-  assert.equal(o1.kapandi, false); assert.equal(o1.kalan, L.yuvarla(k.geriOdeme - 50));
-  // Vade geçti: gecikme bedeli işler, bakımda bakiyeden tahsil edilir
-  db.prepare(`UPDATE banka_kredi SET vade = ? WHERE id = ?`).run(Date.now() - 2.5 * 864e5, k.id);
-  const b = (await c('/api/banka')).veri.kredi;
-  assert.equal(b.gecGun, 3);
-  assert.equal(b.gecikme, L.yuvarla(100 * 3 * CARSI.banka.gecikmeGunluk));
-  carsi.bankaBakim(Date.now() + 120_000);
-  assert.equal((await c('/api/banka')).veri.kredi, null, 'bakiyeden tahsil edildi');
-  assert.ok((await c('/api/bildirimler')).veri.some((x) => /tahsil edildi/.test(x.text)));
-  assert.ok(carsi.krediNotu(c.id) < 600, 'geç kapanan kredi notu düşürür');
-  assert.equal((await c('/api/banka/kredi/ode', {})).durum, 404);
-});

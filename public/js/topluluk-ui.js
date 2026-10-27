@@ -16,15 +16,15 @@ export async function meslekBolumu() {
     ${!m.degisebilir ? `<p class="kucuk">Mesleğini ${zamanOnce(m.degisimTarihi) === 'az önce' ? 'yakında' : new Date(m.degisimTarihi).toLocaleDateString('tr-TR')} tarihinde değiştirebilirsin. Değişimde deneyim sıfırlanır.</p>` : '<p class="kucuk">Meslek haftada bir değiştirilebilir; değişimde deneyim sıfırlanır.</p>'}`;
 }
 
-// Kooperatif hasat yarışı kartı: takım puanı, üç sandık, Türkiye sıralaması, üyelerin katkısı (hasat-yarisi.js)
+// Hasat yarışı kartı: kooperatifin takım puanı, üç sandık, Türkiye sıralaması, üyelerin katkısı ve il sıralaması (hasat-yarisi.js)
 const EYLEM_AD = { ORDER_DELIVERED: 'Sipariş teslim', DAILY_QUESTS_REWARDED: 'Günlük görevler', GI_PRODUCED: 'Yöresel ürün', CROP_HARVESTED: 'Hasat',
   PRODUCTION_COLLECTED: 'Üretim', ANIMAL_PRODUCE_COLLECTED: 'Hayvan ürünü', NEIGHBOR_HELPED: 'Komşuya yardım' };
-function yarisKarti(y) {
+export function yarisKarti(y) {
   const b = y.benim, son = 1500;
   const sandiklar = b ? b.sandiklar : [];
   const enBuyuk = sandiklar.at(-1)?.esik || son;
   return `<div class="yaris-kart">
-      <div class="yaris-ust"><span class="yaris-ikon">🏁</span><div><b>Hasat yarışı</b><small>Haftalık kooperatif yarışı · bitişe <span data-bitis="${y.bitis}">${sure(y.kalanMs)}</span></small></div>
+      <div class="yaris-ust"><span class="yaris-ikon">🏁</span><div><b>Hasat yarışı</b><small>Haftalık yarış · bitişe <span data-bitis="${y.bitis}">${sure(y.kalanMs)}</span></small></div>
         ${b ? `<div class="yaris-puan"><b>${sayi(b.puan)}</b><small>${b.sira ? `Türkiye ${b.sira}.` : 'puan'}</small></div>` : ''}</div>
       ${b ? `<div class="yaris-yol"><div class="yaris-cubuk"><b style="width:${Math.min(100, (b.puan / enBuyuk) * 100)}%"></b></div>
           ${sandiklar.map((s) => `<span class="yaris-sandik${s.acik ? ' acik' : ''}" style="left:${(s.esik / enBuyuk) * 100}%" title="${esc(s.ad)}: ${s.esik} puan">${s.acik ? '🎁' : '📦'}<small>${s.esik}</small></span>`).join('')}</div>
@@ -36,6 +36,13 @@ function yarisKarti(y) {
           <span class="yaris-sira">${t.sira <= 3 ? ['🥇', '🥈', '🥉'][t.sira - 1] : t.sira}</span><span class="yaris-ad"><b>${esc(t.ad)}</b><small>${esc(t.il)} · ${t.uye} üye</small></span><b>${sayi(t.puan)}</b></li>`).join('')}</ol>
         <p class="kucuk">İlk üç kooperatifin kasasına ${y.kasaBonusu.map((x) => akce(x)).join(' / ')} bonus.</p>` : ''}
       ${y.gecenHafta.length ? `<p class="kucuk">Geçen haftanın birincisi: <b>${esc(y.gecenHafta[0].ad)}</b> (${sayi(y.gecenHafta[0].puan)} puan)</p>` : ''}
+      <h4 class="yaris-baslik">🗺️ İller</h4>
+      ${y.benimIl ? `<p class="kucuk yaris-not">İlin <b>${esc(y.benimIl.il)}</b>${y.benimIl.sira ? `, bu hafta Türkiye ${y.benimIl.sira}.` : ''} · senin katkın <b>${sayi(y.benimIl.katkim)}</b>${y.benimIl.katkim < y.minKatki ? ` (ödül için ${y.minKatki - y.benimIl.katkim} puan daha)` : ' ✓'}</p>` : ''}
+      ${y.iller.length ? `<ol class="yaris-siralama">${y.iller.slice(0, 5).map((t) => `<li${t.ben ? ' class="ben"' : ''}>
+          <span class="yaris-sira">${t.sira <= 3 ? ['🥇', '🥈', '🥉'][t.sira - 1] : t.sira}</span><span class="yaris-ad"><b>${esc(t.il)}</b><small>${t.oyuncu} oyuncu · ${sayi(t.puan)} puan</small></span><b>${sayi(t.ilPuani)}</b></li>`).join('')}</ol>`
+        : '<p class="kucuk">Bu hafta henüz il puanı yok.</p>'}
+      <p class="kucuk">İl puanı = toplam ÷ √oyuncu (kalabalık il kazanmasın). İlk üç ilde en az ${y.minKatki} puan katanlara ${y.ilOdulu.map((x) => akce(x)).join(' / ')}. Puanın memleketine yazılır; seçmediysen ilk tarlanın iline.</p>
+      ${y.gecenIller.length ? `<p class="kucuk">Geçen haftanın birinci ili: <b>${esc(y.gecenIller[0].il)}</b></p>` : ''}
       <details class="acilir"><summary>Puan nasıl kazanılır?</summary><ul class="yol-kaynak">${y.puanlar.map((p) => `<li><span>${esc(EYLEM_AD[p.eylem] || p.eylem)}</span><b>+${p.puan}</b></li>`).join('')}</ul></details>
     </div>`;
 }

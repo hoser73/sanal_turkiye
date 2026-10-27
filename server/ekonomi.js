@@ -82,7 +82,6 @@ const emirVer = db.transaction((userId, govde = {}) => {
   const urun = String(govde.urun || '');
   if (!bul(URUNLER, urun)) throw new OyunHatasi(400, 'Bilinmeyen ürün');
   const yon = govde.yon === 'AL' ? 'AL' : govde.yon === 'SAT' ? 'SAT' : null;
-  if (yon === 'AL') require('./carsi').gecikmeEngeli(userId);
   if (!yon) throw new OyunHatasi(400, 'Yön AL ya da SAT olmalı');
   const fiyat = kurus(Number(govde.fiyat));
   const bant = fiyatBandi(urun);

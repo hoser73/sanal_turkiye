@@ -11,7 +11,6 @@ const { OyunHatasi } = L;
 const simdi = () => Date.now();
 const GUN = 24 * 3600 * 1000;
 const bul = (tablo, kod) => (typeof kod === 'string' && Object.hasOwn(tablo, kod) ? tablo[kod] : null);
-const bildir = (userId, metin, link) => require('./pazar').bildir(userId, metin, link);
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS isletmeler (
@@ -25,11 +24,6 @@ CREATE TABLE IF NOT EXISTS banka_vadeli (
   bas INTEGER NOT NULL, vade INTEGER NOT NULL, durum TEXT NOT NULL DEFAULT 'ACIK', kapandi_at INTEGER   -- ACIK / KAPANDI / BOZULDU
 );
 CREATE INDEX IF NOT EXISTS ix_vadeli_user ON banka_vadeli(user_id, durum);
-CREATE TABLE IF NOT EXISTS banka_kredi (
-  id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), ana REAL NOT NULL, faiz REAL NOT NULL,
-  bas INTEGER NOT NULL, vade INTEGER NOT NULL, odenen REAL NOT NULL DEFAULT 0, durum TEXT NOT NULL DEFAULT 'ACIK', kapandi_at INTEGER, uyarildi INTEGER NOT NULL DEFAULT 0
-);
-CREATE INDEX IF NOT EXISTS ix_kredi_user ON banka_kredi(user_id, durum);
 `);
 function kolon(tablo, ad, tanim) {
   if (!db.prepare(`PRAGMA table_info(${tablo})`).all().some((k) => k.name === ad)) db.exec(`ALTER TABLE ${tablo} ADD COLUMN ${ad} ${tanim}`);
@@ -203,44 +197,12 @@ const sahip = (userId, urun) => !!userId && L.envanterMiktar(userId, urun) > 0;
 
 // ---------- Banka
 const B = CARSI.banka;
-function krediBorcu(k, t = simdi()) {
-  const toplam = k.ana * (1 + k.faiz);
-  const gecGun = t > k.vade ? Math.ceil((t - k.vade) / GUN) : 0;
-  const gecikme = k.ana * Math.min(B.gecikmeMaks, gecGun * B.gecikmeGunluk);
-  return { toplam: L.yuvarla(toplam), gecikme: L.yuvarla(gecikme), kalan: Math.max(0, L.yuvarla(toplam + gecikme - k.odenen)), gecikmede: gecGun > 0, gecGun };
-}
-function krediGecmisi(userId) {
-  const kapali = db.prepare(`SELECT vade, kapandi_at FROM banka_kredi WHERE user_id = ? AND durum = 'KAPANDI'`).all(userId);
-  const zamaninda = kapali.filter((k) => k.kapandi_at <= k.vade).length;
-  return { zamaninda, gec: kapali.length - zamaninda };
-}
-function krediNotu(userId) {
-  const g = krediGecmisi(userId);
-  return Math.max(300, Math.min(850, 600 + g.zamaninda * 25 - g.gec * 60));
-}
-function krediLimiti(userId) {
-  const sv = require('./ciftlik').oyuncuSeviyesi(userId);
-  const parsel = db.prepare(`SELECT COUNT(*) c FROM parcels WHERE owner_user_id = ?`).get(userId).c;
-  const g = krediGecmisi(userId);
-  const kat = Math.max(0.5, Math.min(1.5, 1 + g.zamaninda * 0.1 - g.gec * 0.25));
-  return Math.floor(Math.min(B.krediMaks, (B.krediTaban + sv * B.krediSeviyeBasi + parsel * B.krediParselBasi) * kat));
-}
-function krediEngeli(userId, t = simdi()) {
-  const u = db.prepare(`SELECT dogum_yili, created_at FROM users WHERE id = ?`).get(userId);
-  if (require('./auth').gencMi(u.dogum_yili)) return '18 yaşından küçük hesaplar kredi kullanamaz';
-  if (t - Date.parse(`${String(u.created_at).replace(' ', 'T')}Z`) < B.minHesapGun * GUN) return `Kredi için hesabın en az ${B.minHesapGun} günlük olmalı`;
-  if (db.prepare(`SELECT 1 FROM banka_kredi WHERE user_id = ? AND durum = 'ACIK'`).get(userId)) return 'Açık kredin var; önce onu kapat';
-  return null;
-}
 function bankaOzet(userId, t = simdi()) {
   const vadeliler = db.prepare(`SELECT * FROM banka_vadeli WHERE user_id = ? ORDER BY durum = 'ACIK' DESC, id DESC LIMIT 12`).all(userId)
     .map((v) => ({ id: v.id, tutar: v.tutar, faiz: v.faiz, getiri: L.yuvarla(v.tutar * v.faiz), bas: v.bas, vade: v.vade, durum: v.durum, vadeDoldu: t >= v.vade }));
-  const k = db.prepare(`SELECT * FROM banka_kredi WHERE user_id = ? AND durum = 'ACIK'`).get(userId);
   const acikVadeli = vadeliler.filter((v) => v.durum === 'ACIK').reduce((a, v) => a + v.tutar, 0);
   return {
     marka: marka('BANKA'), bakiye: L.bakiye(userId), vadeliler, acikVadeli,
-    kredi: k ? { id: k.id, ana: k.ana, faiz: k.faiz, vade: k.vade, odenen: k.odenen, ...krediBorcu(k, t) } : null,
-    limit: krediLimiti(userId), not: krediNotu(userId), engel: krediEngeli(userId, t),
     kurallar: { ...B }, uyari: 'Akçe nakde çevrilemez; bu bir oyun içi hizmettir, gerçek bankacılık ya da yatırım hizmeti değildir.',
   };
 }
@@ -249,8 +211,6 @@ const vadeliAc = db.transaction((userId, tutar) => {
   if (!Number.isInteger(tutar) || tutar < B.vadeliMin) throw new OyunHatasi(400, `Vadeli hesap en az ${B.vadeliMin} akçe`);
   const acik = db.prepare(`SELECT COALESCE(SUM(tutar), 0) s FROM banka_vadeli WHERE user_id = ? AND durum = 'ACIK'`).get(userId).s;
   if (acik + tutar > B.vadeliMaks) throw new OyunHatasi(409, `Vadeli hesaplarının toplamı en çok ${B.vadeliMaks} akçe olabilir`);
-  const k = db.prepare(`SELECT * FROM banka_kredi WHERE user_id = ? AND durum = 'ACIK'`).get(userId);
-  if (k && krediBorcu(k).gecikmede) throw new OyunHatasi(409, 'Gecikmiş kredi borcun var; önce onu öde');
   const t = simdi(), tx = L.yeniTx();
   L.aktar({ kaynak: L.hesap(userId), hedef: `BANKA:VADELI:${userId}`, tutar, sebep: `${marka('BANKA').ad}: ${B.vadeliGun} günlük vadeli hesap`, tx });
   const id = db.prepare(`INSERT INTO banka_vadeli (user_id, tutar, faiz, bas, vade) VALUES (?, ?, ?, ?, ?)`).run(userId, tutar, B.vadeliFaiz, t, t + B.vadeliGun * GUN).lastInsertRowid;
@@ -269,63 +229,6 @@ const vadeliKapat = db.transaction((userId, id) => {
   L.denetim({ aktor: userId, eylem: doldu ? 'DEPOSIT_MATURED' : 'DEPOSIT_BROKEN', varlik: `VADELI:${v.id}`, sonra: { tutar: v.tutar, faiz } });
   return { tamam: true, anapara: v.tutar, faiz, bozuldu: !doldu };
 });
-const krediAl = db.transaction((userId, tutar) => {
-  const engel = krediEngeli(userId);
-  if (engel) throw new OyunHatasi(409, engel);
-  tutar = Number(tutar);
-  const limit = krediLimiti(userId);
-  if (!Number.isInteger(tutar) || tutar < B.krediMin || tutar > limit) throw new OyunHatasi(400, `Kredi tutarı ${B.krediMin}–${limit} akçe olmalı`);
-  const t = simdi(), tx = L.yeniTx();
-  const id = db.prepare(`INSERT INTO banka_kredi (user_id, ana, faiz, bas, vade) VALUES (?, ?, ?, ?, ?)`).run(userId, tutar, B.krediFaiz, t, t + B.krediGun * GUN).lastInsertRowid;
-  L.aktar({ kaynak: 'SYS:BANKA', hedef: L.hesap(userId), tutar, sebep: `${marka('BANKA').ad}: kredi`, tx });
-  L.denetim({ aktor: userId, eylem: 'LOAN_TAKEN', varlik: `KREDI:${id}`, sonra: { tutar, faiz: B.krediFaiz } });
-  return { tamam: true, id, tutar, geriOdeme: L.yuvarla(tutar * (1 + B.krediFaiz)), vade: t + B.krediGun * GUN };
-});
-function krediOdemeYap(k, tutar, t, tx) {
-  const b = krediBorcu(k, t);
-  const ode = L.yuvarla(Math.min(tutar, b.kalan));
-  if (ode <= 0) return { ode: 0, kapandi: false };
-  L.aktar({ kaynak: L.hesap(k.user_id), hedef: 'SYS:BANKA', tutar: ode, sebep: `${marka('BANKA').ad}: kredi ödemesi`, tx });
-  const kapandi = b.kalan - ode < 0.005;
-  db.prepare(`UPDATE banka_kredi SET odenen = odenen + ?, durum = ?, kapandi_at = ? WHERE id = ?`).run(ode, kapandi ? 'KAPANDI' : 'ACIK', kapandi ? t : null, k.id);
-  return { ode, kapandi };
-}
-const krediOde = db.transaction((userId, tutar) => {
-  const k = db.prepare(`SELECT * FROM banka_kredi WHERE user_id = ? AND durum = 'ACIK'`).get(userId);
-  if (!k) throw new OyunHatasi(404, 'Açık kredin yok');
-  const t = simdi(), b = krediBorcu(k, t);
-  const istenen = tutar == null || tutar === '' ? b.kalan : Number(tutar);
-  if (!(istenen > 0)) throw new OyunHatasi(400, 'Geçersiz tutar');
-  const r = krediOdemeYap(k, Math.min(istenen, L.bakiye(userId)), t, L.yeniTx());
-  if (!r.ode) throw new OyunHatasi(402, 'Ödeme için bakiyen yok', 'YETERSIZ_BAKIYE');
-  L.denetim({ aktor: userId, eylem: r.kapandi ? 'LOAN_CLOSED' : 'LOAN_PAYMENT', varlik: `KREDI:${k.id}`, sonra: { odeme: r.ode, gecikmeli: b.gecikmede } });
-  return { tamam: true, odeme: r.ode, kapandi: r.kapandi, kalan: r.kapandi ? 0 : L.yuvarla(b.kalan - r.ode) };
-});
-// Vadesi geçmiş kredisi olan oyuncu borcunu kapatmadan başka oyunculara değer aktaramaz (kira, parsel ve ürün alımı):
-// borç alıp başka hesaba kaçırmak olmasın. Satış (akçe girişi) serbest: bakımda borca tahsil edilir
-function gecikmeEngeli(userId, t = simdi()) {
-  if (db.prepare(`SELECT 1 FROM banka_kredi WHERE user_id = ? AND durum = 'ACIK' AND vade < ?`).get(userId, t)) {
-    throw new OyunHatasi(409, 'Vadesi geçmiş kredin var: önce Çarşı → Banka\'dan borcunu kapat', 'KREDI_GECIKMEDE');
-  }
-}
-// Vadesi geçen kredi: oyuncuya bir kez haber ver, bakiyesinden tahsil etmeye çalış (dakikada en çok bir tarama)
-let sonBakim = 0;
-function bankaBakim(t = simdi()) {
-  if (t - sonBakim < 60_000) return;
-  sonBakim = t;
-  for (const k of db.prepare(`SELECT * FROM banka_kredi WHERE durum = 'ACIK' AND vade < ?`).all(t)) {
-    if (k.uyarildi && L.bakiye(k.user_id) <= 0) continue;   // uyarılmış ve tahsil edilecek bakiye yok: her dakika boşuna işlenmesin
-    db.transaction(() => {
-      const r = krediOdemeYap(k, L.bakiye(k.user_id), t, L.yeniTx());
-      if (r.kapandi) bildir(k.user_id, `🏦 ${marka('BANKA').ad}: vadesi geçen kredin bakiyenden tahsil edildi ve kapandı.`, 'carsi:BANKA');
-      else if (!k.uyarildi) {
-        db.prepare(`UPDATE banka_kredi SET uyarildi = 1 WHERE id = ?`).run(k.id);
-        bildir(k.user_id, `🏦 ${marka('BANKA').ad}: kredinin vadesi geçti. Günlük %${B.gecikmeGunluk * 100} gecikme bedeli işliyor; kapatmadan yeni kredi alamazsın.`, 'carsi:BANKA');
-      }
-    })();
-  }
-}
-
 function rotalar(app, { h, auth }) {
   app.get('/api/carsi', h((req) => ({ isletmeler: markalar(), urunler: CARSI.urunler, sarf: CARSI.sarf })));
   app.get('/api/carsi/subeler', h(require('./lib/onbellek').ortakYanit(30_000, () => subeler())));
@@ -335,12 +238,10 @@ function rotalar(app, { h, auth }) {
   app.get('/api/banka', auth.girisGerekli, h((req) => bankaOzet(req.kullanici.id)));
   app.post('/api/banka/vadeli', auth.dogrulanmisGerekli, h((req) => vadeliAc(req.kullanici.id, req.body?.tutar)));
   app.post('/api/banka/vadeli/:id/kapat', auth.dogrulanmisGerekli, h((req) => vadeliKapat(req.kullanici.id, req.params.id)));
-  app.post('/api/banka/kredi', auth.dogrulanmisGerekli, h((req) => krediAl(req.kullanici.id, req.body?.tutar)));
-  app.post('/api/banka/kredi/ode', auth.dogrulanmisGerekli, h((req) => krediOde(req.kullanici.id, req.body?.tutar)));
   app.get('/api/yonetim/isletmeler', auth.rolGerekli('ADMIN'), h(() => yonetimListesi()));
   app.put('/api/yonetim/isletme/:kategori', auth.rolGerekli('ADMIN'), h((req) => markaGuncelle(req.kullanici.id, String(req.params.kategori), req.body || {})));
   app.put('/api/yonetim/isletme/:kategori/subeler', auth.rolGerekli('ADMIN'), h((req) => subeYukle(req.kullanici.id, String(req.params.kategori), req.body?.subeler)));
 }
 
 module.exports = { rotalar, marka, markalar, markaGuncelle, subeler, subeYukle, vitrin, satinAl, kullan, stoktanKullan, sahip,
-  bankaOzet, vadeliAc, vadeliKapat, krediAl, krediOde, krediBorcu, krediLimiti, krediNotu, bankaBakim, gecikmeEngeli };
+  bankaOzet, vadeliAc, vadeliKapat };

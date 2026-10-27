@@ -4,7 +4,7 @@
 import { esc, sayi } from './yardimci.js';
 
 const hareketAz = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-const DONEN = ['çiftliğini kur.', 'tarlanı ek.', 'hasadını sat.', 'göle olta at.', 'muhtar ol.', 'köyünü büyüt.'];
+const DONEN = ['çiftliğini kur.', 'tarlanı ek.', 'hasadını sat.', 'göle olta at.', 'bulmaca çöz.', 'köyünü büyüt.'];
 const AKIS_METIN = {
   CROP_HARVESTED: (o) => ['🧺', `${o.urun ? `${o.urun.ikon} ${o.urun.ad}` : 'Ürün'} hasat edildi`],
   CROP_PLANTED: (o) => ['🌱', `${o.urun ? `${o.urun.ikon} ${o.urun.ad}` : 'Tohum'} ekildi`],
