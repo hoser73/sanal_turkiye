@@ -657,3 +657,32 @@ body:has(.tapu-perde) .tostlar { z-index: 3001; }   /* "bağlantı kopyalandı" 
 .tapu-hazirlaniyor i { width: 12px; height: 12px; border-radius: 50%; background: #c9a96a; animation: shzZipla .9s ease-in-out infinite; }
 .tapu-hazirlaniyor i:nth-child(2) { animation-delay: .15s; } .tapu-hazirlaniyor i:nth-child(3) { animation-delay: .3s; }
 .tapu-hazirlaniyor b { margin-left: 6px; font-size: 15px; }
+
+/* ---------- Kapatma düğmeleri: oyun tarzı ortak tasarım ----------
+   Mercan kırmızısı, beyaz çerçeveli, kabarık yuvarlak düğme; çarpı yazı tipine/emojiye bağlı olmadan iki beyaz
+   çizgiyle çizilir (her cihazda aynı ve net). Düğmelerin içindeki "✕" metni gizlenir; aria-label korunur. */
+body :is(.ci-sayfa-kapat, .tapu-kapat, .modal-kapat, .bildirim-kapat, .tn-giris-kapat, .kapat) {
+  flex: none; width: 44px; height: 44px; padding: 0; border: 3px solid #fff; border-radius: 50%;
+  background: radial-gradient(circle at 35% 28%, #ff9b7d 0%, #f0644a 45%, #d4442f 100%);
+  box-shadow: 0 3px 0 #a3321f, 0 6px 14px rgba(120, 30, 10, .32);
+  font-size: 0; color: transparent; line-height: 0; cursor: pointer; transition: transform .12s ease, box-shadow .12s ease, filter .12s;
+  -webkit-tap-highlight-color: transparent;
+}
+body :is(.ci-sayfa-kapat, .tapu-kapat, .bildirim-kapat, .kapat) { position: relative; }
+body :is(.ci-sayfa-kapat, .tapu-kapat, .modal-kapat, .bildirim-kapat, .tn-giris-kapat, .kapat, .gs-kucult)::before,
+body :is(.ci-sayfa-kapat, .tapu-kapat, .modal-kapat, .bildirim-kapat, .tn-giris-kapat, .kapat, .gs-kucult)::after {
+  content: ''; position: absolute; left: 50%; top: 50%; width: 18px; height: 4px; border-radius: 4px; background: #fff;
+  box-shadow: 0 1px 0 rgba(120, 30, 10, .25);
+}
+body :is(.ci-sayfa-kapat, .tapu-kapat, .modal-kapat, .bildirim-kapat, .tn-giris-kapat, .kapat, .gs-kucult)::before { transform: translate(-50%, -50%) rotate(45deg); }
+body :is(.ci-sayfa-kapat, .tapu-kapat, .modal-kapat, .bildirim-kapat, .tn-giris-kapat, .kapat, .gs-kucult)::after { transform: translate(-50%, -50%) rotate(-45deg); }
+body :is(.ci-sayfa-kapat, .tapu-kapat, .modal-kapat, .bildirim-kapat, .tn-giris-kapat, .kapat):hover { filter: brightness(1.06); transform: scale(1.06); }
+body :is(.ci-sayfa-kapat, .tapu-kapat, .modal-kapat, .bildirim-kapat, .tn-giris-kapat, .kapat):active { transform: translateY(2px); box-shadow: 0 1px 0 #a3321f, 0 2px 6px rgba(120, 30, 10, .3); }
+body :is(.ci-sayfa-kapat, .tapu-kapat, .modal-kapat, .bildirim-kapat, .tn-giris-kapat, .kapat, .gs-kucult):focus-visible { outline: 3px solid #ffd45c; outline-offset: 2px; }
+/* Köşeye yaslananlar biraz içeride dursun */
+body .modal-kapat, body .tn-giris-kapat { top: 10px; right: 10px; z-index: 3; }
+/* Görev şeridindeki küçültme düğmesi: aynı tasarımın sakin (krem) küçük sürümü, şeridi ezmesin */
+body .gs-kucult { position: relative; width: 34px; height: 34px; border: 2px solid #fff; border-radius: 50%; font-size: 0; color: transparent;
+  background: radial-gradient(circle at 35% 28%, #fffaf0, #efe5cf); box-shadow: 0 2px 0 #d8c9a6, 0 3px 8px rgba(60, 40, 10, .18); }
+body .gs-kucult::before, body .gs-kucult::after { width: 13px; height: 3px; background: #9a7a4a; box-shadow: none; }
+#genelGovde > :first-child { padding-right: 48px; }   /* başlık kapatma düğmesinin altına girmesin */

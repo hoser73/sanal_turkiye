@@ -36,7 +36,7 @@ button:disabled { cursor: not-allowed; }
 /* ---------- Üst çubuk ---------- */
 .ust {
   display: flex; align-items: center; gap: 16px; padding: 0 16px;
-  background: var(--kart); border-bottom: 1px solid var(--cizgi); z-index: 5;
+  background: var(--kart); border-bottom: 1px solid var(--cizgi); z-index: 20;   /* bildirim kutusu haritadaki yüzen düğmelerin üstünde */
 }
 .logo { display: flex; align-items: center; gap: 8px; text-decoration: none; color: var(--murekkep); font-family: var(--baslik-font); font-size: 19px; white-space: nowrap; }
 .logo b { color: var(--birincil); font-weight: 700; }
@@ -567,7 +567,7 @@ button.liste-oge:hover { border-color: var(--birincil); }
 
 /* ---------- Sohbet çekmecesi ve canlılık ---------- */
 .sohbet-cekmece {
-  position: absolute; left: 16px; bottom: 16px; z-index: 4; width: min(360px, calc(100vw - 32px)); height: min(480px, calc(100% - 120px));
+  position: absolute; left: 16px; bottom: 16px; z-index: 13; width: min(360px, calc(100vw - 32px)); height: min(480px, calc(100% - 120px));
   background: var(--kart); border: 1px solid var(--cizgi); border-radius: 16px; box-shadow: var(--golge);
   display: flex; flex-direction: column; overflow: hidden;
 }
