@@ -11,11 +11,12 @@ const HATALAR = {
   eposta: 'Hesabının e-posta adresi paylaşılmadı; e-postayla kayıt olabilirsin.', baska_hesap: 'Bu hesap başka bir oyuncuya bağlı.',
   askida: 'Hesap askıya alınmış.', kapali: 'Bu giriş yolu şu an kapalı.',
 };
-const ADIMLAR = ['Hesap', 'Profil', 'Telefon', 'Memleket'];
+// Kayıt: hesap → profil → ilk giriş sihirbazı (arsa seçimi). Telefon ve memleket isteğe bağlı, adım çubuğunda yok.
+const ADIMLAR = ['Hesap', 'Profil', 'Çiftlik'];
 const GOOGLE_G = '<svg viewBox="0 0 48 48" width="20" height="20" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.9 6.1C12.5 13.6 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.7 6c4.5-4.2 6.9-10.3 6.9-17.7z"/><path fill="#FBBC05" d="M10.6 28.6A14.5 14.5 0 0 1 9.5 24c0-1.6.3-3.2.8-4.6l-7.9-6.1A24 24 0 0 0 0 24c0 3.9.9 7.5 2.7 10.7l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.7-6c-2.1 1.4-4.9 2.3-8.2 2.3-6.2 0-11.5-4.1-13.4-9.9l-7.9 6.1C6.6 42.6 14.6 48 24 48z"/></svg>';
 const APPLE = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="currentColor"><path d="M16.4 12.6c0-2.6 2.1-3.8 2.2-3.9-1.2-1.8-3.1-2-3.7-2-1.6-.2-3.1.9-3.9.9s-2.1-.9-3.4-.9c-1.7 0-3.4 1-4.3 2.6-1.8 3.2-.5 7.9 1.3 10.5.9 1.3 1.9 2.7 3.2 2.6 1.3 0 1.8-.8 3.3-.8s2 .8 3.4.8c1.4 0 2.3-1.3 3.1-2.6 1-1.5 1.4-2.9 1.4-3-.1 0-2.6-1-2.6-4.2zM13.9 4.9c.7-.9 1.2-2 1-3.2-1 .1-2.2.7-3 1.6-.6.7-1.2 1.9-1 3.1 1.1.1 2.3-.6 3-1.5z"/></svg>';
 
-export function girisKur({ api, tost, girisSonrasi, iller, rehberBaslat }) {
+export function girisKur({ api, tost, girisSonrasi, iller, rehberBaslat, sihirbazda }) {
   const kok = document.getElementById('acilis');
   const kart = document.getElementById('acilisKart');
   let ekran = 'karsilama', yollar = { google: false, apple: false, passkey: true, telefon: false }, hata = '', bilgi = '';
@@ -28,9 +29,8 @@ export function girisKur({ api, tost, girisSonrasi, iller, rehberBaslat }) {
     ${yollar.apple ? `<a class="dugme sosyal apple" href="/api/oauth/apple/basla">${APPLE}<span>Apple ile devam et</span></a>` : ''}
     ${passkeyVar ? '<button type="button" class="dugme sosyal passkey" data-a="passkey-giris"><span class="ikon">🔑</span><span>Passkey ile giriş yap</span></button>' : ''}`;
   const uyari = () => `${hata ? `<p class="acilis-hata" role="alert">${esc(hata)}</p>` : ''}${bilgi ? `<p class="acilis-bilgi">${esc(bilgi)}</p>` : ''}`;
-  const adimCubugu = (i) => `<ol class="kayit-adimlar" aria-label="Kayıt adımları">${ADIMLAR.filter((a) => a !== 'Telefon' || yollar.telefon)
-    .map((a, k, d) => `<li class="${k < i ? 'bitti' : k === i ? 'simdi' : ''}" aria-current="${k === i ? 'step' : 'false'}"><span>${k < i ? '✓' : k + 1}</span>${a}</li>`).join('')}</ol>`;
-  const adimNo = (ad) => ADIMLAR.filter((a) => a !== 'Telefon' || yollar.telefon).indexOf(ad);
+  const adimCubugu = (i) => (i < 0 ? '' : `<ol class="kayit-adimlar" aria-label="Kayıt adımları">${ADIMLAR
+    .map((a, k) => `<li class="${k < i ? 'bitti' : k === i ? 'simdi' : ''}" aria-current="${k === i ? 'step' : 'false'}"><span>${k < i ? '✓' : k + 1}</span>${a}</li>`).join('')}</ol>`);
 
   const EKRANLAR = {
     karsilama: () => `
@@ -48,8 +48,8 @@ export function girisKur({ api, tost, girisSonrasi, iller, rehberBaslat }) {
       <div class="sosyal-liste">${sosyal()}</div>
       <div class="ayirici"><span>ya da e-postayla</span></div>
       <form class="form" data-f="giris">
-        <label>E-posta<input name="email" type="email" autocomplete="username webauthn" required></label>
-        <label>Parola<span class="sifre-alan"><input name="sifre" type="password" autocomplete="current-password" required><button type="button" class="goster" data-a="goster" aria-label="Parolayı göster">👁</button></span></label>
+        <label>E-posta<input name="email" type="email" aria-label="E-posta" autocomplete="username webauthn" required></label>
+        <label>Parola<span class="sifre-alan"><input name="sifre" type="password" aria-label="Parola" autocomplete="current-password" required><button type="button" class="goster" data-a="goster" aria-label="Parolayı göster">👁</button></span></label>
         <button class="dugme birincil genis">Giriş yap</button>
       </form>
       <p class="acilis-alt"><button type="button" class="bag" data-a="ekran" data-e="unuttum">Parolamı unuttum</button> · Hesabın yok mu? <button type="button" class="bag" data-a="ekran" data-e="karsilama">Kayıt ol</button></p>`,
@@ -62,21 +62,21 @@ export function girisKur({ api, tost, girisSonrasi, iller, rehberBaslat }) {
     unuttum: () => `
       <h2 id="acilisBaslik">Parolanı mı unuttun?</h2>
       <p class="alt">Hesabının e-posta adresini yaz; sıfırlama bağlantısı gönderelim.</p>${uyari()}
-      <form class="form" data-f="unuttum"><label>E-posta<input name="email" type="email" autocomplete="email" required></label>
+      <form class="form" data-f="unuttum"><label>E-posta<input name="email" type="email" aria-label="E-posta" autocomplete="email" required></label>
         <button class="dugme birincil genis">Bağlantı gönder</button></form>
       <p class="acilis-alt"><button type="button" class="bag" data-a="ekran" data-e="giris">← Girişe dön</button></p>`,
     sifirla: () => `
       <h2 id="acilisBaslik">Yeni parola</h2>
       <p class="alt">Kaydedince tüm cihazlardaki oturumların kapatılır.</p>${uyari()}
-      <form class="form" data-f="sifirla"><label>Yeni parola<input name="sifre" type="password" autocomplete="new-password" minlength="8" required></label>
+      <form class="form" data-f="sifirla"><label>Yeni parola<input name="sifre" type="password" aria-label="Parola" autocomplete="new-password" minlength="8" required></label>
         ${sifreGucu('')}<button class="dugme birincil genis">Kaydet</button></form>`,
     hesap: () => `
       ${adimCubugu(0)}
       <h2 id="acilisBaslik">Hesabını oluştur</h2>${uyari()}
       ${yollar.google || yollar.apple ? `<div class="sosyal-liste yatay">${yollar.google ? `<a class="dugme sosyal google" href="/api/oauth/google/basla">${GOOGLE_G}<span>Google</span></a>` : ''}${yollar.apple ? `<a class="dugme sosyal apple" href="/api/oauth/apple/basla">${APPLE}<span>Apple</span></a>` : ''}</div><div class="ayirici"><span>ya da</span></div>` : ''}
       <form class="form" data-f="hesap">
-        <label>E-posta<input name="email" type="email" autocomplete="email" required value="${esc(kayitBilgi?.email || '')}"></label>
-        <label>Parola<span class="sifre-alan"><input name="sifre" type="password" autocomplete="new-password" minlength="8" required><button type="button" class="goster" data-a="goster" aria-label="Parolayı göster">👁</button></span></label>
+        <label>E-posta<input name="email" type="email" aria-label="E-posta" autocomplete="email" required value="${esc(kayitBilgi?.email || '')}"></label>
+        <label>Parola<span class="sifre-alan"><input name="sifre" type="password" aria-label="Parola" autocomplete="new-password" minlength="8" required><button type="button" class="goster" data-a="goster" aria-label="Parolayı göster">👁</button></span></label>
         ${sifreGucu('')}
         <button class="dugme birincil genis">Devam →</button>
       </form>
@@ -111,7 +111,7 @@ export function girisKur({ api, tost, girisSonrasi, iller, rehberBaslat }) {
       </form>
       ${taslak ? '' : '<p class="acilis-alt"><button type="button" class="bag" data-a="ekran" data-e="hesap">← Geri</button></p>'}`;
     },
-    telefon: () => `${adimCubugu(2)}
+    telefon: () => `${adimCubugu(-1)}
       <h2 id="acilisBaslik">Telefonunu doğrula</h2>
       <p class="alt">Hesabını korur, sahte hesapları engeller. Numaran şifreli saklanır, kimseyle paylaşılmaz ve reklam için kullanılmaz.</p>${uyari()}
       ${telefonKodu ? `<form class="form" data-f="telefon-dogrula"><label>${esc(telefonKodu.telefon)} numarasına gelen 6 haneli kod
@@ -122,7 +122,7 @@ export function girisKur({ api, tost, girisSonrasi, iller, rehberBaslat }) {
       : `<form class="form" data-f="telefon-kod"><label>Cep telefonu<span class="tel-alan"><span class="on-ek">🇹🇷 +90</span><input name="telefon" type="tel" inputmode="tel" autocomplete="tel-national" placeholder="5xx xxx xx xx" required></span></label>
           <button class="dugme birincil genis">Kod gönder</button></form>`}
       <p class="acilis-alt"><button type="button" class="bag" data-a="ekran" data-e="memleket">Şimdilik geç →</button></p>`,
-    memleket: () => `${adimCubugu(adimNo('Memleket'))}
+    memleket: () => `${adimCubugu(-1)}
       <h2 id="acilisBaslik">Memleketin neresi?</h2>
       <p class="alt">Memleketinin il liginde puan toplarsın; hemşehrilerini görürsün. Tarlanı Türkiye'nin her yerinde açabilirsin.</p>${uyari()}
       <form class="form" data-f="memleket">
@@ -134,7 +134,7 @@ export function girisKur({ api, tost, girisSonrasi, iller, rehberBaslat }) {
   };
   function secenekSatiri(ad, alan, ogeler) {
     return `<div class="avatar-satir"><span>${ad}</span><div role="radiogroup" aria-label="${ad}">${ogeler.map(([i, ic]) =>
-      `<button type="button" role="radio" aria-checked="${avatar[alan] === i}" data-a="avatar" data-alan="${alan}" data-i="${i}">${ic}</button>`).join('')}</div></div>`;
+      `<button type="button" role="radio" aria-checked="${avatar[alan] === i}" aria-label="${ad} ${i + 1}" data-a="avatar" data-alan="${alan}" data-i="${i}">${ic}</button>`).join('')}</div></div>`;
   }
   function sifreGucu(s) {
     const p = (s.length >= 8) + (s.length >= 12) + /[A-ZÇĞİÖŞÜ]/.test(s) + /\d/.test(s) + /[^\p{L}\d]/u.test(s);
@@ -165,6 +165,9 @@ export function girisKur({ api, tost, girisSonrasi, iller, rehberBaslat }) {
   // ---------- Akışlar
   async function kayitBitti() {
     await girisSonrasi(null);
+    // Yeni oyuncuyu ilk giriş sihirbazı karşılar (arsa seçimi + çiftlik turu): kayıt penceresi ve açılış kapanır;
+    // telefon ve memleket isteğe bağlıdır, sonra Ben → Hesabım'dan eklenir (yoksa pencere turun altında kalıyordu)
+    if (sihirbazda?.()) { kapat(); return; }
     git(yollar.telefon ? 'telefon' : 'memleket');
   }
   async function passkeyGiris(d) {
@@ -237,7 +240,7 @@ export function girisKur({ api, tost, girisSonrasi, iller, rehberBaslat }) {
   }
   async function bitir() {
     kapat();
-    tost('🌾 Hazırsın! Hasan Dayı ilk tarlanı bulmana yardım edecek.');
+    tost('🌾 Hazırsın! Üstteki görev şeridi ilk adımlarını gösterecek.');
     rehberBaslat?.();
   }
 

@@ -9,20 +9,22 @@ export const baglantiDurumu = () => baglanti;
 
 export function canliBaslat() {
   if (ws && ws.readyState <= 1) return;
-  ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/canli`);
+  const bu = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/canli`);
+  ws = bu;
   ws.addEventListener('open', () => { bekleme = 1000; baglanti = 'acik'; yay('durum', baglanti); if (kanallar.length) gonder({ tip: 'abone', kanallar }); });
   ws.addEventListener('message', (e) => {
     let m; try { m = JSON.parse(e.data); } catch { return; }
     if (dinleyiciler[m.tip]) yay(m.tip, m);
   });
   ws.addEventListener('close', () => {
+    if (ws !== bu) return;   // yenilenmiş (eski) bağlantının kapanışı yenisini "çevrimdışı" göstermesin
     baglanti = 'kapali'; yay('durum', baglanti);
     setTimeout(canliBaslat, bekleme + Math.random() * 500);
     bekleme = Math.min(bekleme * 2, 30_000);
   });
 }
 // Giriş/çıkışta kimlik değişir: bağlantıyı yenile
-export function canliYenile() { if (ws) { ws.onclose = null; try { ws.close(); } catch { /* yok */ } } ws = null; canliBaslat(); }
+export function canliYenile() { const eski = ws; ws = null; if (eski) { try { eski.close(); } catch { /* yok */ } } canliBaslat(); }
 function gonder(v) { if (ws?.readyState === 1) ws.send(JSON.stringify(v)); }
 export function kanallaraAbone(liste) {
   kanallar = [...new Set(liste.filter(Boolean))];

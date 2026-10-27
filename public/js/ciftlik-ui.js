@@ -1,6 +1,6 @@
 // Çiftlik oyunu arayüzü: barınak kontrolleri (yemle / topla), süs dükkânı, Görevler sekmesinde seviye ve ödüller,
 // günlük giriş ödülü, sipariş panosu ve haftalık köy yarışması. Eylemler app.js'deki ortak data-eylem dağıtıcısından geçer.
-import { esc, akce, sayi, sure } from './yardimci.js';
+import { esc, akce, sayi, sure, sayiBulunma } from './yardimci.js';
 
 // Barınak satırı (parsel kartındaki yapı listesinde)
 export function hayvanSatiri(y, { ben, yem = 0, asi = 0, simdi }) {
@@ -8,7 +8,7 @@ export function hayvanSatiri(y, { ben, yem = 0, asi = 0, simdi }) {
   if (!h) return '';
   const durum = h.durum === 'HAZIR' ? `<b class="yesil-metin">${h.urunIkon} ${h.miktar} ${esc(h.urunAd)} hazır</b>`
     : h.durum === 'BESLENDI' ? `⏳ ${esc(h.urunAd)} hazırlanıyor · <span data-bitis="${h.hazir}">${sure(h.hazir - simdi())}</span>`
-      : `${h.ikon} ${h.sayi} ${esc(h.hayvan.toLowerCase())} aç · ${h.yem} yem ister`;
+      : `${h.ikon} ${h.sayi} ${esc(h.hayvan.toLocaleLowerCase('tr-TR'))} aç · ${h.yem} yem ister`;
   const dugme = !ben ? '' : h.durum === 'HAZIR'
     ? `<button class="dugme altin ince" data-eylem="hayvan-topla" data-id="${y.id}" data-ikon="${h.urunIkon}">${h.urunIkon} Topla</button>`
     : h.durum === 'AC' ? `<button class="dugme ince" data-eylem="hayvan-besle" data-id="${y.id}" title="${yem >= h.yem ? 'Envanterdeki yem kullanılır' : 'Eksik yem satın alınır'}">🌽 Yemle${yem < h.yem ? ` (${akce((h.yem - Math.min(yem, h.yem)) * 1.2)})` : ''}</button>` : '';
@@ -24,7 +24,7 @@ export function susBolumu(k) {
   const mevcut = k.susler.length ? `<ul class="sus-liste">${k.susler.map((s) => `<li>${s.ikon} ${esc(s.ad)} <button class="bag" data-eylem="sus-kaldir" data-id="${s.id}" title="Kaldır (bedeli iade edilmez)">kaldır</button></li>`).join('')}</ul>` : '';
   return `<h3 class="bolum">Çiftlik süsleri <span class="kucuk">${k.susler.length}/8</span></h3>${mevcut}
     <div class="sus-dukkan">${k.susSecenekleri.map((s) => `
-      <button class="sus-oge" data-eylem="sus-ekle" data-tur="${s.kod}" ${s.acik && k.susler.length < 8 ? '' : 'disabled'} title="${s.acik ? esc(s.ad) : `Seviye ${s.minSeviye}'te açılır`}">
+      <button class="sus-oge" data-eylem="sus-ekle" data-tur="${s.kod}" ${s.acik && k.susler.length < 8 ? '' : 'disabled'} title="${s.acik ? esc(s.ad) : `Seviye ${sayiBulunma(s.minSeviye)} açılır`}">
         <span class="sus-ikon">${s.acik ? s.ikon : '🔒'}</span><b>${esc(s.ad)}</b><span class="kucuk">${s.acik ? akce(s.fiyat) : `Sv ${s.minSeviye}`}</span></button>`).join('')}</div>`;
 }
 
@@ -37,7 +37,7 @@ export function ciftlikBolumu(c, { simdi }) {
         <div class="kucuk">${sayi(sv.tp)} TP${sv.sonraki ? ` · sonraki seviyeye ${sayi(sv.sonraki - sv.tp)} TP` : ' · en üst seviye'}</div></div></div>
       <div class="cubuk altin"><span style="width:${ilerleme}%"></span></div>
       ${sv.odulBekleyen.length ? `<button class="dugme altin genis" data-eylem="seviye-odul" style="margin-top:10px">🎁 Seviye ödülünü al (${akce(sv.odulTutari)})</button>` : ''}
-      ${sv.acilanlar.length ? `<p class="kucuk" style="margin:8px 0 0">Seviye ${sv.seviye + 1}'te açılır: ${sv.acilanlar.map((a) => `${a.ikon} ${esc(a.ad)}`).join(', ')}</p>` : ''}
+      ${sv.acilanlar.length ? `<p class="kucuk" style="margin:8px 0 0">Seviye ${sayiBulunma(sv.seviye + 1)} açılır: ${sv.acilanlar.map((a) => `${a.ikon} ${esc(a.ad)}`).join(', ')}</p>` : ''}
     </div>`;
   const g = c.gunluk;
   const gunluk = `<div class="kutu gunluk-kutu"><div class="satir"><span class="buyuk-ikon">${g.alinabilir ? '🎁' : '✅'}</span>

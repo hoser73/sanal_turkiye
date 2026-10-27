@@ -1,6 +1,6 @@
 // Komşular (arkadaşlar, istekler, hediyeler, yardım), yöresel ürünler (üretim ve albüm) ve mevsimlik etkinlik
 // (balık tutma mini oyunu: balik-ui.js). Bölümler "Çiftliğim" sekmesinin alt başlıklarıdır; eylemler app.js'deki dağıtıcıdan geçer.
-import { esc, akce, sayi, sure } from './yardimci.js';
+import { esc, akce, sayi, sure, sayiBulunma } from './yardimci.js';
 
 // ---------- Komşular
 export function komsularBolumu(k) {
@@ -24,7 +24,7 @@ export function komsularBolumu(k) {
     : `<div class="bos-durum"><div class="buyuk-ikon">🤝</div><p>Henüz komşun yok.</p><p class="kucuk">Haritada bir oyuncunun parseline dokun, kartındaki <b>Komşu ol</b> düğmesine bas. Demo sakinler isteğini hemen kabul eder.</p></div>`;
   return `${gelen}${hediye}<h3 class="bolum">🏘️ Komşularım <span class="kucuk">${k.arkadaslar.length}</span></h3>
     <p class="kucuk">Bugün ${L.yardimBugun}/${L.yardim} yardım · ${L.gonderimBugun}/${L.gonderim} ürün gönderimi. Komşunun tarlasına yardım edince sulama sayılır ya da ekin daha erken olgunlaşır; ikinize de yarar.</p>
-    ${L.gonderebilir ? '' : `<p class="kucuk">🎁 Hediye ve 📦 ürün gönderme seviye ${L.gonderimSeviye}'te açılır.</p>`}
+    ${L.gonderebilir ? '' : `<p class="kucuk">🎁 Hediye ve 📦 ürün gönderme seviye ${sayiBulunma(L.gonderimSeviye)} açılır.</p>`}
     ${liste}
     ${k.giden.length ? `<p class="kucuk">Bekleyen isteklerin: ${k.giden.map((g) => esc(g.ad)).join(', ')}</p>` : ''}`;
 }
@@ -50,6 +50,36 @@ export function urunGonderFormu(ad, kullaniciId, envanter) {
 }
 
 // ---------- Yöresel ürünler
+// Koleksiyon haritası: albüme ürünü konan iller altın, elinde olan yeşil, diğer ürünlü iller soluk; il sınırları bir kez
+// yüklenip SVG yola çevrilir (eşdikdörtgen izdüşüm, enlem düzeltmeli)
+let ilYollari = null;
+async function ilYollariHazirla() {
+  if (ilYollari) return ilYollari;
+  const g = await fetch('/veri/iller.geojson').then((r) => r.json());
+  const k = Math.cos((39 * Math.PI) / 180), X = (lon) => (lon - 25.6) * k * 26, Y = (lat) => (42.2 - lat) * 26;
+  ilYollari = g.features.map((f) => {
+    const halkalar = f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry.coordinates;
+    const d = halkalar.map((p) => p.map((h) => h.filter((_, i) => i % 3 === 0).map(([a, b], i) => `${i ? 'L' : 'M'}${X(a).toFixed(1)} ${Y(b).toFixed(1)}`).join('') + 'Z').join('')).join('');
+    return { plaka: f.properties.plaka, ad: f.properties.ad, d };
+  });
+  return ilYollari;
+}
+function koleksiyonHaritasi(y) {
+  const durum = new Map();
+  for (const u of y.urunler) { const o = durum.get(u.il) || 0; durum.set(u.il, Math.max(o, u.albumde ? 3 : u.eldeki ? 2 : 1)); }
+  const kimlik = `kh-${Math.random().toString(36).slice(2, 8)}`;
+  ilYollariHazirla().then((yollar) => {
+    const el = document.getElementById(kimlik);
+    if (!el) return;
+    el.innerHTML = `<svg viewBox="0 0 410 175" role="img" aria-label="Yöresel ürün koleksiyon haritası">${yollar.map((p) => {
+      const d = durum.get(p.plaka) || 0;
+      return `<path d="${p.d}" class="kh-il kh-${d}"><title>${esc(p.ad)}${d === 3 ? ' · albümde' : d === 2 ? ' · elinde' : d === 1 ? ' · yöresel ürünü var' : ''}</title></path>`;
+    }).join('')}</svg>`;
+  }).catch(() => {});
+  return `<div class="koleksiyon-harita" id="${kimlik}"></div>
+    <div class="kh-lejant"><span><i class="kh-3"></i>Albümde</span><span><i class="kh-2"></i>Elinde</span><span><i class="kh-1"></i>Toplanacak</span></div>`;
+}
+
 export function yoreselBolumu(y) {
   const uretebilir = y.urunler.filter((u) => u.uretebilir);
   const uret = uretebilir.length ? `<h3 class="bolum">🏭 Yöresel üretim</h3><div class="liste">${uretebilir.map((u) => {
@@ -64,6 +94,7 @@ export function yoreselBolumu(y) {
         title="${esc(u.ad)} · ${esc(u.ilAd)}${u.albumde ? ' · albümde' : u.eldeki ? ' · albüme koy' : ' · henüz yok'}">
         <span>${u.albumde || u.eldeki ? u.ikon : '❔'}</span><small>${esc(u.ad)}</small>${u.eldeki && !u.albumde ? '<i>+</i>' : ''}</button>`).join('')}</div></div>`).join('');
   return `${uret}<h3 class="bolum">📔 Coğrafi işaret albümü <span class="kucuk">${y.albumToplam}/${y.urunler.length}</span></h3>
+    ${koleksiyonHaritasi(y)}
     <p class="kucuk">Her ürün albüme bir kez konur (${akce(y.kural.albumOdul)}). Ürünler borsada ve komşular arasında takas edilebilir.</p>${albumSayfalari}`;
 }
 

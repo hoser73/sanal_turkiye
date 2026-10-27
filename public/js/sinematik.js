@@ -36,7 +36,7 @@ function yaz(kap, baslik, alt) {
   requestAnimationFrame(() => el.classList.add('acik'));
 }
 
-// Sinema sırasında harita üstü arayüz (lejant, ipucu) çekilir
+// Sinema sırasında harita üstü arayüz (ipucu) çekilir
 function sinemaKipi(kap, sinif, acik) {
   kap.classList.toggle(sinif, acik);
   document.body.classList.toggle('sinema', acik);

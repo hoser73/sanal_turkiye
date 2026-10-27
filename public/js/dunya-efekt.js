@@ -2,6 +2,7 @@
 // sulama bekliyor 💧, hayvan ürünü hazır 🥚) ve eylem anında kısa parçacık efektleri (hasatta ürünler havaya fırlar,
 // sulamada damlalar düşer, ekimde fideler belirir). Baloncuk ve parçacıklar kameraya dönük düzlemlerdir.
 import * as THREE from '/vendor/three/three.module.js';
+import { emojiCiz } from './emoji.js';
 
 const dokular = new Map();
 // Emoji baloncuğu (renkli kenarlı beyaz daire + kuyruk) ya da çıplak emoji
@@ -19,8 +20,11 @@ function emojiDoku(emoji, kenar = null) {
   }
   g.font = `${kenar ? 62 : 96}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
   g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.fillText(emoji, 64, kenar ? 66 : 70);
-  const t = new THREE.CanvasTexture(c);
+  // Emoji yedek görselle çiziliyorsa yüklenince dokuya basılır
+  const ciz = () => emojiCiz(g, emoji, 64, kenar ? 66 : 70, kenar ? 66 : 100, () => { ciz(); t.needsUpdate = true; });
+  let t = null;
+  ciz();
+  t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   dokular.set(k, t);
   return t;

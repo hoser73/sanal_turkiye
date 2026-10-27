@@ -2,6 +2,7 @@
 // oltaya takma ve makara mücadelesi (gerginlik yeşil bölgede kalmalı), balığın sudan sıçrayarak çıkışı.
 // Isırma anını, oltaya takılmayı, türü ve ağırlığı sunucu belirler; mücadele burada oynanır, sunucu en kısa süreyi denetler.
 import { esc, akce } from './yardimci.js';
+import { emojiCiz } from './emoji.js';
 
 const W = 640, H = 360, SU = 150;                 // mantıksal tuval boyutu ve su yüzeyi
 const KANCA_DERINLIK = 92;
@@ -219,7 +220,7 @@ export function balikOyunu2B(kap, { api, sonuc, ses }) {
     const bx = 160, bw = 320, by = 18;
     g.fillStyle = 'rgba(30,20,10,.55)'; g.beginPath(); g.roundRect(bx - 10, by - 9, bw + 20, 18, 9); g.fill();
     g.fillStyle = '#f2c14e'; g.beginPath(); g.roundRect(bx, by - 4, bw * ilerleme, 8, 4); g.fill();
-    g.font = '16px system-ui, sans-serif'; g.fillText('🐟', bx + bw * ilerleme, by + 6); g.fillText('🪣', bx + bw + 18, by + 6);
+    g.font = '16px system-ui, sans-serif'; emojiCiz(g, '🐟', bx + bw * ilerleme, by + 6, 17); emojiCiz(g, '🪣', bx + bw + 18, by + 6, 17);
   }
 
   // ---------- Ana döngü

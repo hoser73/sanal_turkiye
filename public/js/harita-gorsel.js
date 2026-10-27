@@ -3,6 +3,7 @@
 // canlandırmalar oyunun kendi ayarına bağlıdır (sistemin hareketi azalt tercihi dünyayı dondurmaz).
 import { gunesKonumu } from './gunes.js';
 import { CIFTLIK_DOKULARI, dokuCiz } from './ciftlik-doku.js';
+import { emojiCiz } from './emoji.js';
 
 const ORAN = Math.min(2, window.devicePixelRatio || 1);
 
@@ -49,7 +50,8 @@ const DESEN = {
 };
 
 // Renkli emoji: harita yazı tipleri emojiyi tek renk çizer; tarayıcının emoji yazı tipiyle resme dönüştürülür
-function emojiResmi(emoji, boyut = 26, rozet = true) {
+// hazir: emoji yedek görselle çiziliyorsa ve görsel henüz yüklenmediyse, yüklenince çağrılır (simge yenilenir)
+function emojiResmi(emoji, boyut = 26, rozet = true, hazir) {
   const [c, g] = tuval(boyut + 8, boyut + 8);
   const m = (boyut + 8) / 2;
   if (rozet) {
@@ -58,7 +60,7 @@ function emojiResmi(emoji, boyut = 26, rozet = true) {
   }
   g.font = `${boyut * 0.78}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
   g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.fillText(emoji, m, m + boyut * 0.05);
+  emojiCiz(g, emoji, m, m + boyut * 0.05, boyut * 0.8, hazir);
   return c;
 }
 
@@ -69,8 +71,10 @@ export function simgeleriBagla(map) {
     let c = null;
     if (DESEN[id]) c = DESEN[id]();
     else if (CIFTLIK_DOKULARI.includes(id)) c = dokuCiz(id, ORAN);
-    else if (id.startsWith('e:')) c = emojiResmi(id.slice(2), 24, true);
-    else if (id.startsWith('ec:')) c = emojiResmi(id.slice(3), 30, false);
+    else if (id.startsWith('e:') || id.startsWith('ec:')) {
+      const e = id.slice(id.indexOf(':') + 1), [boyut, rozet] = id.startsWith('e:') ? [24, true] : [30, false];
+      c = emojiResmi(e, boyut, rozet, () => { if (map.hasImage(id)) map.updateImage(id, resimVerisi(emojiResmi(e, boyut, rozet))); });
+    }
     if (c) map.addImage(id, resimVerisi(c), { pixelRatio: ORAN });
   };
   if (typeof map.setMissingStyleImageResolver === 'function') map.setMissingStyleImageResolver(coz);

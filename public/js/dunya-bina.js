@@ -3,10 +3,11 @@
 // yere uzun gölge düşer. Oyuncu parselleri parsel kartıyla aynı modellerle (model3d.js) çizilir; fabrika bacası tüter.
 import * as THREE from '/vendor/three/three.module.js';
 import { kararli, alanHesapla, kaldir, birlestir } from './dunya-ortak.js';
-import { kiremitTuvali, dokuCiz } from './ciftlik-doku.js';
-import { parselParcalari } from './modeller.js';
+import { kiremitTuvali } from './ciftlik-doku.js';
 import { S } from './model3d.js';
-import { parselModeli } from './parsel3d.js';
+import { tarlaCercevesi, cokgenPlaka } from './tarla-geo.js';
+import { sevimliParselModeli } from './sevimli-parsel.js';
+import { RUZGAR, RENK, malz, levha, otTutamlari, kenarNoktalari } from './sevimli3d.js';
 import * as G from './izgara.js';
 
 // Sıcak sıva tonları, köyde taş; kiremit (dokuyla çarpılır), düz çatılar
@@ -137,21 +138,9 @@ export function binaKur(ctx) {
   const catiMalzeme = new THREE.MeshLambertMaterial({ map: kiremit, vertexColors: true, side: THREE.DoubleSide });
   const golgeMalzeme = new THREE.MeshBasicMaterial({ color: '#0d1410', transparent: true, opacity: 0.3, depthWrite: false,
     polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
-  // Oyuncu parselleri: zemin plakası (tarım: sürülmüş toprak, diğer: çimenli avlu) ve ahşap çit. Hücre 30 × 30 birim.
-  const zeminDoku = (ad, tekrar) => { const t = new THREE.CanvasTexture(dokuCiz(ad, 2)); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(tekrar, tekrar); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; };
-  const plakaMalz = { toprak: new THREE.MeshLambertMaterial({ map: zeminDoku('doku-toprak', 6) }), cimen: new THREE.MeshLambertMaterial({ map: zeminDoku('doku-cimen', 3) }) };
-  // Kalın plaka: arazi ağı örneklenen yükseklikten biraz farklı olabilir, plaka toprağa gömülü otursun
-  const plakaGeo = new THREE.BoxGeometry(S - 0.6, 1.4, S - 0.6);
-  const citGeo = (() => {
-    const p = [], yari = S / 2 - 0.5;
-    const direk = (x, z) => p.push({ geo: new THREE.BoxGeometry(0.22, 1.25, 0.22), renk: '#ffffff', yer: [x, 0.62, z] });
-    for (let t = -yari; t <= yari + 0.01; t += 3) { direk(t, -yari); direk(t, yari); if (Math.abs(t) < yari) { direk(-yari, t); direk(yari, t); } }
-    for (const yy of [0.5, 1.0]) {
-      p.push({ geo: new THREE.BoxGeometry(S - 1, 0.12, 0.09), renk: '#e8e8e8', yer: [0, yy, -yari] }, { geo: new THREE.BoxGeometry(S - 1, 0.12, 0.09), renk: '#e8e8e8', yer: [0, yy, yari] });
-      p.push({ geo: new THREE.BoxGeometry(0.09, 0.12, S - 1), renk: '#e8e8e8', yer: [-yari, yy, 0] }, { geo: new THREE.BoxGeometry(0.09, 0.12, S - 1), renk: '#e8e8e8', yer: [yari, yy, 0] });
-    }
-    return birlestir(p);
-  })();
+  // Oyuncu parselleri, Çiftliğim görünümüyle aynı zemin: yuvarlak köşeli çimen yastığı (kalın: yamaçta toprağa gömülü otursun)
+  const yastikGeo = levha(S - 0.7, S - 0.7, RENK.cimen, { kalinlik: 1.4, kose: 2.2 }).geometry;
+  const yastikMalz = malz(RENK.cimen);
   // Tarla örtüsü: tarlayı boydan boya kaplayan yarım silindir plastik tünel ve kemerleri (y ölçeklenmez: 2,4 m yüksek)
   const ortuGeo = new THREE.CylinderGeometry(1, 1, S - 2.4, 18, 1, true, 0, Math.PI).rotateZ(Math.PI / 2).scale(1, 2.4, S / 2 - 1.6);
   const ortuMalz = new THREE.MeshLambertMaterial({ color: '#f4fbff', transparent: true, opacity: 0.62, side: THREE.DoubleSide, depthWrite: false });
@@ -164,8 +153,28 @@ export function binaKur(ctx) {
     return birlestir(p);
   })();
   const kemerMalz = new THREE.MeshLambertMaterial({ vertexColors: true });
-  const citMalz = { benim: new THREE.MeshLambertMaterial({ vertexColors: true, color: '#d9a640' }), diger: new THREE.MeshLambertMaterial({ vertexColors: true, color: '#8a5a32' }) };
   const panelGeo = new THREE.BoxGeometry(1.9, 0.08, 1.05), depoGeo = new THREE.CylinderGeometry(0.32, 0.32, 1.7, 8).rotateZ(Math.PI / 2);
+  // Tarlanın köşe yüksekliklerine en küçük kareler düzlemi (h = a + b·x + c·z, x/z merkeze göre): tarla bu düzleme
+  // yatırılır ve düzlemden en çok yükselen köşe kadar kaldırılır (tarla hiçbir yerde araziye gömülmez)
+  function araziDuzlemi(noktalar) {
+    let n = 0, sx = 0, sz = 0, sxx = 0, szz = 0, sxz = 0, sh = 0, sxh = 0, szh = 0;
+    for (const [x, z, h] of noktalar) { n++; sx += x; sz += z; sxx += x * x; szz += z * z; sxz += x * z; sh += h; sxh += x * h; szh += z * h; }
+    const A = [[n, sx, sz], [sx, sxx, sxz], [sz, sxz, szz]], B = [sh, sxh, szh];
+    const det = (m) => m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+    const D = det(A);
+    if (n < 3 || Math.abs(D) < 1e-9) return null;
+    const coz = (k) => det(A.map((r, i) => r.map((v, j) => (j === k ? B[i] : v)))) / D;
+    const a = coz(0), b = coz(1), c = coz(2);
+    let fazla = 0;
+    for (const [x, z, h] of noktalar) fazla = Math.max(fazla, h - (a + b * x + c * z));
+    const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(-b, 1, -c).normalize());
+    return { y: a + fazla, q };
+  }
+  // Çokgen içe çekme (çit ve plaka sınırın biraz içinde kalsın)
+  const iceCek = (c, d) => {
+    let cx = 0, cz = 0; for (const [x, z] of c) { cx += x; cz += z; } cx /= c.length; cz /= c.length;
+    return c.map(([x, z]) => { const dx = x - cx, dz = z - cz, l = Math.hypot(dx, dz) || 1; return [x - (dx / l) * d, z - (dz / l) * d]; });
+  };
   let binalar = [], parselGrup = null, sonFc = null;
   const dumanlar = [];
   let bacalar = [];
@@ -310,6 +319,9 @@ export function binaKur(ctx) {
     }
   }
 
+  // Parsel başına sabit süs dağılımı (ot tutamları her çizimde aynı yerde)
+  const tohumluSayi = (t) => { let x = (Math.abs(t) % 2147483646) + 1; return () => { x = (x * 16807) % 2147483647; return (x - 1) / 2147483646; }; };
+
   // ---------- Oyuncu parselleri ----------
   function parselleriKur() {
     parselTemizle();
@@ -318,21 +330,46 @@ export function binaKur(ctx) {
     const isaretListesi = [];
     const hucreM = (40075016.686 * Math.cos((ctx.cografi(0, 0)[1] * Math.PI) / 180)) / G.N;
     for (const f of sonFc.features) {
-      const { gx, gy, z, yp, ek, kz, ss, s: sahip, e: ekinDurum, su, hh, or: ortu } = f.properties;
+      const { gx, gy, z, yp, ek, kz, ss, s: sahip, e: ekinDurum, su, hh, or: ortu, tg, mlon, mlat, yon } = f.properties;
       if (!yp && !ek && !kz && !ss && !sahip) continue;
-      const [lng, lat] = G.merkez(gx, gy);
-      const [x, zz] = ctx.yerel(lng, lat);
+      const [lng, lat] = tg ? [mlon, mlat] : G.merkez(gx, gy);
+      let [x, zz] = ctx.yerel(lng, lat);
       if (Math.hypot(x, zz) > 4000) continue;
+      // Tarla: model tarlanın uzun kenarına döndürülür, ekin ve toprak sınırı izler
+      let tarla = null, olcek = hucreM / S, donus = 0, egim = null;
+      if (tg && f.geometry?.type === 'Polygon') {
+        const x0 = x, z0 = zz;
+        const halka = f.geometry.coordinates[0].slice(0, -1).map(([a, b]) => { const [px, pz] = ctx.yerel(a, b); return [px - x0, pz - z0]; });
+        tarla = tarlaCercevesi(halka, yon || 0);
+        x += tarla.merkez[0]; zz += tarla.merkez[1]; olcek = tarla.olcek; donus = -tarla.aci;
+        egim = araziDuzlemi(halka.map(([hx, hz]) => [x0 + hx - x, z0 + hz - zz, ctx.yukseklik(x0 + hx, z0 + hz)]));
+      }
+      // Izgara parseli de yamaçta arazi eğimine yatırılır: çimen yastığın yan yüzü basamak gibi açıkta kalmasın
+      if (!egim && sahip) {
+        const y = (S / 2 - 0.4) * olcek, nok = [];
+        for (const a of [-y, 0, y]) for (const b of [-y, 0, y]) nok.push([a, b, ctx.yukseklik(x + a, zz + b)]);
+        egim = araziDuzlemi(nok);
+      }
       const g = new THREE.Group();
-      const parcalar = parselParcalari(z, yp, ek, kz, ss);   // yalnızca baca yeri için
-      g.add(parselModeli({ id: `${gx},${gy}`, imar: z, yp, ek, kz, ss }, { ayrinti: 0.45, gece: ortak.gece ?? 0, zeminY: sahip ? 0.1 : 0 }));
-      if (sahip) {
-        // Sahipli parsel: çiftlik oyunundaki gibi çitle çevrili tarla ya da avlu
-        const plaka = new THREE.Mesh(plakaGeo, z === 'TARIM' ? plakaMalz.toprak : plakaMalz.cimen);
-        plaka.position.y = -0.6;   // üst yüzü grubun 0,1 m üstünde
-        const cit = new THREE.Mesh(citGeo, sahip === 1 ? citMalz.benim : citMalz.diger);
-        plaka.userData.paylasimli = cit.userData.paylasimli = true;
-        g.add(plaka, cit);
+      // Oyuncu parselleri haritada da tam sayfa çiftlikteki sevimli modellerle çizilir (tek görsel dil)
+      const model = sevimliParselModeli({ id: `${gx},${gy}`, imar: z, yp, ek, kz, ss }, { gece: ortak.gece ?? 0, tarla });
+      model.position.y = sahip ? 0.1 : 0;
+      g.add(model);
+      // Sahipli parsel, tam sayfa çiftlikteki (Çiftliğim) görünümün aynısı: çimen yastık, kenarında ot tutamları;
+      // çit yalnızca oyuncu tel çit kurduysa (modelin kendisi çizer)
+      if (sahip && tarla) {
+        const sinir = iceCek(tarla.cokgen, 0.4);
+        const plaka = cokgenPlaka(sinir, 1.4, yastikMalz);
+        plaka.position.y = -1.3;   // üst yüzü grubun 0,1 m üstünde
+        g.add(plaka);
+      } else if (sahip) {
+        const plaka = new THREE.Mesh(yastikGeo, yastikMalz);
+        plaka.position.y = -1.3 - 0.04;   // üst yüzü (pah dahil) grubun 0,1 m üstünde
+        plaka.receiveShadow = true;
+        plaka.userData.paylasimli = true;
+        const rs = tohumluSayi(gx * 7919 + gy * 104729), ot = otTutamlari(kenarNoktalari(S - 0.2, S - 0.2, 1.6, rs), rs, { boy: 1.0 });
+        ot.position.y = 0.1;
+        g.add(plaka, ot);
         if (ortu) {
           const tunel = new THREE.Mesh(ortuGeo, ortuMalz), kemer = new THREE.Mesh(kemerGeo, kemerMalz);
           tunel.position.y = kemer.position.y = 0.1;
@@ -341,16 +378,22 @@ export function binaKur(ctx) {
           g.add(tunel, kemer);
         }
       }
-      g.position.set(x, ctx.yukseklik(x, zz) + (sahip ? 0.25 : 0.05), zz);   // sahipli: hafif yükseltilmiş tarla yatağı
+      // sahipli: hafif yükseltilmiş tarla yatağı; büyük tarla arazi eğimine yatırılır (yoksa bir ucu yamaca gömülür)
+      g.position.set(x, (egim ? egim.y : ctx.yukseklik(x, zz)) + (sahip ? (egim ? 0.1 : 0.25) : 0.05), zz);
       // Kendi parselimde baloncuk: hasat hazır, sulama bekliyor, hayvan ürünü hazır
       if (sahip === 1) {
         const tur = ekinDurum === 2 ? 'hasat' : hh ? 'hayvan' : su ? 'su' : null;
         if (tur) isaretListesi.push({ x, y: g.position.y, z: zz, tur });
       }
-      g.scale.set(hucreM / S, 1, hucreM / S);
+      g.scale.set(olcek, 1, olcek);
+      g.rotation.y = donus;
+      if (egim) g.quaternion.premultiply(egim.q);
       parselGrup.add(g);
-      const baca = parcalar.find((p) => p.baca && !p.insaat);
-      if (baca) bacalar.push({ x: x + (baca.u - 0.5) * hucreM, y: g.position.y + baca.tavan + 1.2, z: zz + (baca.v - 0.5) * hucreM });
+      const baca = model.userData.baca;   // sevimli modelin baca ucu (model koordinatı)
+      if (baca) {
+        const bx = baca.x * olcek, bz = baca.z * olcek, c = Math.cos(donus), sn = Math.sin(donus);
+        bacalar.push({ x: x + bx * c + bz * sn, y: g.position.y + baca.y + 0.6, z: zz - bx * sn + bz * c });
+      }
     }
     sahne.add(parselGrup);
     ortak.isaretler?.(isaretListesi);
@@ -371,6 +414,7 @@ export function binaKur(ctx) {
     parseller(fc) { sonFc = fc; },
     parselleriKur,
     kare(dt) {
+      RUZGAR.uZaman.value += dt;   // sevimli ekin ve ağaçlar rüzgârda sallanır
       duvarMalzeme.emissiveIntensity = (ortak.gece ?? 0) * 1.9;
       for (const d of dumanlar) {
         d.userData.faz = (d.userData.faz + dt * 0.22) % 1;

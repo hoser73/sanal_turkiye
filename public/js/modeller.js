@@ -174,7 +174,7 @@ export function ekinParcalari(tip, buyume) {
 }
 
 // Çiftlik süsleri: parsel kenarındaki 8 yuvadan birine yerleşir (yuva sunucuda atanır)
-const SUS_YUVALARI = [[0.07, 0.3], [0.07, 0.7], [0.93, 0.3], [0.93, 0.7], [0.3, 0.07], [0.7, 0.07], [0.3, 0.93], [0.7, 0.93]];
+export const SUS_YUVALARI = [[0.07, 0.3], [0.07, 0.7], [0.93, 0.3], [0.93, 0.7], [0.3, 0.07], [0.7, 0.07], [0.3, 0.93], [0.7, 0.93]];
 export function susParcalari(tur, yuva) {
   const [u, v] = SUS_YUVALARI[yuva % SUS_YUVALARI.length];
   const p = [];
@@ -228,14 +228,25 @@ export function susParcalari(tur, yuva) {
   return p;
 }
 
-// Yapıların parsel içindeki yuvaları (parselParcalari ile aynı kural): ayrıntılı 3B model (parsel3d.js) bunu kullanır
-export function yerlesim(yp) {
+// Yapıların parsel içindeki yuvaları (parselParcalari ile aynı kural): sevimli parsel modeli (sevimli-parsel.js) bunu kullanır
+// Küçük keyif yapılarının sabit köşeleri (ana yapı yuvalarıyla çakışmaz)
+const KUCUK_YUVALAR = { HAVUZ: [0.58, 0.6, 0.96, 0.96], CARDAK: [0.04, 0.04, 0.3, 0.3], OYUN_PARKI: [0.66, 0.04, 0.96, 0.36] };
+// Tarım parselinde avludaki (doğu yarısı) yuvalar: ev ve çardak serayla/ambarla çakışmasın
+const AVLU_YUVALARI = [[0.58, 0.56, 0.9, 0.88], [0.56, 0.1, 0.9, 0.44], [0.6, 0.4, 0.94, 0.6]];
+// tarim: tarım parseli (ana yapılar avluya yerleşir, ekin alanına taşmaz)
+export function yerlesim(yp, { tarim = false } = {}) {
   let anaSira = 0;
-  return (yp || '').split(',').filter(Boolean).map((kayit) => {
-    const [tip, tamamStr] = kayit.split(':');
+  const kayitlar = (yp || '').split(',').filter(Boolean).map((k) => k.split(':'));
+  const avluDolu = new Set(kayitlar.map(([tip]) => tip).filter((t) => TARIM_YUVALARI[t]).map((t) => String(TARIM_YUVALARI[t])));
+  const avluBos = AVLU_YUVALARI.filter((y) => !avluDolu.has(String(y)));
+  return kayitlar.map(([tip, tamamStr]) => {
     let yuva = [0, 0, 1, 1];
     if (TARIM_YUVALARI[tip]) yuva = TARIM_YUVALARI[tip];
-    else if (!['TEL_CIT', 'SULAMA_HATTI', 'PEYZAJ', 'SU_DEPOSU', 'GUNES_PANELI'].includes(tip)) yuva = ANA_YUVALAR[anaSira++ % ANA_YUVALAR.length];
+    else if (tarim && tip === 'CARDAK') yuva = [0.6, 0.42, 0.78, 0.58];
+    else if (KUCUK_YUVALAR[tip]) yuva = KUCUK_YUVALAR[tip];
+    else if (!['TEL_CIT', 'SULAMA_HATTI', 'PEYZAJ', 'SU_DEPOSU', 'GUNES_PANELI'].includes(tip)) {
+      yuva = tarim && avluBos.length ? avluBos.shift() : ANA_YUVALAR[anaSira++ % ANA_YUVALAR.length];
+    }
     return { tip, tamam: tamamStr === '1', yuva };
   });
 }

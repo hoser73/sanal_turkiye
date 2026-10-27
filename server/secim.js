@@ -169,7 +169,7 @@ function yeniSecimleriAc(t) {
       SELECT p.${tur.sakinKolonu} AS r,
         COUNT(DISTINCT CASE WHEN u.is_npc = 0 AND u.status = 'ACTIVE' THEN u.id END) AS gercek,
         COUNT(DISTINCT CASE WHEN u.is_npc = 0 AND u.status = 'ACTIVE' OR (u.is_npc = 1 AND u.npc_kisilik IS NOT NULL AND u.npc_durum = 'AKTIF') THEN u.id END) AS toplam
-      FROM parcels p JOIN users u ON u.id = p.owner_user_id GROUP BY p.${tur.sakinKolonu}
+      FROM parcels p JOIN users u ON u.id = p.owner_user_id WHERE p.owner_user_id IS NOT NULL GROUP BY p.${tur.sakinKolonu}
       HAVING gercek >= ? OR (? AND gercek >= 1 AND toplam >= ?)`).all(tur.minSecmen, NUFUS.etkin ? 1 : 0, tur.minSecmen);
     for (const { r } of bolgeler) {
       if (q.aktifSecim.get(r)) continue;
@@ -274,7 +274,7 @@ function gecis(s, sonraki, t) {
     const anaMakam = Object.keys(tur.makamlar)[0];
     if (!q.aktifAdaylar.all(s.id).some((a) => (a.makam || 'MUHTAR') === anaMakam)) {
       db.prepare(`UPDATE secimler SET asama = 'ADAY_YOK', bitis_at = ? WHERE id = ? AND asama = ?`).run(t, s.id, s.asama);
-      olay('ELECTION_NO_CANDIDATE');
+      olay('ELECTION_NO_CANDIDATE', {}, false);   // haber akışını doldurmasın (mahalle sayfasında görünür)
       return;
     }
     if (asamaYaz.run('KAMPANYA', s.id, s.asama).changes !== 1) return;

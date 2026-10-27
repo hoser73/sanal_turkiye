@@ -41,17 +41,26 @@ const YAPILAR = {
   SU_DEPOSU:    { ad: 'Su deposu',      ikon: '🛢️', kategori: 'Su ve tarım',       maliyet: 60,  sure: 2, taban: 10,  kat: 1, emsal: true,  izin: ['TARIM','SANAYI'], tekil: true, etki: 'Sulama maliyeti yarıya iner' },
   SERA:         { ad: 'Sera',           ikon: '🌱', kategori: 'Yapı',              maliyet: 120, sure: 4, taban: 40,  kat: 1, emsal: true,  izin: ['TARIM'], tekil: true, minAlan: 800, etki: 'Verim +%25, kuraklık riski yok' },
   AMBAR:        { ad: 'Ambar',          ikon: '🏚️', kategori: 'Yapı',              maliyet: 80,  sure: 3, taban: 50,  kat: 1, emsal: true,  izin: ['TARIM'], tekil: true, minAlan: 800, etki: 'Tarlada taze kalma 2 kat, depodaki bozulma yarıya iner' },
-  EV:           { ad: 'Müstakil ev',    ikon: '🏠', kategori: 'Yapı',              maliyet: 150, sure: 4, taban: 120, kat: 2, emsal: true,  izin: ['KONUT','KARMA'], etki: 'Nüfus +4, mahalle çekiciliği' },
-  APARTMAN:     { ad: 'Apartman',       ikon: '🏢', kategori: 'Yapı',              maliyet: 400, sure: 8, taban: 130, kat: 4, emsal: true,  izin: ['KONUT','KARMA'], minAlan: 800, etki: 'Nüfus +16' },
+  EV:           { ad: 'Müstakil ev',    ikon: '🏠', kategori: 'Ev ve keyif', gelir: 20,              maliyet: 150, sure: 4, taban: 120, kat: 2, emsal: true,  izin: ['KONUT','KARMA'], etki: 'Nüfus +4, mahalle çekiciliği' },
+  APARTMAN:     { ad: 'Apartman',       ikon: '🏢', kategori: 'Yapı',              maliyet: 400, sure: 8, taban: 130, kat: 4, emsal: true,  izin: ['KONUT','KARMA'], minAlan: 800, gelir: 50, etki: 'Nüfus +16; daireler kiraya verilir' },
   DUKKAN:       { ad: 'Dükkan',         ikon: '🏪', kategori: 'Yapı',              maliyet: 140, sure: 4, taban: 80,  kat: 1, emsal: true,  izin: ['TICARET','KARMA'], etki: 'Ticaret faaliyeti (pazar modülünde)' },
   RESTORAN:     { ad: 'Restoran',       ikon: '🍽️', kategori: 'Yapı',              maliyet: 220, sure: 5, taban: 120, kat: 1, emsal: true,  izin: ['TICARET','TURIZM','KARMA'], etki: 'Ziyaretçi ilgisi' },
-  PANSIYON:     { ad: 'Pansiyon',       ikon: '🏨', kategori: 'Yapı',              maliyet: 260, sure: 6, taban: 150, kat: 2, emsal: true,  izin: ['TURIZM','TICARET'], minAlan: 800, etki: 'Konaklama' },
+  PANSIYON:     { ad: 'Pansiyon',       ikon: '🏨', kategori: 'Yapı',              maliyet: 260, sure: 6, taban: 150, kat: 2, emsal: true,  izin: ['TURIZM','TICARET'], minAlan: 800, gelir: 45, etki: 'Konaklama; misafirlerden günlük gelir' },
   DEPO:         { ad: 'Depo',           ikon: '📦', kategori: 'Yapı',              maliyet: 160, sure: 4, taban: 200, kat: 1, emsal: true,  izin: ['SANAYI'], etki: 'Lojistik kapasitesi' },
   FABRIKA:      { ad: 'Atölye/fabrika', ikon: '🏭', kategori: 'Yapı',              maliyet: 450, sure: 8, taban: 300, kat: 1, emsal: true,  izin: ['SANAYI'], minAlan: 800, etki: 'Salça, zeytinyağı, pekmez, kumaş, fındık ezmesi, paket çay' },
   GUNES_PANELI: { ad: 'Güneş paneli',   ikon: '☀️', kategori: 'Enerji',            maliyet: 70,  sure: 2, taban: 0,   kat: 0, emsal: false, izin: ['KONUT','TICARET','TARIM','SANAYI','TURIZM','KARMA'], tekil: true, etki: 'Enerji üretimi' },
   DEGIRMEN:     { ad: 'Değirmen',       ikon: '🌬️', kategori: 'Üretim',            maliyet: 180, sure: 5, taban: 60,  kat: 1, emsal: true,  izin: ['TARIM','SANAYI'], tekil: true, etki: 'Buğdayı una çevirir' },
   FIRIN:        { ad: 'Fırın',          ikon: '🥖', kategori: 'Üretim',            maliyet: 200, sure: 5, taban: 70,  kat: 1, emsal: true,  izin: ['TICARET','KARMA'], tekil: true, etki: 'Undan ekmek ve simit' },
-  PEYZAJ:       { ad: 'Peyzaj ve ağaç', ikon: '🌳', kategori: 'Estetik',           maliyet: 25,  sure: 1, taban: 0,   kat: 0, emsal: false, izin: ['KONUT','TICARET','TARIM','SANAYI','TURIZM','KARMA'], tekil: true, etki: 'Ziyaretçi ilgisi, kozmetik puan' },
+  PEYZAJ:       { ad: 'Peyzaj ve ağaç', ikon: '🌳', kategori: 'Estetik',           gizli: true,           maliyet: 25,  sure: 1, taban: 0,   kat: 0, emsal: false, izin: ['KONUT','TICARET','TARIM','SANAYI','TURIZM','KARMA'], tekil: true, etki: 'Ziyaretçi ilgisi, kozmetik puan' },
+  // Ev ve keyif: ekip biçmek istemeyen oyuncu için. Konut yapıları turistlere kiralanır: gelir = günlük kira (akçe),
+  // her gün çiftlikten toplanır (en çok 2 günlük birikir); havuz parseldeki evlerin kirasını %50 artırır, yükseltme
+  // her seviyede +%50. Tarım arazisine yalnızca bağ evi ve çardak yapılabilir (gerçekteki gibi küçük taban).
+  BAG_EVI:      { ad: 'Bağ evi',        ikon: '🏡', kategori: 'Ev ve keyif',       maliyet: 220, sure: 4, taban: 45,  kat: 1, emsal: true,  izin: ['TARIM','KONUT','KARMA','TURIZM'], tekil: true, minAlan: 600, gelir: 15, etki: 'Hafta sonu evi; turistlere kiralanır' },
+  DAG_EVI:      { ad: 'Ahşap dağ evi',  ikon: '🛖', kategori: 'Ev ve keyif',       maliyet: 380, sure: 5, taban: 70,  kat: 2, emsal: true,  izin: ['KONUT','KARMA','TURIZM'], minSeviye: 2, gelir: 30, etki: 'Şömineli kulübe; turistlere kiralanır' },
+  VILLA:        { ad: 'Villa',          ikon: '🏝️', kategori: 'Ev ve keyif',       maliyet: 900, sure: 8, taban: 160, kat: 2, emsal: true,  izin: ['KONUT','KARMA','TURIZM'], tekil: true, minAlan: 600, minSeviye: 3, gelir: 75, etki: 'Geniş teraslı lüks ev; turistlere kiralanır' },
+  HAVUZ:        { ad: 'Yüzme havuzu',   ikon: '🏊', kategori: 'Ev ve keyif',       maliyet: 300, sure: 3, taban: 0,   kat: 0, emsal: false, izin: ['KONUT','KARMA','TURIZM'], tekil: true, etki: 'Şezlonglar ve şemsiye; evlerin kira geliri +%50' },
+  CARDAK:       { ad: 'Çardak',         ikon: '⛱️', kategori: 'Ev ve keyif',       maliyet: 60,  sure: 1, taban: 0,   kat: 0, emsal: false, izin: ['TARIM','KONUT','KARMA','TURIZM','TICARET'], tekil: true, etki: 'Gölgede çay keyfi; mahalle çekiciliği' },
+  OYUN_PARKI:   { ad: 'Oyun parkı',     ikon: '🛝', kategori: 'Ev ve keyif',       maliyet: 120, sure: 2, taban: 0,   kat: 0, emsal: false, izin: ['KONUT','KARMA','TURIZM'], tekil: true, etki: 'Kaydırak ve salıncak; mahalle çekiciliği' },
   // Hayvancılık (oyuncu seviyesiyle açılır): barınak yemlenince ürün verir (bkz. HAYVANLAR)
   KUMES:        { ad: 'Kümes',          ikon: '🐔', kategori: 'Hayvancılık',       maliyet: 90,  sure: 2, taban: 20,  kat: 1, emsal: true,  izin: ['TARIM'], tekil: true, minSeviye: 2, etki: '6 tavuk: yemlenince yumurta' },
   INEK_AHIRI:   { ad: 'İnek ahırı',     ikon: '🐄', kategori: 'Hayvancılık',       maliyet: 220, sure: 4, taban: 60,  kat: 1, emsal: true,  izin: ['TARIM'], tekil: true, minSeviye: 3, etki: '2 inek: yemlenince süt' },
@@ -143,6 +152,7 @@ const SEVIYE = {
   tp: { PARCEL_ACQUIRED: 10, CROP_PLANTED: 2, CROP_HARVESTED: 6, STRUCTURE_COMPLETED: 8, PRODUCTION_COLLECTED: 4, ANIMALS_FED: 1,
     ANIMAL_PRODUCE_COLLECTED: 4, PARCEL_VISITED: 1, COMMODITY_TRADE: 2, TRADE_SETTLED: 5, DECORATION_PLACED: 2,
     NEIGHBOR_HELPED: 3, GI_PRODUCED: 5, FISH_CAUGHT: 2 },
+  gunlukEylemTavani: 20,   // aynı eylem türünden günde en çok bu kadar TP kaydı (tek tek satarak TP kasılmasın)
   katsayi: 20, maks: 60,
   seviyeOdulu: (n) => 20 + n * 10,   // her yeni seviyede akçe
 };
@@ -464,6 +474,32 @@ const PAZAR = {
 };
 PAZAR.ilanSuresiMs = (gun) => dk(gun * 24 * 60);
 
+// Oyun içi piyasa (piyasa.js): arsa değeri = tahsis bedeli × mahalle çarpanı; endeks = 100 × çarpan.
+// Akçe nakde çevrilmez; bu bir oyun göstergesidir, gerçek yatırım tavsiyesi ya da değerlemesi değildir.
+const PIYASA = {
+  pencereGun: 30,          // talep ve işlem sinyallerinin geriye bakış penceresi
+  talepParsel: 0.012,      // mahallede sahipli her parsel çarpanı bu kadar artırır…
+  talepYeni: 0.03,         // …son 30 günde edinilen her parsel ayrıca bu kadar
+  talepUst: 0.45,
+  gelisimKat: 0.35,        // mahalledeki yapı yatırımı / arsa bedeli oranının çarpana katkısı
+  gelisimUst: 0.6,
+  islemAgirlik: 0.6,       // yeterli satış varsa çarpanın bu kadarı gerçek işlem fiyatlarından gelir
+  min: 0.6, maks: 3,
+  gecmisGun: 30,           // endeks grafiği ve ilk dolduruşta geriye kaç gün
+  kayitAraligiMs: 10 * 60 * 1000,   // bugünün endeks karesi en sık bu aralıkla tazelenir
+  // Hazine alım teklifi: oyun her sahipli parsele değerinin altında alım teklifi verir (kâr her zaman akçeye döner).
+  // Teklifteki mahalle çarpanı satıcının kendi parselleri, yapıları ve işlemleri hariç hesaplanır (kendi çıkış
+  // fiyatını şişiremez); yeni tahsis de güncel endeksle fiyatlanır (ucuz tahsis + hemen Hazine'ye satış olmaz).
+  hazine: {
+    oran: 0.85,                     // tahmini değerin bu kadarı
+    minTutmaMs: dk(3 * 24 * 60),    // parsel en az bu kadar süredir sahibinde olmalı
+    hediyeTutmaMs: dk(30 * 24 * 60), // başlangıç hediyesi arsa: hesap açıp hediyeyi akçeye çevirmek olmasın
+    gunlukSatis: 1,                 // oyuncu başına günde en çok bu kadar Hazine satışı
+    ilanGun: 7,                     // Hazine aldığı parseli bugünkü değeriyle pazara koyar
+    ad: 'Sanal Türkiye Hazinesi',
+  },
+};
+
 // §6 mahalle muhtarlığı seçimi. Süreler gündür; SECIM_HIZI yalnızca seçim takvimini hızlandırır
 // (geliştirme/demo: SECIM_HIZI=1440 → 1 gün = 1 dakika). Oyun içi seçimdir; gerçek kamu seçimi değildir.
 const SECIM_HIZI = Number(process.env.SECIM_HIZI || 1);
@@ -541,7 +577,7 @@ const GOREVLER = [
   { kod: 'ILK_PARSEL', ad: 'İlk parselini edin',        odul: 30, ipucu: 'Haritada yeşil (tarım) boş bir parsele tıkla ve "Edin" de.' },
   { kod: 'ILK_EKIM',   ad: 'Tarlana tohum ek',          odul: 20, ipucu: 'Tarım parselinin kartında bir ürün seç ve ek.' },
   { kod: 'ILK_SULAMA', ad: 'Ekinini sula',              odul: 10, ipucu: 'Ekili tarlada "Sula" düğmesi.' },
-  { kod: 'ILK_YAPI',   ad: 'Parseline bir geliştirme yap', odul: 25, ipucu: 'Çit, sulama hattı veya peyzaj iyi bir başlangıç.' },
+  { kod: 'ILK_YAPI',   ad: 'Parseline bir geliştirme yap', odul: 25, ipucu: 'Tel çit, sulama hattı ya da bir ev iyi bir başlangıç.' },
   { kod: 'ILK_HASAT',  ad: 'İlk hasadını topla',        odul: 40, ipucu: 'Ekin olgunlaşınca "Hasat et".' },
   { kod: 'ILK_SATIS',  ad: 'Ürününü pazarda sat',        odul: 20, ipucu: 'Envanter → Pazara sat.' },
   { kod: 'KOMSU_ZIYARET', ad: 'Bir komşunu ziyaret et',  odul: 15, ipucu: 'Başka bir oyuncunun parseline tıklayıp "Ziyaret et".' },
@@ -652,4 +688,4 @@ const NUFUS = {
   baslangicBakiye: 500,
 };
 
-module.exports = { CARSI, KOMSULUK, YORESEL, YORESEL_KURAL, BALIK, ETKINLIKLER, HATIRLATMA, HAYVANLAR, YEM_FIYATI, SEVIYE, GUNLUK_ODUL, SIPARIS, YARISMA, SUSLER, SUS_MAKS, NUFUS, LOJISTIK, KIRA, ORTAKLIK, AFET, REFERANDUM, KOZMETIK, RECETELER, MESLEKLER, MESLEK, KOOPERATIF, LIG, MEVSIMLER, HAVA, BOLGE, BOZULMA, BAKIM, BORSA, GOREVDEN_ALMA, MODERASYON, YASAL, ROLLER, BIRIM, OYUN_HIZI, IMAR, IMAR_KAYNAK_NOTU, IL_CEKICILIK, YERLESIM_CEKICILIK, YAPILAR, URUNLER, TARIM, NPC_PAZAR, PAZAR, SECIM, SECIM_HIZI, BELEDIYE, ITIBAR, HESAP, GOREVLER };
+module.exports = { PIYASA, CARSI, KOMSULUK, YORESEL, YORESEL_KURAL, BALIK, ETKINLIKLER, HATIRLATMA, HAYVANLAR, YEM_FIYATI, SEVIYE, GUNLUK_ODUL, SIPARIS, YARISMA, SUSLER, SUS_MAKS, NUFUS, LOJISTIK, KIRA, ORTAKLIK, AFET, REFERANDUM, KOZMETIK, RECETELER, MESLEKLER, MESLEK, KOOPERATIF, LIG, MEVSIMLER, HAVA, BOLGE, BOZULMA, BAKIM, BORSA, GOREVDEN_ALMA, MODERASYON, YASAL, ROLLER, BIRIM, OYUN_HIZI, IMAR, IMAR_KAYNAK_NOTU, IL_CEKICILIK, YERLESIM_CEKICILIK, YAPILAR, URUNLER, TARIM, NPC_PAZAR, PAZAR, SECIM, SECIM_HIZI, BELEDIYE, ITIBAR, HESAP, GOREVLER };

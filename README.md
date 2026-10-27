@@ -1,4 +1,4 @@
-# Sanal Türkiye — prototip (v0.22, ulusal)
+# Sanal Türkiye — prototip (v0.23, ulusal)
 
 Yaşayan dijital ülke simülasyonu. **81 ilin tamamı açık**: gerçek Türkiye haritası üzerinde herhangi bir köye, mahalleye yakınlaşıp parsel edinebilir, tarla ekip yapı kurabilir, oyuncular arası pazarda alım satım yapabilirsin. Harita 2B ve 3B görünümlüdür.
 
@@ -34,6 +34,139 @@ Ortam değişkenleri (v0.6 eklemeleri): `TABAN_URL` (e-posta bağlantıları; ü
 `npm run dev` seçimleri tek başına denemek için `SECIM_HIZI=1440 SECIM_MIN_SECMEN=1 BELEDIYE_MIN_SECMEN=1` ile çalışır (1 oyun günü = 1 dakika): muhtarlık seçimi ≈ 8 dakika, belediye seçimi ≈ 12 dakika, meclis oylaması 1 dakika, proje yapımı 2–4 dakika, muhtarlık dönemi 30, belediye dönemi 90 dakika; günlük devlet katkısı dakikada bir işler. `npm start` gerçek süreleri kullanır.
 
 > Not: v0.1–0.2'nin Meram ızgarası ulusal ızgarayla uyumsuz olduğundan eski `data/sanalturkiye.db` dosyası kullanılmaz (silinmedi).
+
+## v0.39 — yayın öncesi uçtan uca denetim
+
+Yeni bir oyuncuyla kayıttan ilk yapıya kadar telefon boyutunda oynandı; sunucu ve istemci kodu üç ayrı incelemeyle tarandı.
+
+- **Yeni oyuncu akışı:** kayıt 2. adımda bitince kayıt penceresi ve açılış artık kapanıyor (eskiden telefon adımı sihirbazın ve çiftlik turunun altında açık kalıyor, oyuncu takılıyordu); adım çubuğu "Hesap · Profil · Çiftlik", telefon ve memleket isteğe bağlı (Ben → Hesabım). Tur: hedef listede ekran dışındaysa kendiliğinden kaydırılır (inşaat atölyesinde tel çit görünmüyordu), alt çubuğu örten sayfa kapanır, ekin olgunlaşınca Hasat düğmesi yenilemeden gelir, çiftlik açılamazsa tur 5 denemede kapanır; tur ödülü ayrı bildirim yerine kartta rozet. Görev şeridinin 7. adımı "Bir komşuyu ziyaret et" (komşuluk seviye 3'te açıldığı için eski adım tamamlanamıyordu); "Komşu bul" yakındaki bir oyuncunun tarlasını açar.
+- **Ekonomi açıkları kapandı:** dükkân ürünleri (ucuz yem paketi) sevkiyatla il pazarlarına satılamaz (sınırsız akçe); Hazine teklifinde satış sinyali yok ve endekse yalnızca değerin 0,5–2 katı satışlar girer (başka hesaplar arası yıkama işlemleriyle endeks şişirme); gelişme oranı mahallenin bütün arsasına bölünür ve yalnızca biten yapılar sayılır; talep yalnızca e-postası doğrulanmış oyunculardan; yapı yükseltmeleri değere yansır (`seviye`); başlangıç hediyesi en çok 25.000 m² ve Hazine'ye ancak 30 gün sonra satılır (`BASLANGIC`); Hazine ilanları pazarlık kabul etmez ve 100.000 üstü değerle ilana çıkmaz; bakımsız ev kira getirmez, devirde kira sayacı sıfırlanır; aynı eylem türünden günde en çok 20 TP kaydı; işçi en çok 7 gün; vadesi geçmiş kredisi olan oyuncu borcunu kapatmadan kira/parsel/ürün alımıyla değer aktaramaz; Hazine ile komşu olunmaz; sipariş ödülleri tam akçe.
+- **Güvenlik ve KVKK:** passkey ekleme, Google/Apple bağlama ve 2FA kurma son 15 dakikada açılmış oturum ister; parolasız hesaplar taze oturumla hesabını silebilir; hesap silme hayvan/üretim/süs kaydı olan oyuncuda 500 veriyordu (`oyun.parseliBosalt`); kiradaki tarlanın sahibi silinince kiracıya kalan kira iade edilir; veri dışa aktarımına telefon, bağlı hesaplar, passkey, banka, balık, kozmetik, imzalar eklendi; çerez sayfası bütün depolama anahtarlarını listeler; oylama başladıktan sonra hesap silme ya da demo taşınması oy pusulasını değiştirmez.
+- **Dayanıklılık ve hız:** imar/tarla karoları yalnızca Türkiye kutusunda hesaplanır (dünyanın her karosu diske yazılıyordu); giriş hız sınırı yalnızca kimlik gönderen isteklerde (açılıştaki GET sınırı tüketmiyordu); il ligi 60 sn, ürün borsası 5 sn önbellekte, yeniden sayım ağır sınırda; WebSocket IP başına 8, toplam 20.000 bağlantı; seçim ve belediye bakım taramaları daraltıldı; arka plan işleri hafif parsel kartı kullanır; Hazine hesabı açılışta oluşur. İstemci: `/api/ben` yalnızca 401'de çıkış sayar (ağ kesintisi oturumu kapatmıyordu), ağ hatası Türkçe, panel çizimi sıralı ve hatada "Tekrar dene", çiftlik açılamazsa parsel kartı açılır, memleket doğru alandan okunur, sulama bekleme süresi düğmede.
+- **Metin ve görünüm:** "Seviye 2'de / 3'te" sayı ekleri (`sayiBulunma`), "Ahmet'in çiftliği" iyelik eki, cüzdanda okunur tanıtım ödülü adları, "aday çıkmadı" duyuruları haber akışını doldurmuyor, bildirimler en çok 3 ve çiftlikte eylem çubuğunun üstünde, tapu mührü ve geri düğmesi çakışmıyor, büyük dokunma hedefleri (40 px), erişilebilir giriş alanları, Hasan Dayı ağzıyla kalan metinler temizlendi, eksik çevrimdışı dosyalar önbellekte.
+
+## v0.38 — Hazine alım teklifi (kâr her zaman akçeye döner)
+
+- **Hazine'ye sat:** oyun, sahibine her parsel için **tahmini değerin %85'i** kadar anında alım teklifi verir (parsel kartında "🏛️ Hazine alım teklifi", "Satarsan kâr/zarar ₳X", onaylı "Hazine'ye sat"). Akçe hemen hesaba geçer (`SYS:MINT`), parsel yapıları ve süsleriyle "Sanal Türkiye Hazinesi" hesabına geçer ve Hazine onu **bugünkü değeriyle** 7 günlük ilana koyar (süresi dolan Hazine ilanları bakımda yeniden açılır; teklifler demo kuralıyla %90'dan kabul). Aradaki fark oyundan çıkar. `POST /api/parsel/:id/hazineye-sat {teklif}` (görülen teklif değiştiyse 409), kartta `hazine` alanı, portföyde Hazine satışları gerçekleşen kâr olarak; fiyat geçmişinde "🏛️ Hazine aldı".
+- **Kötüye kullanıma karşı:** parsel en az 3 gündür sahibinde olmalı; oyuncu günde en çok 1 parsel satabilir; ilanda, kirada, ekili ya da inşaatı süren parsel satılamaz. Teklifteki mahalle çarpanı **satıcının kendi parselleri, yapıları ve işlemleri hariç** hesaplanır (kendi çıkış fiyatını şişiremez). Hazine'nin elindeki parseller talep sayılmaz.
+- **Tahsis artık güncel endeksle fiyatlanır:** boş parselin tahsis fiyatı = taban bedel × mahalle çarpanı (`oyun.tahsisFiyati`; başlangıç hediyesi de). Böylece "ucuz tahsis + 3 gün sonra Hazine'ye sat" bedava akçe üretmez; kazanç mahalle senden sonra değerlenirse ya da yatırımın değer katarsa gelir. Kurallar `rules.js` → `PIYASA.hazine`.
+
+## v0.37 — oyun içi yatırım: endeks, fiyat geçmişi, portföy kâr/zarar
+
+Parsel bir yatırım varlığı gibi oynanır: al, işle, değerlensin, sat. Akçe yine **nakde çevrilmez**; bunlar oyun içi göstergelerdir (`server/piyasa.js`, kurallar `rules.js` → `PIYASA`).
+
+- **Değer artışı:** arsa değeri = tahsis bedeli × **mahalle çarpanı**. Çarpan üç sinyalden çıkar: talep (mahallede sahipli parsel + son 30 günde edinilenler), gelişme (mahalledeki yapı yatırımı / arsa bedeli) ve gerçek satışlar (son 30 günde işaretsiz satışların fiyat / satış anındaki değer medyanı; en az 3 satışta tam ağırlık, tek uç işlem endeksi oynatamaz). Sınır 0,6–3. Tahmini değer = arsa + yapılar (bakımla aşınır) + süsler. Boş parselde "edinirsen değeri bugün +₳X üstünde" notu: erken giren kazanır.
+- **Bölge endeksi:** endeks = 100 × çarpan (100 = tahsis seviyesi). `deger_endeksi` tablosunda mahalle, ilçe, il ve Türkiye için günlük kare (ilçe/il/TR arsa bedeliyle ağırlıklı). Bakım işi bugünün karesini 10 dakikada bir tazeler; tablo boşsa son 30 gün sahiplik, yapı ve satış kayıtlarından yeniden hesaplanır (uydurma veri yok). **Pazar → 📈 Endeksler** (artık varsayılan): Türkiye endeksi grafiği, haftalık değişim, 30 günlük satış/hacim, portföy özeti, bu hafta en çok yükselen ve en değerli mahalleler, "nasıl hesaplanıyor".
+- **Fiyat geçmişi:** parsel kartında mahalle endeksi grafiği ve tahsis/satış olayları (`/api/parsel/:id` → `piyasa`); satışta `trades.deger_ani` ve `carpan_ani` saklanır. Olağandışı fiyat işareti artık satış anındaki tahmini değere göre (yapılı parsel tahsis bedelinin çok üstüne satılabilir).
+- **Portföy kâr/zarar:** maliyet = alış (sahiplik kaydındaki bedel) + o sahiplik boyunca yapılan yatırım (inşaat, yükseltme, süs); getiri = bugünkü değer + toplanan kira − maliyet. Arazilerim'de portföy değeri, toplam kâr/zarar ve parsel başına değer/getiri; satılan parseller için gerçekleşen kâr ("Satışlarım"). Kendi parselinin kartında alış/yatırım/kâr satırı (`getirim`). Uçlar: `GET /api/piyasa`, `GET /api/piyasa/endeks?tur=MAHALLE|ILCE|IL|TR&id=`, `GET /api/portfoy`.
+- Çiftlikte komşu parsel sayfasında mahalle endeksi, haftalık değişim, mini grafik ve son satış. Grafikler kütüphanesiz SVG (`public/js/grafik.js`).
+
+## v0.36 — görev şeridi (Hasan Dayı kalktı)
+
+- **Rehber artık bir görev şeridi** (`public/js/rehber.js`, CSS `ciftlik.css` "görev şeridi"): sol alttaki 3B Hasan Dayı ve konuşma balonu kaldırıldı. Haritanın üstünde ince bir şerit sıradaki adımı söyler: ikon, "Adım 3/8 · +30 ₳", kısa eylem başlığı, **Göster ›** (spot ışığı aynen) ve 8 parçalı ilerleme çizgisi. Şeride dokununca adımın açıklaması, ödülü ve bütün **Başlangıç yolculuğu** listesi açılır. Adım bitince şerit 2 sn "✓ Adım tamam +ödül" gösterip sonrakine geçer. ✕ şeridi küçük bir "🐔 8/8" rozetine indirir (yeni adımda yeniden açılır). Başlangıç bitince şerit yalnızca okunmamış bir ipucu olduğunda görünür (✕ = anladım).
+- Telefonda şerit varken 2B/3B seçici, hava ve etkinlik rozetleri onun altına iner (`body.gs-var`, `--gs`); masaüstünde şerit sol üstte durur.
+- İlk giriş sihirbazındaki karakter yerine kendi çiftlik çizimimiz (SVG) geldi; metinler doğrudan oyuncuya hitap eder. `rehber3d.js` silindi.
+
+## v0.35 — Ev ve keyif
+
+- **Yeni yapılar** (inşaat atölyesinde "Ev ve keyif" bölümü en üstte): **Bağ evi** (tarım arazisine de yapılabilir, asmalı çardaklı), **Ahşap dağ evi** (A-çatı, seviye 2), **Villa** (iki katlı modern, teraslı, seviye 3), **Yüzme havuzu** (şezlong ve şemsiyeli), **Çardak** (tarıma da), **Oyun parkı** (kaydırak, salıncak, kum havuzu). Modeller `sevimli3d-yapi.js`; yerleşim `modeller.yerlesim` (tarım parselinde avluya, küçük yapılar köşelere).
+- **Kira geliri:** konutlar (müstakil ev, bağ evi, dağ evi, villa, apartman, pansiyon) turistlere kiralanır; günlük kira birikir (en çok 2 gün), çiftlikten toplanır (`POST /api/yapi/:id/kira`, `gelisim.kiraDurumu`). Havuz kirayı %50, her yapı seviyesi %50 artırır. Çiftlik alt çubuğunda "💰 Kira" düğmesi, yapı sayfasında birikmiş kira.
+- **Tek çiftlik gibi oynama:** çiftliğin çevresindeki oyuncuya ait araziler kayıtta ayrı kalır ama çiftlikte tek parça oynanır: alt çubuktaki Hasat / Sula / Ek hepsine birden işler ("Ek (2)": bütün boş arazilere aynı ürün, toplam bedel); komşu araziye dokununca o arazi yerinde açılır (hasat, sula, ek), başka araziye geçmek gerekmez. Uzaktaki arazilerde iş varsa "Tümü (n)".
+- **Parsel sahibi ve tahmini değer:** çiftlikte başkasının ya da sahipsiz bir komşu araziye dokununca sahibinin adı, Ada/Parsel, alan, imar, **tahmini değer** (arsa + yapılar + süsler dökümü), satış ilanı, yapılar ve ekin görünür; "👋 Çiftliğini gez" ile o çiftliğe gidilir. Haritadaki parsel panelinde de aynı değer kutusu var. Değer `oyun.tahminiDeger`: arsa = birincil tahsis bedeli; her yapı inşaat maliyeti + seviye yükseltme bedelleri, bakım durumuna göre en çok %50 düşer; süsler (çit, yol, çiçek…) satın alma fiyatıyla. Kartta `deger` alanı.
+- **Atölye düzeni:** yapılar türlerine göre bölümlü; **Peyzaj** atölyeden kalktı (Süsle menüsü aynı işi yapıyor; var olanlar durur, `gizli`).
+
+## v0.34 — hız ve sağlamlık taraması
+
+Ayrıntılar ve 100.000 oyuncu planı: `docs/olcekleme.md`. Yeni oyuncu yük testi: `npm run yuk-oyuncu -- <taban> <oyuncu> <sn>`.
+
+- **Sunucu:** bakım işleri her istekten çıktı (`BAKIM_ARALIGI_MS`, varsayılan 1 sn; her iş ayrı korunur); SQLite `synchronous=NORMAL` + 27 dizin (`db.indeksleriKur`); herkese aynı uçlar kısa önbellekte (`server/lib/onbellek.js`, testte `ONBELLEK=kapali`); oturum yalnızca `/api` isteklerinde okunur; giriş/kayıt parola özeti eşzamansız; seviye atlamada boş bildirim gitmiyor.
+- **Canlı kanal:** ileti bir kez metne çevrilir, bildirim yalnızca ilgili oyuncunun bağlantılarına, çevrimiçi sayıları toplu; istemci yalnızca ekrandaki olaylarda haritayı tazeler (4–6 sn birikimli); eski bağlantının kapanışı yenisini çevrimdışı göstermiyor.
+- **İstemci:** çiftlik açıkken harita veri yüklemez ve 3B köy kurulmaz; harita %50 taşan alanı yükler, küçük kaydırmada yeniden istemez, değişmeyen yanıtta yeniden kurmaz; 3B köy canlandırması 15 sn dokunulmazsa durur; çiftlik telefonda 30/15 kare, masaüstünde 60/30; telefonda bulanık cam paneller yok; rehber avatarı boştayken ~8 kare; WebGL bağlamları kapanınca serbest; ortak geometriler sahne yenilenirken atılmıyor; biten sayaç sonsuz tazeleme döngüsü başlatmıyor; `/api/ben` yoklaması 2 dk; ülke ölçeği verisi (il sınırları, maske) köy görünümünde indirilmiyor; güneş/ışık yalnızca belirgin kaydırmada güncellenir.
+- **Komşu arazi birleşimi:** parsel kartındaki komşular gerçek tarla hücrelerini (`tarla_hucreleri`) de hesaba katar: bir hücreyi oyuncunun gerçek tarlası kaplıyorsa orada "+" çıkmaz; tam sayfa çiftlikte o hücreler çiftliğin devamı olarak boşluksuz tarla çizilir (`cevre`: 5 × 5'in dış halkası). Çiftlik başlığına dokununca **Arazilerim** listesi açılır, araziler arasında geçilir.
+- **Kaldırılan ölü kod/dosyalar:** eski gerçekçi açılış sahnesi (`tanitim3d*.js`), eski parsel modeli (`parsel3d.js`; tarla yardımcıları `tarla-geo.js`'e taşındı), 18 fotoğraf dokusu, `turkiye.jpg`, `turkiye.geojson`, `/deneme` sayfası, kullanılmayan CSS kuralları (≈3,4 MB).
+
+## v0.33 — parsel panelinde 3B maket yok
+
+- Paneldeki dönen 3B parsel maketi (`sahne3d.js`) kaldırıldı: telefonda haritayla birlikte ikinci bir 3B sahne çiziliyordu. Panel artık "Çiftliğime gir" / "… çiftliğini gez" düğmesi, Ada/Parsel no ve bilgilerle başlar.
+- Fotoğraf ve paylaşım kartı tam sayfa çiftliğe taşındı (üst çubuktaki 📸). Maketteki "zaman yolculuğu" oynatması kaldırıldı (sunucudaki `/api/parsel/:id/zaman` ucu duruyor).
+
+## v0.32 — ilk giriş sihirbazı, Çiftliğim ana ekran
+
+- **Arsa sihirbazı** (`public/js/sihirbaz.js`, `css/sihirbaz.css`): yeni oyuncu (parseli yok) tam ekran karşılanır → il / ilçe / köy seçer (ya da "Sen seç") → o köyde 3 boş tarla (şekil önizlemesi, Ada/Parsel, alan, hediye değeri) → seçtiği arsa hediye olur → oyun içi tapu belgesi → çiftliğe gider.
+- **Kilitli çiftlik turu**: yalnızca sıradaki düğme dokunulabilir (perde + halka + parmak): ek → sula → bekle (ilk ekin 1 dakikada) → hasat → pazarda sat (yarısı) → ilk yapı → günlük görevler → bitiş ekranı. Her adımın ödülü sunucudan; "Atla" her zaman var; sayfa yenilense de kalınan yerden sürer.
+- **Sunucu** (`server/sihirbaz.js`): `GET /api/sihirbaz`, `POST /api/sihirbaz/odul` (adım denetim kaydından doğrulanır, bir kez), `POST /api/sihirbaz/bitir`; `users.sihirbaz_bitti_at`, `sihirbaz_odulleri`. Sütun ilk eklendiğinde parseli olan eski oyuncular sihirbazı görmez. `GET /api/baslangic/adaylar?ilce=&yer=` (3 aday, oyuncu için 1 saat hatırlanır) ve `POST /api/baslangic/tarla {parsel}` yalnızca bu adaylardan birini hediye eder.
+- **Oyun içi Ada/Parsel no** (`server/harita/ada.js`): 16×16 hücrelik bloklar ada, bloktaki sıra parsel; kartta (`adaParsel`) ve portföyde. Gerçek tapu değildir.
+- **İmar haritası kaldırıldı**: haritadaki renkli imar hücreleri (`imar-karo`) ve "İmar haritası" lejant kartı yok; parselin imar türü kartında yazar. Sunucudaki imar sınıflandırması ve `/api/karo/imar` ucu oyun kuralları için durur.
+- **Sesler kapalı**: `public/js/ses.js` içinde `SESLER_KAPALI = true` — efektler, müzik ve ortam sesleri çalmaz, ses bağlamı kurulmaz, ayarlardaki Ses/Müzik seçenekleri gizli (yeni ses tasarımı gelene kadar). Telefondaki titreşim sürer; açmak için bayrak `false` yapılır ve `index.html`'deki `data-ses-ayari` satırlarından `hidden` kaldırılır.
+- **Telefonda hız**: çiftlik açıkken harita ve 3B köy katmanı duraklatılır (`harita.duraklat`); çiftliğe girerken harita uçmaz, parsel maketi çiftlikten çıkınca kurulur. Telefonda (dokunmatik + dar ekran) çiftlik 1,5× piksel yoğunluğu, yumuşak gölgelenme (GTAO) yok, 1024 gölge haritası ve %45 çevre süsüyle çizilir (`MOBIL`, `sevimli-efekt.js`); harita "Dengeli" ayarı telefonda daha az ağaç/bina/araç ve saniyede 10 kare canlandırma kullanır (`TELEFON_DENGELI`, `dunya3d.js`).
+- **Ana ekran Çiftliğim**: parseli olan oyuncu her girişte çiftliğinde açılır; çiftlikteki "Köy" düğmesi haritayı oyuncunun köyünde açar. Türkiye görünümü ana ekrandan kalktı (harita köy ölçeğinin altına, zoom 11'e, uzaklaşmaz); ileride ayrı bölüm olacak.
+
+## v0.31 — iOS uygulaması (Flutter)
+
+- `mobil/`: oyunu tam ekran WebView'de açan Flutter iOS uygulaması (açılış ekranı, çevrimdışı ekranı, dokunsal geri bildirim, kenardan kaydırınca geri, dış bağlantılar Safari'de). Ayrıntı: `mobil/README.md`.
+- Web tarafı: `public/js/uygulama.js` uygulamayı tanır (`html.uygulama`), `ses()` efektleri telefonda titreşim de verir.
+- **Emoji yedeği** (`public/js/emoji.js`): cihaz emoji yazı tipini çizemiyorsa (iOS Simülatörü, bazı eski Android/Windows) arayüzdeki emojiler, harita simgeleri ve 3B tabelalardaki emojiler `public/emoji/` altındaki Twemoji SVG'leriyle (CC-BY 4.0, atıf alt bilgide) değiştirilir; çizebilen cihazda hiçbir şey değişmez. Yeni emoji eklenirse dosyası aynı sürümden indirilmeli (`public/emoji/BENIOKU.txt`). Elle deneme: `localStorage['st-emoji-yedek']='1'`.
+- Sunucu: HSTS ve `upgrade-insecure-requests` yalnızca `TABAN_URL` https ise gönderilir (http geliştirmede Safari/WKWebView CSS ve JS'i https'e yükseltip yükleyemiyordu).
+
+## v0.30 — zenginleşen çiftlik sahnesi
+
+- **Çevre:** düz zemin yerine lekeli, uzakta tepelere yükselen çayır; hücreler arasında toprak patikalar; boş şeritlerde ot tutamları, papatya/gelincik, taş ve çalılar; tepelerde korular, uzakta yavaş dönen bulutlar; ufka karışan uzaklık sisi ve yumuşak köşe kararması.
+- **Ekinler ve tarlalar:** gür buğday (eğik saplar, iki tonlu uzun başak, dip örtüsü); tarlalarda toprak kesekleri ve kenar otları; gölette kumlu kıyı, derin su, nilüfer ve sazlar.
+- **Yapılar:** evde panjur, denizlik, köşe taşları, mahya, kapı lambası; ambarda tahta kaplama ve rüzgârgülü; serada taban kirişi, kapı ve domatesler (yarım silindir örtü düzeltildi); su kulesinde çapraz destek ve merdiven.
+- **Genişletme:** "+" rozetleri ekranda hep aynı küçük boyda; boş komşu tarlanın tamamına dokununca satın alma sayfası açılır, para yetmezse ne kadar gerektiği yazar. Komşu süs ekinleri "+N" tepkisi vermez.
+- **Kır hayvanları (abartısız):** çiftliğin çevresindeki çimende iki tavşan (sekerek) ve bir kirpi dolaşır; yakında gölet varsa iki ördek yüzer. Dokununca kalp çıkar.
+- **Harita = Çiftliğim:** haritadaki sahipli parseller artık Çiftliğim'deki gibi yuvarlak köşeli çimen yastık üstünde, kenarında ot tutamlarıyla çizilir (kahverengi dokulu kalın plaka ve ayrı harita çiti kalktı; çit yalnızca oyuncu tel çit kurduysa görünür). Izgara parseli de yamaçta arazi eğimine yatırılır.
+- Haritadaki rüzgâr salınımı nesnenin kendi tabanına göre (arazi yüksekliğinde yeşil şeritler oluşmaz).
+
+## v0.28–0.29 — sadeleştirme, görsel bütünlük, tutundurma
+
+**Sadeleştirme**
+- *Başlangıç tarlası* (`server/baslangic.js`, `POST /api/baslangic/tarla`): hiç parseli olmayan yeni oyuncuya hesap başına bir kez, memleketinin il merkezine (yoksa Konya Meram) en yakın boş tarla hediye edilir (tahsis bedeli kadar hediye akçe + olağan tahsis; ILK_PARSEL görevi biter). Hasan Dayı "Tarlamı al 🎁" der.
+- *Çiftliğim ana ekran*: parseli olan oyuncu oturumun başında doğrudan tam sayfa çiftliğinde açılır; haritadayken sağ altta "🏡 Çiftliğim" düğmesi, çiftlikte "🌍 Dünya" düğmesi.
+- *4 bölüm*: Çiftlik · Pazar (pazar + çarşı) · Köy (haberler + yönetim) · Ben; seçili parsel varsa başta "Parsel". Bölüm içinde alt sekmeler.
+- *Seviyeyle açılanlar*: balık ve komşuluk 3, çarşı 4, köy yönetimi 5 (aday olmuş/makam taşımış oyuncuya açık); kilitli bölümde ilerleme çubuğu. Seviye atlayınca konfetili kutlama ve açılanlar.
+- *Toplu işler*: çiftlikte birden çok tarla hasada/sulamaya hazırsa "Hepsi" düğmesi; hasattan sonra "aynısını yeniden ek".
+- *Bildirimler*: "Senin için" ve "Köyden haberler" ayrı başlıklarda.
+
+**Görsel bütünlük**: haritadaki 3B oyuncu parselleri de sevimli modellerle çizilir (`dunya-bina.js`); açılış ekranı sevimli 3B çiftlik (`tanitim-sevimli.js`; eski gerçekçi sahne `tanitim3d.js` duruyor); üst çubuk, alt şerit ve harita araç kutusu yeşil-beyaz oyun arayüzünde. Çiftlikte gerçek saate göre gündüz/akşam/gece (pencereler yanar), kışın kar yağar; arada kuş, horoz ve inek sesleri.
+
+**Tutundurma** (`server/gelisim.js`)
+- *Yapı yükseltme* (`POST /api/yapi/:id/yukselt`): 3 seviye, bedel = maliyet × hedef seviye × 1,5; barınaklar her seviyede +%50 ürün; yapının üstünde yıldız rozeti.
+- *İşçi* (`/api/isci`, `POST /api/isci/tut {gun}`): gün başına ücret; süresince bütün tarlalarda olgun ekini hasat eder, susuz ekini sular, hayvanları yemler ve ürünü toplar (30 sn'lik sunucu döngüsü). Çiftlikte turuncu tulumlu ikinci çalışan dolaşır.
+- *Günlük görevler* (`/api/gunluk-gorevler`): oyuncuya ve güne özgü 3 görev (hasat, ekim, sulama, hayvan ürünü, satış, sipariş; denetim kayıtlarından sayılır); hepsi bitince akçe + TP ödülü (günde bir kez). Çiftlik sekmesinin başında ve çiftlikte "🎯 Günlük".
+- *Çiftlik genişletme*: çiftlikte yandaki boş tarım hücrelerinde zıplayan "+" işareti; dokununca tahsis bedeliyle çiftliğe katılır, komşu tarlaların yan yana çizilir ve aralarında geçilir.
+- *Üretim zinciri çiftlikte*: değirmen, fırın, fabrika gibi tesislere dokununca reçeteler (Üret) ve süren partiler (Topla).
+- *Komşu çiftliğini gezme*: başkasının parsel kartında "🏡 Çiftliğini gez"; ziyarette selam verilir, ekinine yardım edilir.
+- *Koleksiyon haritası*: yöresel albümde Türkiye haritası (albümde altın, elinde yeşil, toplanacak açık yeşil).
+
+## v0.27 — tam sayfa çiftlik (kendi parselinin içi)
+
+Haritada kendi parseline dokununca kamera parselin içine girer ve tam sayfa, sevimli 3B bir çiftlik açılır (`public/js/ciftlik-ici.js`); başkasının parselinde eskisi gibi kart açılır. İçeriden oynanır: ekine dokun → sula / hasat et, boş tarlaya dokun → tohum seç ve ek, yapıya dokun → durumu, hayvan ürünü topla / yemle, bakım; boş alana dokun → inşaat atölyesi; süs dükkânı. Çiftçi dokunulan yere yürüyüp işi yapar, sonuç gelince "+N", uçuşan ürünler ve parıltı çıkar. Üstte geri düğmesi, parsel adı, seviye, bakiye ve ürün sayaçları; altta duruma göre değişen eylem çubuğu (hasat hazırsa nabız atar). Sürükle → döndür, tekerlek/çimdik → yakınlaş; Esc ya da telefonda geri tuşu haritaya döner. Eylemler paneldeki ortak dağıtıcıdan (`eylemDagit`, app.js) geçer; kurallar ve sonuçlar sunucudadır.
+
+## v0.26 — yeni rehber: 3B Hasan Dayı
+
+Sol alttaki rehber yenilendi (`public/js/rehber.js`, `public/js/rehber3d.js`, `public/css/ciftlik.css`): Hasan Dayı artık sevimli tarzda 3B bir karakter (kasket, gür beyaz bıyık, yelek); göz kırpar, nefes alır, konuşurken ağzı oynar, yeni adımda el sallar, adım bitince sevinip zıplar (WebGL yoksa eski çizim). Konuşma kartı: isim etiketi, yazılıyormuş gibi beliren metin (dokununca tamamlanır), 8 adımlık ilerleme çubuğu, adımın ödülü, büyük "Göster" düğmesi. "Göster" ekranı loşlaştırır, hedefi nabız atan altın halka ve zıplayan elle "Buraya dokun" diye gösterir. Hasan Dayı'ya dokununca görev listesi (tikli adımlar, ödüller, ilerleme). Başlangıç bitince akıllı ipuçları: olgun hasat, sulama bekleyen tarla, günlük ödül, seviye ödülü, boş tarla (önemliler kartı kendiliğinden açar, diğerleri kırmızı noktayla haber verir; her ipucu bir kez).
+
+## v0.25 — sevimli çiftlik tarzı (panel maketi)
+
+Sağ üstteki dönen parsel maketi sevimli, düşük poligonlu ve dokusuz bir çizgi film tarzına geçti: yeşil üstlü yuvarlak toprak ada, parlak düz renkler, sıcak güneş, yumuşak (VSM) gölgeler, yakın kadraj. Modeller sıfırdan bizim: `public/js/sevimli3d.js` (zemin, tarla, çilek/domates/mısır, ağaçlar, kasa, çit, tezgâh, çiftçi, traktör, ambar), `public/js/sevimli3d-yapi.js` (ev, apartman, pansiyon, dükkân, restoran, depo, fabrika, fırın, yel değirmeni, sera, su kulesi, güneş paneli, inşaat iskelesi, inek, koyun, tavuk, kümes, buğday/çay/pamuk/bağ/meyve ağaçları, süsler), `public/js/sevimli-parsel.js` (parseli yapı, ekin, süs, kozmetik ve gerçek tarla sınırıyla kurar; komşu hücreler). Sahipli parselde çiftçi bekler, yel değirmeni döner, bacalardan duman çıkar.
+
+Üst seviye (v0.25.1): son işleme (`sevimli-efekt.js`: yumuşak gölgelenme GTAO, maket hissi veren tilt-shift, gökyüzü fonu, çok örneklemeli kenar yumuşatma); ayrıntılı modeller (kiremitli çatı, saksılı pencere, yuvarlak çatı penceresi, yüzü, askıları ve sallanan kol-bacakları olan çiftçi, ambar pervazları); canlılık (`sevimli-canli.js`: rüzgârda sallanan ekin ve ağaçlar, tarlada yürüyüp iş yapan çiftçi, dolaşan/otlayan inek ve koyunlar, gagalayan tavuklar, kelebekler, süzülen bulut gölgeleri); dokununca tepki (ekin, yapı, hayvan ya da çiftçi zıplar; "+N", uçuşan ürünler, parıltı ve ses — yalnızca görsel, oyun eylemi yapmaz). Haritadaki 3B dünya ve açılış ekranı henüz eski tarzda.
+
+## v0.24 — gerçek tarlalar (deneme: Meram)
+
+Deneme ilçesinde kare hücreler yerine uydudan görünen gerçek tarlalar parsel olur. Kaynak: [Fields of the World](https://fieldsofthe.world) (CC-BY-4.0) — Sentinel-2 görüntülerinden 10 m çözünürlükte çıkarılmış tarla sınırları. **Tapu/kadastro parseli değildir** (TKGM parsel sorgusu izinsiz otomatik erişimi ve ticari kullanımı yasaklar); bir tapu parseli birkaç tarlaya bölünmüş ya da birkaç parsel tek tarla görünebilir. Atıf haritanın köşesinde.
+
+- Aktarım: `npm run tarla-aktar [-- 42:Meram,42:Selçuklu]` (varsayılan `TARLA_ILCELERI`, yoksa `42:Meram`). Türkiye PMTiles dosyasından yalnızca ilçeyi örten z13 karoları HTTP aralık istekleriyle indirilir (Meram: 306 karo, 10,6 MB; `data/ftw` önbelleği), işlenip veritabanına yazılır (Meram ≈ 20 sn, 44.079 tarla, ortanca ≈ 2.000 m²). Sunucu açıkken çalıştırılabilir.
+- İşleme (`server/harita/tarla-ftw.js`, saf): karo sınırında bölünen tarlalar tampon bölgelerden birleştirilir (sınırları birleşik maskeden yeniden izlenir); her hücre merkezini içeren tarlaya atanır, merkezi tarlada olmayan hücreler kare parsel kalır; 10 m piksel basamakları Douglas–Peucker (≈ 7,5 m) ile düz kenara döner, köşeler en çok ≈ 6 m yuvarlanır (Chaikin); 400 m² altı ve 50 ha üstü (hatalı) alanlar atılır.
+- Yeniden aktarımda üzerinde iş olan (sahipli, ekili, yapılı, ilanlı) tarlalar ve kare parseller korunur; tarlası kalmayan sahipsiz tarla parselleri hücre karesine döner.
+- Oyun motoru değişmez: tarla bir parseldir; kimliği merkeze en yakın hücresinin kimliği, alanı tarla alanıdır (verim, fiyat ve TAKS alanla ölçeklenir). Tarlanın herhangi bir hücresine yapılan istek tarlaya yönlenir (`parselHazirla` asıl kimliği döndürür).
+- Harita: tarlalar ekili/anız/sürülmüş/nadas tonlarında yama deseniyle çizilir, tarla hücrelerinde ızgara ve imar karosu boş kalır; üzerine gelince ve seçince tarlanın kendi sınırı vurgulanır. Tarla verisi sıkıştırılmış karolar hâlinde gelir (`/api/harita/tarla/:kx/:ky`), birden çok karoya yayılan tarla bir kez çizilir.
+- 3B: tarla modeli tarlanın uzun kenarına döndürülür ve arazi eğimine (köşe yüksekliklerine uydurulan düzlem) yatırılır; toprak, ekin sıraları, bağ telleri ve sahip çiti sınırı izler. Panel maketi tarlayı kendi biçimiyle gösterir.
+
+## v0.23 — oyun paneli yeniden tasarım
+
+Sağ panelin yedi sekmesi (Parsel, Arazi, Yönetim, Çiftliğim, Çarşı, Pazar, Haberler) giriş penceresiyle aynı modern oyun arayüzüne geçti (`public/css/panel.css`, yalnızca `.panel` içini etkiler): ikonlu ve tek satıra sığan sekme çubuğu, açık yeşil-gri zemin, beyaz yuvarlak kartlar, ikon kutucuklu liste satırları, Lilita One başlıklar, sade bölüm başlıkları, yeşil oyun düğmeleri (altın: satış/ödül), hap biçimli alt sekmeler, istatistik kutucukları, tablolar, açılır bölümler, formlar, ilerleme çubukları; çarşı işletme kartları, haber akışı, süs dükkânı, sipariş panosu, günlük ödül, köy yarışması ve banka özeti aynı dile çekildi.
 
 ## v0.22 — ayrıntılı parsel modelleri (harita ve panel maketi)
 
@@ -147,7 +280,7 @@ Aynı sürümde arayüz:
 
 | Alan | Ne var | Nerede |
 |---|---|---|
-| Rehber | Hasan Dayı (kendi SVG çizimimiz) yeni oyuncuya 8 adımda yol gösterir; adım ilk görevlerin durumundan çıkar, "Göster" haritayı uçurup ilgili düğmeyi ışıkla vurgular; yakındaki boş tarlayı önerir (`/api/oneri/tarla`); Hesabım → Oyun ayarları'ndan yeniden başlatılır | `rehber.js`, `server/hatirlatma.js` |
+| Rehber | Görev şeridi yeni oyuncuya 8 adımda yol gösterir; adım ilk görevlerin durumundan çıkar, "Göster" haritayı uçurup ilgili düğmeyi ışıkla vurgular; yakındaki boş tarlayı önerir (`/api/oneri/tarla`); Hesabım → Oyun ayarları'ndan yeniden başlatılır | `rehber.js`, `server/hatirlatma.js` |
 | Hatırlatmalar | Hasat hazır, hayvan ürünü birikti, sipariş bitiyor: olay başına bir kez, oyuncu başına tek iletide; 23.00–08.00 sessiz; kapatılabilir; canlı bağlantı + web push | `server/hatirlatma.js` (`HATIRLATMA=kapali` zamanlayıcıyı kapatır) |
 | Komşuluk | Arkadaşlık (istek → kabul; demo sakinler hemen kabul eder ve arada hediye yollar), komşunun tarlasına yardım (sulama sayılır ya da olgunlaşma %10 kısalır; günlük sınırlar), günlük hediye, arkadaşa ürün gönderme | `server/komsuluk.js`, `komsuluk-ui.js` |
 | Yöresel ürünler | 25 coğrafi işaretli ürün (Malatya kayısısı, Rize çayı, Afyon kaymağı…), yalnızca kendi ilinde parseli olan günde bir parti üretir; 7 bölgelik albüm (ürün ve bölge ödülleri); borsada ve komşular arasında takas; üretim il ligine puan | `server/yoresel.js`, `rules.js` → `YORESEL` |
@@ -347,6 +480,7 @@ public/js/
 | Altlık harita ve arazi kullanımı | OpenFreeMap / OpenMapTiles, © OpenStreetMap katkıcıları | ODbL 1.0 (atıf haritada) |
 | İl ve ilçe sınırları | geoBoundaries gbOpen TUR ADM0/1/2 (kaynak: OSM) | ODbL 1.0 / CC BY-SA |
 | Yükselti | AWS Terrain Tiles (Mapzen terrarium) | açık veri, atıf |
+| Tarla sınırları (deneme ilçeleri) | Fields of the World (Sentinel-2'den çıkarılmış), source.coop/ftw | CC-BY-4.0 (atıf haritada) |
 | 3B motor | MapLibre GL JS 6, three.js | BSD-3 / MIT |
 | Gerçek hava | Open-Meteo.com | CC BY 4.0 (ücretsiz uç nokta ticari olmayan kullanım için) |
 | Simge alanları | Kamuya açık konum bilgisi; açıklamalar özgün | — |

@@ -13,6 +13,8 @@ function ortamKur(ad) {
   process.env.YONETICI_2FA_ZORUNLU = '1';
   process.env.KIMLIK_HIZ_CARPANI = '50';
   process.env.HAVA_KAYNAGI = 'sahte';
+  process.env.BAKIM_ARALIGI_MS = '0';
+  process.env.ONBELLEK = 'kapali';    // testler süreleri elle ilerletir: bakım her istekte çalışsın
   process.env.GUNLUK_SESSIZ = '1';      // beklenen hata günlükleri test çıktısını kirletmesin (dosyaya yine yazılır)
   process.env.HATIRLATMA = 'kapali';     // hatırlatma zamanlayıcısı testte elle çağrılır
   process.env.YAPAY_ZEKA = 'kapali';     // testler gerçek API çağırmaz; yz testi sahte yanıt verici takar

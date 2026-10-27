@@ -5,12 +5,18 @@ export class ApiHatasi extends Error {
 }
 
 export async function api(yol, govde) {
-  const r = await fetch(yol, {
-    method: govde ? 'POST' : 'GET',
-    headers: govde ? { 'content-type': 'application/json' } : {},
-    body: govde ? JSON.stringify(govde) : undefined,
-    credentials: 'same-origin',
-  });
+  let r;
+  try {
+    r = await fetch(yol, {
+      method: govde ? 'POST' : 'GET',
+      headers: govde ? { 'content-type': 'application/json' } : {},
+      body: govde ? JSON.stringify(govde) : undefined,
+      credentials: 'same-origin',
+    });
+  } catch {
+    // Ağ yok / sunucuya ulaşılamadı: tarayıcının İngilizce "Failed to fetch" iletisi oyuncuya gitmesin
+    throw new ApiHatasi(0, 'Bağlantı kurulamadı; internetini kontrol edip tekrar dene', 'AG_YOK');
+  }
   let veri = null;
   try { veri = await r.json(); } catch { /* boş yanıt */ }
   if (!r.ok) throw new ApiHatasi(r.status, veri?.hata || 'Bağlantı hatası', veri?.kod);
@@ -48,8 +54,19 @@ export function tost(mesaj, tur = '') {
   const el = document.createElement('div');
   el.className = `tost ${tur}`;
   el.textContent = mesaj;
+  // Aynı anda en çok 3 bildirim: art arda gelenler eylem düğmelerinin üstüne yığılmasın
+  while (kap.children.length >= 3) kap.firstElementChild.remove();
   kap.appendChild(el);
   setTimeout(() => { el.classList.add('kapaniyor'); setTimeout(() => el.remove(), 350); }, tur === 'hata' ? 4200 : 3200);
+}
+
+// Sayılara bulunma eki: 2'de, 3'te, 6'da, 40'ta (sunucuda server/lib/turkce.js ile aynı kural)
+const BIRLER = { 1: 'de', 2: 'de', 3: 'te', 4: 'te', 5: 'te', 6: 'da', 7: 'de', 8: 'de', 9: 'da' };
+const ONLAR = { 1: 'da', 2: 'de', 3: 'da', 4: 'ta', 5: 'de', 6: 'ta', 7: 'te', 8: 'de', 9: 'da' };
+export function sayiBulunma(n) {
+  n = Math.abs(Math.trunc(Number(n) || 0));
+  const ek = n === 0 ? 'da' : n % 10 ? BIRLER[n % 10] : n % 100 ? ONLAR[(n / 10) % 10] : 'de';
+  return `${n}'${ek}`;
 }
 
 // Türkçe ünlü uyumuna göre özel ad ekleri: bulunma (Havzan'da, Kozağaç'ta) ve tamlayan (Hasan'ın, Emine'nin)

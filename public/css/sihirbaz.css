@@ -1,0 +1,102 @@
+/* İlk giriş sihirbazı (public/js/sihirbaz.js): tam ekran arsa seçimi ve çiftlikte kilitli adım adım tur */
+.shz { position: fixed; inset: 0; z-index: 2000; display: flex; justify-content: center; align-items: flex-start; overflow-y: auto;
+  background: linear-gradient(#5cc062, #3fa34d 60%, #2f8f3e); font-family: 'Baloo 2', system-ui, sans-serif; color: #1f2a22;
+  padding: max(16px, env(safe-area-inset-top)) 14px max(16px, env(safe-area-inset-bottom)); -webkit-user-select: none; user-select: none; }
+.shz-ic { position: relative; width: min(520px, 100%); margin: auto 0; background: #fffdf6; border-radius: 26px; padding: 22px 20px 18px;
+  box-shadow: 0 6px 0 #2b7a37, 0 18px 40px rgba(10, 40, 10, .35); }
+.shz h1 { font: 800 28px/1.15 'Lilita One', 'Baloo 2', system-ui; color: #2b6a1f; margin: 6px 0 8px; text-align: center; }
+.shz h2 { font: 800 23px/1.2 'Lilita One', 'Baloo 2', system-ui; color: #2b6a1f; margin: 4px 36px 10px; text-align: center; }
+.shz-giris { font-size: 16.5px; line-height: 1.45; text-align: center; margin: 0 0 12px; }
+.shz-not { font-size: 14.5px; line-height: 1.4; color: #4a5a50; text-align: center; margin: 4px 0 12px; }
+.shz-noktalar { display: flex; justify-content: center; gap: 6px; margin-bottom: 6px; }
+.shz-noktalar i { width: 26px; height: 7px; border-radius: 9px; background: #e3e9dc; }
+.shz-noktalar i.bitti { background: #6cc35a; }
+.shz-noktalar i.simdi { background: #f2b33d; }
+.shz-geri { position: absolute; left: 10px; top: 18px; width: 40px; height: 40px; border: 0; border-radius: 50%; background: #eef3e8; font-size: 19px; font-weight: 800; color: #2b6a1f; cursor: pointer; }
+.shz-resim { width: min(260px, 100%); margin: 2px auto 0; }
+.shz-resim svg { display: block; width: 100%; height: auto; filter: drop-shadow(0 4px 0 #e3e9dc); }
+.shz-plan { list-style: none; margin: 0 0 6px; padding: 0; display: grid; gap: 8px; }
+.shz-plan li, .shz-ipuclari li { display: flex; gap: 12px; align-items: center; background: #f2f6ec; border-radius: 16px; padding: 10px 12px; }
+.shz-plan li > span, .shz-ipuclari li > span { font-size: 26px; flex: none; }
+.shz-plan b { display: block; font-size: 16px; }
+.shz-plan small { display: block; font-size: 13.5px; color: #4a5a50; line-height: 1.3; }
+.shz-ipuclari { list-style: none; padding: 0; margin: 0 0 6px; display: grid; gap: 8px; font-size: 15px; line-height: 1.35; }
+.shz-alt { display: flex; gap: 10px; margin-top: 14px; }
+.shz-alt .shz-b { flex: 1; white-space: nowrap; }
+.shz-alt .shz-b:not(.ana) { flex: 0 1 auto; }
+.shz-b { min-height: 52px; padding: 10px 16px; border: 0; border-radius: 18px; background: #eef3e8; color: #2b6a1f; font: 800 16.5px 'Baloo 2', system-ui; cursor: pointer;
+  box-shadow: 0 4px 0 #cfdcc4; transition: transform .1s; }
+.shz-b.ana { background: linear-gradient(#ffd45c, #f2b33d); color: #5a3a06; box-shadow: 0 4px 0 #c98a1a; }
+.shz-b.genis { width: 100%; margin-top: 10px; }
+.shz-b:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 1px 0 #c98a1a; }
+.shz-b:disabled { opacity: .45; cursor: default; }
+.shz-alan { display: grid; gap: 5px; margin-bottom: 12px; }
+.shz-alan > span { font-weight: 800; font-size: 14px; color: #2b6a1f; }
+.shz-alan select, .shz-alan input { width: 100%; min-height: 48px; padding: 0 14px; border: 2px solid #dfe6d9; border-radius: 14px; background: #fff; font: 600 16px system-ui; color: #1f2a22;
+  -webkit-user-select: text; user-select: text; }
+.shz-alan select:focus, .shz-alan input:focus { outline: none; border-color: #6cc35a; }
+.shz-yerler { display: flex; flex-wrap: wrap; gap: 8px; max-height: 34vh; overflow-y: auto; padding: 2px; }
+.shz-yer { display: grid; text-align: left; padding: 8px 12px; border: 2px solid #e3e9dc; border-radius: 14px; background: #fff; cursor: pointer; font-family: inherit; }
+.shz-yer b { font-size: 15px; }
+.shz-yer small { font-size: 12px; color: #6b7a70; }
+.shz-yer.secili { border-color: #f2b33d; background: #fff6d8; box-shadow: 0 0 0 3px rgba(242, 179, 61, .3); }
+.shz-adaylar { display: grid; gap: 10px; }
+.shz-aday { position: relative; display: flex; gap: 12px; align-items: center; padding: 10px; border: 2.5px solid #e3e9dc; border-radius: 20px; background: #fff; cursor: pointer; text-align: left; font-family: inherit; color: inherit; }
+.shz-aday.secili { border-color: #f2b33d; background: #fffaea; box-shadow: 0 0 0 4px rgba(242, 179, 61, .3); }
+.shz-sekil { width: 128px; height: 88px; flex: none; }
+.shz-aday-bilgi { display: grid; gap: 2px; min-width: 0; }
+.shz-adano { font-size: 17px; color: #2b6a1f; }
+.shz-aday-bilgi span { font-weight: 700; font-size: 14.5px; }
+.shz-aday-bilgi small { font-size: 13px; color: #4a5a50; }
+.shz-aday-bilgi em { font-style: normal; font-size: 12.5px; font-weight: 800; color: #b06a00; }
+.shz-tik { position: absolute; right: 10px; top: 10px; width: 26px; height: 26px; border-radius: 50%; background: #f2b33d; color: #fff; font-style: normal; font-weight: 900; display: none; place-items: center; }
+.shz-aday.secili .shz-tik { display: grid; }
+.shz-yukleniyor { display: flex; justify-content: center; gap: 8px; padding: 40px 0; }
+.shz-yukleniyor i { width: 14px; height: 14px; border-radius: 50%; background: #6cc35a; animation: shzZipla .9s ease-in-out infinite; }
+.shz-yukleniyor i:nth-child(2) { animation-delay: .15s; } .shz-yukleniyor i:nth-child(3) { animation-delay: .3s; }
+@keyframes shzZipla { 0%, 100% { transform: translateY(0); opacity: .5; } 50% { transform: translateY(-12px); opacity: 1; } }
+.shz-hata { text-align: center; padding: 16px 0; }
+.shz-tapu { position: relative; margin: 10px 0 12px; padding: 16px 18px 14px; border-radius: 14px; background: linear-gradient(#fbf3dc, #f3e5bf);
+  border: 3px double #b8955a; box-shadow: inset 0 0 30px rgba(150, 110, 40, .18); font-family: Georgia, 'Times New Roman', serif; color: #3d2a12; overflow: hidden; }
+.shz-tapu-baslik { text-align: center; border-bottom: 1.5px solid #c9a96a; padding-bottom: 8px; margin-bottom: 8px; }
+.shz-tapu-baslik span { display: block; font: 700 12px system-ui; letter-spacing: .2em; color: #8a6a2a; }
+.shz-tapu-baslik b { display: block; font-size: 24px; letter-spacing: .04em; }
+.shz-tapu-baslik small { display: block; font: 600 11px system-ui; color: #8a6a2a; }
+.shz-tapu dl { display: grid; grid-template-columns: auto 1fr; gap: 5px 12px; margin: 0; font-size: 15px; }
+.shz-tapu dt { color: #7a5a2a; font-size: 13px; align-self: center; }
+.shz-tapu dd { margin: 0; font-weight: 700; }
+.shz-muhur { position: absolute; right: 14px; top: 47%; padding: 6px 10px; border: 3px solid #c8402e; border-radius: 10px; color: #c8402e; font: 900 15px system-ui;
+  letter-spacing: .12em; transform: rotate(-14deg); opacity: .85; animation: shzMuhur .5s .3s both cubic-bezier(.2, 1.6, .4, 1); }
+@keyframes shzMuhur { from { transform: rotate(-14deg) scale(2.4); opacity: 0; } }
+.shz-konfeti { font-size: 64px; text-align: center; animation: shzZipla 1.2s ease-in-out infinite; }
+
+/* Çiftlik turu: hedef dışında her yer kapalı */
+body.sihirbazda .rehber, body.sihirbazda .ciftlik-dugme { display: none !important; }
+.shz-kilit { position: fixed; inset: 0; z-index: 1500; pointer-events: none; font-family: 'Baloo 2', system-ui, sans-serif; }
+.shz-perde { position: fixed; background: rgba(12, 28, 12, .42); pointer-events: auto; transition: all .18s; }
+.shz-kilit.serbest .shz-perde { display: none; }
+.shz-halka { position: fixed; border-radius: 18px; box-shadow: 0 0 0 4px #ffd45c, 0 0 24px 6px rgba(255, 212, 92, .8); animation: shzNabiz 1.2s ease-in-out infinite; transition: all .18s; }
+@keyframes shzNabiz { 50% { box-shadow: 0 0 0 7px #ffd45c, 0 0 34px 10px rgba(255, 212, 92, .55); } }
+.shz-el { position: fixed; font-size: 40px; filter: drop-shadow(0 3px 4px rgba(0, 0, 0, .35)); animation: shzEl .9s ease-in-out infinite; transition: left .18s, top .18s; }
+.shz-el.asagi { transform: rotate(180deg); animation-name: shzElAsagi; }
+@keyframes shzEl { 50% { margin-top: -10px; } }
+@keyframes shzElAsagi { 50% { margin-top: 10px; } }
+.shz-turkart { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(max(14px, env(safe-area-inset-bottom)) + 110px); width: min(440px, calc(100vw - 24px));
+  background: #fffdf6; border-radius: 22px; padding: 12px 14px 14px; box-shadow: 0 5px 0 #d9cfb2, 0 14px 34px rgba(10, 30, 10, .35); pointer-events: auto; color: #1f2a22; }
+.shz-turkart.ustte { bottom: auto; top: calc(max(12px, env(safe-area-inset-top)) + 64px); }
+.shz-kilit.serbest .shz-turkart { bottom: calc(max(14px, env(safe-area-inset-bottom)) + 110px); }
+.shz-turust { display: flex; align-items: center; gap: 10px; }
+.shz-turikon { font-size: 30px; }
+.shz-turust > div { flex: 1; display: grid; }
+.shz-turust small { font-size: 12px; font-weight: 800; color: #6cc35a; letter-spacing: .03em; }
+.shz-turust b { font-size: 18px; color: #2b6a1f; line-height: 1.15; }
+.shz-odul { padding: 4px 10px; border-radius: 999px; background: linear-gradient(#ffd45c, #f2b33d); color: #5a3a06; font: 800 13px 'Baloo 2', system-ui; white-space: nowrap; animation: shzOdul .45s cubic-bezier(.2, 1.6, .4, 1); }
+@keyframes shzOdul { from { transform: scale(.3); opacity: 0; } }
+.shz-atla { border: 0; background: #eef3e8; color: #4a5a50; border-radius: 12px; min-height: 40px; padding: 8px 14px; font: 800 13px 'Baloo 2', system-ui; cursor: pointer; }
+.shz-turkart p { margin: 8px 0 0; font-size: 15.5px; line-height: 1.4; }
+.shz-sayac { font-size: 20px; color: #b06a00; }
+@media (max-width: 420px) {
+  .shz-ic { padding: 18px 14px 14px; border-radius: 22px; }
+  .shz h1 { font-size: 25px; }
+  .shz-sekil { width: 104px; height: 72px; }
+}

@@ -82,6 +82,7 @@ const emirVer = db.transaction((userId, govde = {}) => {
   const urun = String(govde.urun || '');
   if (!bul(URUNLER, urun)) throw new OyunHatasi(400, 'Bilinmeyen ürün');
   const yon = govde.yon === 'AL' ? 'AL' : govde.yon === 'SAT' ? 'SAT' : null;
+  if (yon === 'AL') require('./carsi').gecikmeEngeli(userId);
   if (!yon) throw new OyunHatasi(400, 'Yön AL ya da SAT olmalı');
   const fiyat = kurus(Number(govde.fiyat));
   const bant = fiyatBandi(urun);
@@ -149,12 +150,20 @@ function defter(urun, t = simdi()) {
   const hacim24 = db.prepare(`SELECT COALESCE(SUM(miktar), 0) m FROM urun_islemleri WHERE urun = ? AND created_at > ?`).get(urun, t - 24 * 3600e3).m;
   return { alis: derinlik('AL', 'DESC'), satis: derinlik('SAT', 'ASC'), sonIslemler: son, hacim24 };
 }
-function borsa(userId) {
+// Ürün defterleri herkese aynı ve ürün başına birkaç sorgu: 5 sn önbellek (testlerde kapalı)
+let borsaOnbellek = { t: 0, v: null };
+function borsaUrunleri(t) {
+  if (process.env.ONBELLEK !== 'kapali' && borsaOnbellek.v && t - borsaOnbellek.t < 5000) return borsaOnbellek.v;
   const oyun = require('./oyun');
+  const satilanSorgu = db.prepare(`SELECT sold FROM npc_demand WHERE day = ? AND item_id = ?`), gun = new Date().toISOString().slice(0, 10);
+  const v = Object.entries(URUNLER).map(([kod, u]) => ({ kod, ad: u.ad, ikon: u.ikon, taban: u.tabanFiyat, bant: fiyatBandi(kod),
+    npcFiyat: kurus(oyun.birimFiyat(kod, satilanSorgu.get(gun, kod)?.sold || 0)), ...defter(kod, t) }));
+  borsaOnbellek = { t, v };
+  return v;
+}
+function borsa(userId) {
   const t = simdi();
-  const satilan = (urun) => db.prepare(`SELECT sold FROM npc_demand WHERE day = ? AND item_id = ?`).get(new Date().toISOString().slice(0, 10), urun)?.sold || 0;
-  const urunler = Object.entries(URUNLER).map(([kod, u]) => ({ kod, ad: u.ad, ikon: u.ikon, taban: u.tabanFiyat, bant: fiyatBandi(kod),
-    npcFiyat: kurus(oyun.birimFiyat(kod, satilan(kod))), ...defter(kod, t) }));
+  const urunler = borsaUrunleri(t);
   return {
     urunler, ucretOrani: BORSA.ucretOrani, sureler: BORSA.sureler, minTutar: BORSA.minTutar,
     emirlerim: userId ? db.prepare(`SELECT id, urun, yon, fiyat, miktar, kalan, durum, created_at, expires_at FROM urun_emirleri
@@ -203,8 +212,9 @@ function ekonomiPaneli() {
 
 function rotalar(app, { h, auth }) {
   app.get('/api/borsa', h((req) => borsa(req.kullanici?.id ?? null)));
-  app.post('/api/borsa/emir', auth.dogrulanmisGerekli, h((req) => emirVer(req.kullanici.id, req.body)));
-  app.post('/api/borsa/emir/:id/iptal', auth.girisGerekli, h((req) => emirIptal(req.kullanici.id, req.params.id)));
+  // Emir ve iptal defteri değiştirir: önbellek boşalır, oyuncu kendi emrini hemen görür
+  app.post('/api/borsa/emir', auth.dogrulanmisGerekli, h((req) => { const r = emirVer(req.kullanici.id, req.body); borsaOnbellek.t = 0; return r; }));
+  app.post('/api/borsa/emir/:id/iptal', auth.girisGerekli, h((req) => { const r = emirIptal(req.kullanici.id, req.params.id); borsaOnbellek.t = 0; return r; }));
   app.get('/api/yonetim/ekonomi', auth.rolGerekli('MODERATOR', 'DENETCI', 'ADMIN'), h(() => ekonomiPaneli()));
 }
 

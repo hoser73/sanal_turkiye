@@ -1,6 +1,7 @@
 // Oyuncular arası pazar arayüzü: parsel kartındaki ilan bölümü + Pazar sekmesi.
 // Yalnızca HTML üretir; tıklamalar app.js'deki data-eylem işleyicisinden geçer.
 import { api, esc, sayi, akce, sure, zamanOnce, bulunma } from './yardimci.js';
+import { endeksGrafigi, degisimCipi } from './grafik.js';
 
 const IMAR_IKON = { KONUT: '🏠', TICARET: '🏪', TARIM: '🌾', SANAYI: '🏭', TURIZM: '🏨', KARMA: '🏙️', KORUMA: '🌲', PARK: '⛲' };
 const TEKLIF_DURUM = {
@@ -157,7 +158,7 @@ export function netOnizleme(form, kurallar) {
 
 // ---------- Pazar sekmesi ----------
 export async function pazarPaneli({ ben, alt, filtre, bolgeler, kurallar, envanterHTML, sunucuSimdi }) {
-  const sekmeler = [['ilanlar', 'Parsel ilanları'], ['benim', 'Benim pazarım'], ['borsa', 'Ürün borsası'], ['sevkiyat', 'Sevkiyat'], ['kiralik', 'Kiralık tarla'], ['islemler', 'Son işlemler'], ['urun', 'Tüccara sat']];
+  const sekmeler = [['endeks', '📈 Endeksler'], ['ilanlar', 'Parsel ilanları'], ['benim', 'Benim pazarım'], ['borsa', 'Ürün borsası'], ['sevkiyat', 'Sevkiyat'], ['kiralik', 'Kiralık tarla'], ['islemler', 'Son işlemler'], ['urun', 'Tüccara sat']];
   const gelen = ben?.pazar?.gelenTeklif || 0;
   const ust = `<h2 class="kart-baslik">Türkiye Pazarı</h2>
     <div class="segment" role="tablist">${sekmeler.map(([k, ad]) => `<button type="button" data-eylem="pazar-alt" data-alt="${k}" aria-selected="${alt === k}">
@@ -169,8 +170,40 @@ export async function pazarPaneli({ ben, alt, filtre, bolgeler, kurallar, envant
   else if (alt === 'borsa') govde = await borsaPaneli(ben, sunucuSimdi);
   else if (alt === 'sevkiyat') govde = await sevkiyatPaneli(ben, bolgeler, kurallar, sunucuSimdi);
   else if (alt === 'kiralik') govde = await kiralikPaneli(ben);
+  else if (alt === 'endeks') govde = await endeksPaneli(ben);
   else govde = await ilanListesi(filtre, bolgeler, kurallar, sunucuSimdi);
   return ust + govde;
+}
+
+// ---------- Endeksler: Türkiye arsa endeksi, yükselen ve değerli mahalleler, portföy özeti ----------
+async function endeksPaneli(ben) {
+  const [o, pf] = await Promise.all([api('/api/piyasa'), ben ? api('/api/portfoy').catch(() => null) : null]);
+  const mahalleSatiri = (m) => `<li><button type="button" class="liste-oge" data-eylem="mahalle-ac" data-id="${m.id}">
+      <span class="govde"><b>${esc(m.ad)}</b><span class="kucuk">${esc(m.ilce)}${m.il ? `, ${esc(m.il)}` : ''} · ${m.parsel} sahipli parsel</span></span>
+      <span class="sag"><b>${sayi(m.endeks)}</b>${degisimCipi(m.degisim7, ' 7g')}</span></button></li>`;
+  const parca = [`<div class="kutu endeks-kutu">
+      <div class="satir"><div><div class="kucuk">Türkiye arsa endeksi</div><b class="endeks-buyuk">${o.tr.endeks != null ? sayi(Math.round(o.tr.endeks * 10) / 10) : '—'}</b></div>
+        <div class="sag">${degisimCipi(o.tr.degisim7, ' bu hafta')}<div class="kucuk">${o.tr.parsel} sahipli parsel</div></div></div>
+      ${endeksGrafigi(o.tr.seri)}
+      <div class="endeks-alt"><span>🤝 30 günde <b>${o.islem30.sayi}</b> satış</span><span>💰 Hacim <b>${akce(o.islem30.hacim)}</b></span></div>
+    </div>`];
+  if (pf?.parseller.length) {
+    const z = pf.ozet;
+    parca.push(`<div class="kutu portfoy-kutu"><div class="satir"><div><div class="kucuk">Portföyüm · ${z.parsel} parsel</div><b class="fiyat">${akce(z.deger)}</b></div>
+      <div class="sag"><b class="${z.acikGetiri >= 0 ? 'arti' : 'eksi'}">${z.acikGetiri >= 0 ? '+' : '−'}${akce(Math.abs(z.acikGetiri))}</b>${degisimCipi(z.acikGetiriYuzde)}</div></div>
+      <p class="kucuk">Maliyet ${akce(z.maliyet)} (alış + yatırım)${z.kira ? ` · kira geliri ${akce(z.kira)}` : ''}${z.satisSayisi ? ` · satışlardan gerçekleşen ${z.gerceklesen >= 0 ? '+' : '−'}${akce(Math.abs(z.gerceklesen))}` : ''}</p>
+      <button type="button" class="dugme ince" data-eylem="sekme" data-sekme="arazilerim">Parsel parsel gör</button></div>`);
+  }
+  parca.push(`<h3 class="bolum">🚀 Bu hafta en çok yükselenler</h3>${o.yukselenler.length ? `<ul class="liste">${o.yukselenler.map(mahalleSatiri).join('')}</ul>` : '<p class="kucuk">Bir haftalık geçmiş oluşunca burada görünür.</p>'}`);
+  parca.push(`<h3 class="bolum">💎 En değerli mahalleler</h3>${o.degerliler.length ? `<ul class="liste">${o.degerliler.map(mahalleSatiri).join('')}</ul>` : '<p class="kucuk">Henüz sahipli parsel yok.</p>'}`);
+  parca.push(`<details class="acilir"><summary>Endeks nasıl hesaplanıyor?</summary><ul class="madde">
+      <li><b>100</b> = taban arsa bedeli seviyesi. Endeks 130 ise arsa taban bedelin 1,3 katı değerinde; boş arsanın tahsis fiyatı da bu endeksle belirlenir.</li>
+      <li><b>Talep:</b> mahallede ne kadar çok parsel sahiplenilirse (özellikle son 30 günde) endeks o kadar yükselir.</li>
+      <li><b>Gelişme:</b> mahalledeki evler, seralar, villalar arsa değerini de artırır.</li>
+      <li><b>Gerçek satışlar:</b> son 30 günde en az 3 satış olan mahallede endeks satış fiyatlarına çekilir; tek bir uç işlem endeksi oynatamaz, şüpheli işlemler sayılmaz.</li>
+      <li><b>Hazine:</b> 3 gündür sahip olduğun her parseli Hazine değerinin %85'ine hemen satın alır (günde bir parsel). Teklifte senin kendi parsellerin ve yatırımların endekse sayılmaz.</li>
+    </ul></details><p class="kucuk">${esc(o.not)}</p>`);
+  return parca.join('');
 }
 
 async function ilanListesi(filtre, bolgeler, kurallar, sunucuSimdi) {

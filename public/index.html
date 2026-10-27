@@ -15,6 +15,8 @@
   <link rel="stylesheet" href="/css/app.css">
   <link rel="stylesheet" href="/css/ciftlik.css">
   <link rel="stylesheet" href="/css/tanitim.css">
+  <link rel="stylesheet" href="/css/panel.css">
+  <link rel="stylesheet" href="/css/sihirbaz.css">
 </head>
 <body>
   <header class="ust">
@@ -86,8 +88,8 @@
         <button type="button" data-hareket="acik">🚜 Açık</button>
         <button type="button" data-hareket="kapali">⏸ Kapalı</button>
       </div>
-      <div class="gm-baslik">Ses</div>
-      <div class="gm-secenek dort" role="group" aria-label="Ses ve müzik">
+      <div class="gm-baslik" data-ses-ayari hidden>Ses</div>
+      <div class="gm-secenek dort" role="group" aria-label="Ses ve müzik" data-ses-ayari hidden>
         <button type="button" data-ses="acik">🔊 Ses</button>
         <button type="button" data-ses="kapali">🔇</button>
         <button type="button" data-muzik="acik">🎵 Müzik</button>
@@ -96,32 +98,16 @@
       <p class="gm-not">Çiftlik görünümünde ağaçlar, çatılı binalar, araçlar, sürüler, kuşlar ve gerçek havaya göre bulutlar 3B çizilir. Ultra güçlü bir ekran kartı ister; telefonda Dengeli önerilir.</p>
     </div>
 
-    <div class="lejant" id="lejant" aria-label="İmar türleri">
-      <div class="lejant-baslik">
-        <strong>İmar katmanı</strong>
-        <button type="button" class="bag" id="lejantKapat" aria-expanded="true">gizle</button>
-      </div>
-      <ul id="lejantListe"></ul>
-      <div class="lejant-not">
-        <span class="ornek benim"></span> senin
-        <span class="ornek diger"></span> başka oyuncu
-        <span class="ornek satilik"></span> satılık
-      </div>
-      <p class="lejant-kaynak">Gerçek arazi kullanımından (OSM) türetilmiş oyun imarı</p>
-    </div>
-
     <section class="sohbet-cekmece" id="sohbetCekmece" hidden aria-label="Sohbet"></section>
 
     <aside class="panel" id="panel" aria-label="Oyun paneli">
       <div class="panel-tutamac" id="panelTutamac" aria-hidden="true"></div>
       <nav class="sekmeler" role="tablist">
-        <button role="tab" data-sekme="parsel" aria-selected="true">Parsel</button>
-        <button role="tab" data-sekme="arazilerim">Arazilerim</button>
-        <button role="tab" data-sekme="yonetim">Yönetim</button>
-        <button role="tab" data-sekme="gorevler" id="gorevler-cift">Çiftliğim <span class="rozet" id="gorevRozet" hidden></span></button>
-        <button role="tab" data-sekme="carsi">Çarşı</button>
-        <button role="tab" data-sekme="pazar">Pazar <span class="rozet" id="pazarRozet" hidden></span></button>
-        <button role="tab" data-sekme="haberler">Haberler</button>
+        <button role="tab" data-sekme="parsel" aria-selected="true" title="Seçili parsel" hidden><span class="sekme-ikon" aria-hidden="true">🗺️</span><span class="sekme-ad">Parsel</span></button>
+        <button role="tab" data-sekme="gorevler" id="gorevler-cift" title="Çiftliğim: görevler, siparişler, komşular"><span class="sekme-ikon" aria-hidden="true">🐔</span><span class="sekme-ad">Çiftlik</span><span class="rozet" id="gorevRozet" hidden></span></button>
+        <button role="tab" data-sekme="pazar" title="Pazar ve çarşı"><span class="sekme-ikon" aria-hidden="true">💰</span><span class="sekme-ad">Pazar</span><span class="rozet" id="pazarRozet" hidden></span></button>
+        <button role="tab" data-sekme="haberler" title="Köy: haberler, muhtarlık ve belediye"><span class="sekme-ikon" aria-hidden="true">🏘️</span><span class="sekme-ad">Köy</span></button>
+        <button role="tab" data-sekme="arazilerim" title="Ben: arazilerim, ambar, cüzdan"><span class="sekme-ikon" aria-hidden="true">🧑‍🌾</span><span class="sekme-ad">Ben</span></button>
       </nav>
       <div class="panel-icerik" id="panelIcerik" role="tabpanel"></div>
     </aside>
@@ -131,7 +117,7 @@
   <footer class="uyari-serit">
     <span class="uzun">Sanal parseller gerçek tapu değildir; oyun içi kullanım hakkıdır. Akçe nakde çevrilemez. İmar türleri gerçek arazi kullanımından türetilmiş oyun kuralıdır, resmî imar planı değildir.</span>
     <span class="kisa">Sanal parsel gerçek tapu değildir · Akçe nakde çevrilemez</span>
-    <nav class="yasal-baglar" aria-label="Yasal"><a href="/yasal/kullanim-kosullari.html">Koşullar</a> · <a href="/yasal/kvkk.html">KVKK</a> · <a href="/yasal/cerez.html">Çerezler</a></nav>
+    <nav class="yasal-baglar" aria-label="Yasal"><a href="/yasal/kullanim-kosullari.html">Koşullar</a> · <a href="/yasal/kvkk.html">KVKK</a> · <a href="/yasal/cerez.html">Çerezler</a><span class="emoji-atif"> · Emoji: <a href="https://github.com/jdecked/twemoji" target="_blank" rel="noopener">Twemoji</a> (CC-BY 4.0)</span></nav>
   </footer>
 
 

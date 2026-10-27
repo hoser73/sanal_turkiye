@@ -78,6 +78,7 @@ const istekGonder = db.transaction((userId, { parselId, kullaniciId } = {}) => {
   const k = hedef && kullanici(hedef);
   if (!k || k.status === 'DELETED') throw new OyunHatasi(404, 'Oyuncu bulunamadı');
   if (k.id === userId) throw new OyunHatasi(409, 'Kendine arkadaşlık isteği gönderemezsin');
+  if (k.id === require('./piyasa').hazineId(false)) throw new OyunHatasi(409, 'Hazine ile komşu olunmaz');
   const var_ = iliski(userId, k.id);
   if (var_?.durum === 'KABUL') throw new OyunHatasi(409, 'Zaten arkadaşsınız');
   if (arkadasIdleri(userId).length >= KOMSULUK.maxArkadas) throw new OyunHatasi(409, `En çok ${KOMSULUK.maxArkadas} arkadaş`);
@@ -155,7 +156,7 @@ const yardimEt = db.transaction((userId, parselId) => {
 function hediyeSec() { return KOMSULUK.hediyeler[Math.floor(Math.random() * KOMSULUK.hediyeler.length)]; }
 // Değer aktaran işlemler için seviye eşiği: yeni açılan yan hesaplar ana hesaba hediye ve ürün akıtamasın
 function gondericiSeviyesi(userId, is) {
-  if (require('./ciftlik').oyuncuSeviyesi(userId) < KOMSULUK.gonderimMinSeviye) throw new OyunHatasi(403, `${is} seviye ${KOMSULUK.gonderimMinSeviye}'te açılır`, 'SEVIYE');
+  if (require('./ciftlik').oyuncuSeviyesi(userId) < KOMSULUK.gonderimMinSeviye) throw new OyunHatasi(403, `${is} seviye ${require('./lib/turkce').sayiBulunma(KOMSULUK.gonderimMinSeviye)} açılır`, 'SEVIYE');
 }
 const hediyeGonder = db.transaction((userId, aliciId) => {
   const a = Number(aliciId);

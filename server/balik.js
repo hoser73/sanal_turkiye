@@ -192,7 +192,8 @@ const cikar = db.transaction((userId, atisId, { basari, neden } = {}) => {
   if (basari !== true || sure > BALIK.mucadele.maksMs) {
     db.prepare(`UPDATE balik_atislari SET durum = 'KACTI' WHERE id = ?`).run(a.id);
     // Misina koptuysa stoktaki sahte yem balıkla gider
-    if (neden === 'koptu' && a.yem === 'SAHTE' && a.yem_stok) require('./carsi').stoktanKullan(userId, 'SAHTE_YEM_TAKIMI', 'Misina koptu: sahte yem kayboldu');
+    // (koptuğunu istemci bildirir; bildirmese de kaçan balıkla sahte yem üçte bir olasılıkla gider: yem hiç tükenmez olmasın)
+    if ((neden === 'koptu' || Math.random() < 1 / 3) && a.yem === 'SAHTE' && a.yem_stok) require('./carsi').stoktanKullan(userId, 'SAHTE_YEM_TAKIMI', 'Misina koptu: sahte yem kayboldu');
     return { tutuldu: false, sebep: sure > BALIK.mucadele.maksMs ? 'gec' : 'kacti' };
   }
   const tur = BALIK.turler[a.tur];

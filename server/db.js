@@ -13,6 +13,10 @@ const db = new Database(path.join(VERI_DIZINI, 'sanalturkiye-tr.db'));
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 db.pragma('busy_timeout = 5000');
+// WAL'da NORMAL güvenli ve her işlemde diske zorla yazmayı (fsync) bekletmez: yazmalar olay döngüsünü kilitlemez
+db.pragma('synchronous = NORMAL');
+db.pragma('temp_store = MEMORY');
+db.pragma('cache_size = -65536');   // 64 MB sayfa önbelleği
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS users (
@@ -576,11 +580,39 @@ kolonEkle('structures', 'bakim_at', 'INTEGER');   // son bakım (yoksa tamamlanm
 kolonEkle('users', 'bozulma_gun', 'INTEGER');
 kolonEkle('users', 'memleket_plaka', 'TEXT');        // hemşehri topluluğu (oyuncunun beyanı)
 kolonEkle('users', 'memleket_at', 'INTEGER');
+kolonEkle('users', 'baslangic_tarla_at', 'INTEGER');
+kolonEkle('structures', 'seviye', 'INTEGER NOT NULL DEFAULT 1');   // yapı yükseltme (gelisim.js)   // başlangıç tarlası hediyesi (hesap başına bir kez)
 kolonEkle('crops', 'don', 'INTEGER NOT NULL DEFAULT 0');   // gerçek havada don olayına maruz kaldı
 kolonEkle('crops', 'yagmur_at', 'INTEGER');               // son yağmur sulaması
 kolonEkle('crops', 'mevsim', 'TEXT');
 kolonEkle('crops', 'afet_kati', 'REAL NOT NULL DEFAULT 1');   // sağanak/dolu verim çarpanı
 kolonEkle('users', 'meslek', 'TEXT');
+kolonEkle('structures', 'gelir_at', 'INTEGER');   // konut kira gelirinin son toplandığı an (gelisim.js)
+// Oyun içi piyasa (piyasa.js): satış anındaki tahmini değer ve mahalle çarpanı; bölge endeksinin günlük kareleri
+kolonEkle('trades', 'deger_ani', 'INTEGER');
+kolonEkle('trades', 'carpan_ani', 'REAL');
+db.exec(`CREATE TABLE IF NOT EXISTS deger_endeksi (
+  tur      TEXT NOT NULL,      -- MAHALLE / ILCE / IL / TR
+  bolge_id INTEGER NOT NULL,   -- TR için 0
+  gun      TEXT NOT NULL,      -- YYYY-MM-DD (Türkiye saati)
+  endeks   REAL NOT NULL,      -- 100 × çarpan (değer ağırlıklı)
+  parsel   INTEGER NOT NULL,   -- sahipli parsel sayısı
+  islem    INTEGER NOT NULL,   -- o gün gerçekleşen satış
+  hacim    INTEGER NOT NULL,   -- o günkü satış tutarı (akçe)
+  PRIMARY KEY (tur, bolge_id, gun)
+) WITHOUT ROWID`);
+// İlk giriş sihirbazı (sihirbaz.js): bitti/atlandı zamanı ve adım ödülleri. Sütun yeni eklendiyse, zaten parseli olan
+// eski oyuncular sihirbazı görmez.
+if (kolonEkle('users', 'sihirbaz_bitti_at', 'INTEGER')) {
+  db.prepare(`UPDATE users SET sihirbaz_bitti_at = ? WHERE id IN (SELECT DISTINCT owner_user_id FROM parcels WHERE owner_user_id IS NOT NULL)`).run(Date.now());
+}
+db.exec(`CREATE TABLE IF NOT EXISTS sihirbaz_odulleri (
+  user_id    INTEGER NOT NULL REFERENCES users(id),
+  adim       TEXT NOT NULL,
+  tutar      REAL NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (user_id, adim)
+)`);
 kolonEkle('users', 'kozmetik', "TEXT NOT NULL DEFAULT '{}'");
 kolonEkle('users', 'npc_kisilik', 'TEXT');            // demo sakin kişiliği (yaşayan nüfus)
 kolonEkle('users', 'npc_mahalle', 'INTEGER');          // demo sakinin yerleştiği mahalle
@@ -715,5 +747,44 @@ CREATE INDEX IF NOT EXISTS ix_afet_destek_user ON afet_destekleri(user_id, creat
 `);
 kolonEkle('hava_durumu', 'tahmin', 'TEXT');        // JSON: önümüzdeki saatler + yarın (Open-Meteo)
 kolonEkle('crops', 'ortu_bitis', 'INTEGER');       // tarla örtüsü bu ana kadar korur
+
+// Sık sorgulanan sütunlar için dizinler. Bazı tablolar başka modüllerde kurulduğundan sunucu tüm modülleri yükledikten
+// sonra çağrılır (index.js); tablo yoksa o dizin atlanır.
+db.indeksleriKur = () => {
+  const DIZINLER = [
+    'ix_structures_durum ON structures(status, completes_at)',
+    'ix_ownership_user ON parcel_ownership(user_id, end_at)',
+    'ix_ownership_parcel ON parcel_ownership(parcel_id, id)',
+    'ix_trades_zaman ON trades(created_at)',
+    'ix_structures_sahip ON structures(owner_user_id, type, status)',
+    'ix_wallet_hesap ON wallet_ledger(account, credit, debit)',
+    'ix_wallet_user_tutar ON wallet_ledger(user_id, credit, debit)',
+    'ix_inventory_bakiye ON inventory_ledger(user_id, item_id, delta)',
+    'ix_crops_user ON crops(user_id, status)',
+    'ix_crops_durum ON crops(status, ready_at)',
+    'ix_push_user ON push_abonelikleri(user_id)',
+    'ix_adaylar_user ON adaylar(user_id)',
+    'ix_muhtarlar_user ON muhtarlar(user_id)',
+    'ix_bel_uye_user ON belediye_uyeleri(user_id)',
+    'ix_trades_buyer ON trades(buyer_id)',
+    'ix_listings_seller ON listings(seller_id, status)',
+    'ix_posta_durum ON giden_postalar(durum, sonraki)',
+    'ix_proje_oylama ON projeler(durum, oylama_bitis)',
+    'ix_proje_yapim ON projeler(durum, yapim_bitis)',
+    'ix_emir_sure ON urun_emirleri(durum, expires_at)',
+    'ix_kira_bitis ON kiralar(durum, bitis)',
+    'ix_kira_teklif ON kiralar(durum, created_at)',
+    'ix_ref_oylama ON referandumlar(durum, oylama_bitis)',
+    'ix_hayvan_hazir ON hayvan_bakim(durum, hazir_at)',
+    'ix_users_npc_mahalle ON users(is_npc, npc_durum, npc_mahalle)',
+    'ix_users_npc_sonraki ON users(is_npc, npc_durum, npc_sonraki)',
+    'ix_regions_tur_konum ON regions(type, center_lon, center_lat)',
+    'ix_regions_plaka ON regions(plaka)',
+    'ix_sessions_user ON sessions(user_id)',
+    'ix_urun_islem_zaman ON urun_islemleri(urun, created_at)',
+  ];
+  for (const d of DIZINLER) { try { db.exec(`CREATE INDEX IF NOT EXISTS ${d}`); } catch { /* tablo yok */ } }
+  db.exec('PRAGMA optimize');
+};
 
 module.exports = db;

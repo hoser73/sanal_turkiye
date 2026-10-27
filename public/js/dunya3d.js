@@ -19,6 +19,10 @@ export const GRAFIK = {
   dengeli: { ad: 'Dengeli', agac: 6000, bina: 1200, yaricap: 750, araba: 18, kus: 1, koyun: 10, bulut: 20, golge: false, piksel: 1, animasyon: true },
   hafif: { ad: 'Hafif', kapali: true, piksel: 1 },
 };
+// Telefonda "Dengeli": daha az ağaç/bina/araç, daha kısa görüş, canlandırma saniyede 10 kare (pil ve akıcılık)
+const TELEFON = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 700;
+const TELEFON_DENGELI = { ...GRAFIK.dengeli, agac: 2500, bina: 700, yaricap: 550, araba: 8, koyun: 5, bulut: 10, tikMs: 125 };
+const grafikAyari = (ad) => (ad === 'dengeli' && TELEFON ? TELEFON_DENGELI : GRAFIK[ad] || GRAFIK.yuksek);
 export function varsayilanGrafik() {
   const dar = Math.min(screen.width, screen.height) < 700;
   const zayif = (navigator.hardwareConcurrency || 4) <= 4 || (navigator.deviceMemory || 8) <= 4;
@@ -32,7 +36,7 @@ const lngOf = (x) => x * 360 - 180;
 const latOf = (y) => (Math.atan(Math.sinh(Math.PI * (1 - 2 * y))) * 180) / Math.PI;
 
 export function dunyaKur(map, { grafik = 'yuksek' } = {}) {
-  let ayar = GRAFIK[grafik] || GRAFIK.yuksek;
+  let ayar = grafikAyari(grafik);
   let etkin = !ayar.kapali;
   let renderer = null, bekleyenHdr = null;
   const sahne = new THREE.Scene();
@@ -119,7 +123,9 @@ export function dunyaKur(map, { grafik = 'yuksek' } = {}) {
   let yenileZamanlayici = 0, sonKurulum = null, kurulumNo = 0;
   const sureler = [0, 0, 0, 0];   // son kurulumda katman başına ms (ağaç, bina, hayat, bulut)
   const birKare = () => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
+  let durdu = false, bekleyenKurulum = false;   // çiftlik açıkken duraklatılır; istenen kurulum sürdürülünce yapılır
   async function yenile({ zorla = false } = {}) {
+    if (durdu) { bekleyenKurulum = true; return; }
     if (!etkin || !renderer) return;
     const z = map.getZoom();
     if (z < 9.3) { kurulumNo++; for (const p of parcalar) p.temizle?.(); sonKurulum = null; map.triggerRepaint(); return; }
@@ -242,13 +248,16 @@ export function dunyaKur(map, { grafik = 'yuksek' } = {}) {
   // fare oynamadıkça dünyayı donduruyordu.
   // Canlandırma saati: hareketli öğeler varken haritayı saniyede ~20 kez yeniden çizdirir (her karede değil).
   // Harita sürüklenir ya da yakınlaşırken zaten çizildiğinden ek istek gönderilmez.
-  let tik = 0;
+  // 15 sn hiç dokunulmazsa canlandırma durur (harita her saniye 10–20 kez baştan çizilmez; pil ve ısınma). Haritaya
+  // dokunulunca, kaydırılınca ya da yakınlaştırılınca yeniden başlar.
+  let tik = 0, sonGirdi = Date.now();
+  for (const olay of ['movestart', 'move', 'mousedown', 'touchstart', 'wheel', 'click']) map.on(olay, () => { sonGirdi = Date.now(); });
   function tikPlanla() {
-    if (tik) return;
+    if (tik || durdu || Date.now() - sonGirdi > 15_000) return;
     tik = setTimeout(() => {
       tik = 0;
       if (!document.hidden && !map.isMoving() && etkin) map.triggerRepaint();
-    }, 50);
+    }, ayar.tikMs || 50);
   }
 
   function ekle() {
@@ -264,7 +273,7 @@ export function dunyaKur(map, { grafik = 'yuksek' } = {}) {
     // MapLibre oyun yapıları (fill-extrusion) bu katman açıkken gizlenir: aynı yapılar burada ayrıntılı çizilir
     aktifMi: () => etkin && map.getZoom() >= 14,
     grafikAyarla(ad) {
-      ayar = GRAFIK[ad] || GRAFIK.yuksek;
+      ayar = grafikAyari(ad);
       etkin = !ayar.kapali;
       if (etkin) { ekle(); sonKurulum = null; yenilePlanla(30); }
       else { for (const p of parcalar) p.temizle?.(); if (map.getLayer('dunya-3d')) map.removeLayer('dunya-3d'); renderer = null; }
@@ -296,5 +305,7 @@ export function dunyaKur(map, { grafik = 'yuksek' } = {}) {
       sonKurulum = null; yenilePlanla(30);
     },
     yenile: () => { sonKurulum = null; yenilePlanla(30); },
+    // Tam sayfa çiftlik açıkken harita görünmez: canlandırma saati durur (telefonda iki 3B sahne birden çizilmesin)
+    duraklat(d) { durdu = !!d; if (!durdu) { if (bekleyenKurulum) { bekleyenKurulum = false; sonKurulum = null; yenilePlanla(30); } map.triggerRepaint(); } },
   };
 }

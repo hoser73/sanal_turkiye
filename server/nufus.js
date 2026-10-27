@@ -52,8 +52,8 @@ async function yerlestir(mahalleId) {
   const kod = kisilikSec();
   const k = KISILIKLER[kod];
   const adaylar = await hucreAra(merkez.lon, merkez.lat, k.imar, 4, 2);
-  for (const id of adaylar) {
-    await parselHazirla(id);
+  for (const hucreId of adaylar) {
+    const id = await parselHazirla(hucreId);   // deneme ilçesinde tarlanın kimliği
     const p = sessiz(() => oyun.parselGetir(id));
     if (!p || p.region_id !== mahalleId || p.owner_user_id) continue;
     const mevcut = new Set(mahalleDemolari(mahalleId).map((d) => d.display_name));
@@ -86,7 +86,7 @@ function eylem(n) {
   const parseller = db.prepare(`SELECT id, zoning_type, region_id FROM parcels WHERE owner_user_id = ?`).all(n.id);
   const yapilanlar = [];
   for (const p of parseller) {
-    const kart = sessiz(() => oyun.parselKarti(p.id, n.id));
+    const kart = sessiz(() => oyun.parselKarti(p.id, n.id, {}, { hafif: true }));
     if (!kart) continue;
     if (kart.tarimMi) {
       const e = kart.ekin;
@@ -222,7 +222,7 @@ function tasinma() {
       db.prepare(`UPDATE users SET npc_durum = 'TASINIYOR', npc_sonraki = ? WHERE id = ?`).run(t + NUFUS.tasinmaMs, n.id);
       for (const { id } of db.prepare(`SELECT id FROM parcels WHERE owner_user_id = ?`).all(n.id)) {
         const p = oyun.parselGetir(id);   // bedel hesabı mahalle çekiciliğini de ister
-        const fiyat = Math.max(20, Math.round(oyun.birincilBedel(p) * 1.1));
+        const fiyat = Math.min(require('./config/rules').PAZAR.maxFiyat, Math.max(20, Math.round(oyun.parselDegeri(p).toplam * 1.1)));   // yapılarıyla bugünkü değeri
         sessiz(() => pazar.ilanAc(n.id, p.id, { fiyat, gun: 3, kosul: 'HERKES' }));
       }
       L.denetim({ aktor: n.id, eylem: 'DEMO_RESIDENT_LEAVING', varlik: `MAHALLE:${m.id}`, bolge: m.id, herkese: true, sonra: { ad: n.display_name } });
@@ -234,14 +234,10 @@ function tasinma() {
     if (kalan.length && n.npc_sonraki > t) continue;
     db.transaction(() => {
       for (const i of db.prepare(`SELECT id FROM listings WHERE seller_id = ? AND status = 'ACTIVE'`).all(n.id)) sessiz(() => pazar.ilanIptal(n.id, i.id));
-      for (const p of kalan) {
-        db.prepare(`DELETE FROM structures WHERE parcel_id = ?`).run(p.id);
-        db.prepare(`UPDATE crops SET status = 'HARVESTED', harvested_qty = 0 WHERE parcel_id = ? AND status = 'GROWING'`).run(p.id);
-        db.prepare(`UPDATE parcel_ownership SET end_at = datetime('now') WHERE parcel_id = ? AND end_at IS NULL`).run(p.id);
-        db.prepare(`UPDATE parcels SET owner_user_id = NULL, acquired_at = NULL, version = version + 1 WHERE id = ?`).run(p.id);
-      }
+      for (const p of kalan) oyun.parseliBosalt(p.id);
       for (const e of db.prepare(`SELECT id FROM urun_emirleri WHERE user_id = ? AND durum = 'ACIK'`).all(n.id)) sessiz(() => require('./ekonomi').emirIptal(n.id, e.id));
-      db.prepare(`UPDATE adaylar SET durum = 'CEKILDI' WHERE user_id = ? AND durum = 'AKTIF'`).run(n.id);
+      db.prepare(`UPDATE adaylar SET durum = 'CEKILDI' WHERE user_id = ? AND durum = 'AKTIF'
+      AND secim_id NOT IN (SELECT id FROM secimler WHERE asama IN ('OYLAMA', 'ITIRAZ'))`).run(n.id);
       require('./moderasyon').tumMakamlariBosalt(n.id, 'Demo sakin mahalleden taşındı');
       db.prepare(`UPDATE users SET npc_durum = 'TASINDI' WHERE id = ?`).run(n.id);
     })();
@@ -256,7 +252,7 @@ const KALIP = [
   [/(seçim|muhtar|oy|aday|belediye|meclis)/i, ['Seçim yaklaşınca adayların vaatlerine iyi bak derim.', 'Muhtarlık kolay iş değil, ama mahalle için değer.', 'Oy gizli, kimse kime verdiğini bilemez; içimiz rahat.']],
   [/(hava|yağmur|kar|soğuk|sıcak)/i, null],
   [/(pazar|fiyat|sat|borsa|akçe)/i, ['Borsada emir verirken tüccar fiyatına bir bak, aşağısına satma.', 'Pazarlık sünnettir derler, ilan fiyatına hemen razı olma!']],
-  [/\?$/, ['Bilmem ki komşu, muhtara sormak lazım.', 'Güzel soru! Haberler sekmesinde mahallede olanlar yazıyor.', 'Bence denemek lazım, en kötü tecrübe olur.']],
+  [/\?$/, ['Bilmem ki komşu, muhtara sormak lazım.', 'Güzel soru! Köy › Haberler bölümünde mahallede olanlar yazıyor.', 'Bence denemek lazım, en kötü tecrübe olur.']],
 ];
 function kalipYanit(metin, mahalleId) {
   for (const [re, yanitlar] of KALIP) {

@@ -89,12 +89,11 @@ fs.writeFileSync(path.join(PUB, 'maske.geojson'), JSON.stringify({
   type: 'Feature', properties: {},
   geometry: { type: 'Polygon', coordinates: [[[-180, -85], [180, -85], [180, 85], [-180, 85], [-180, -85]], ...disHalkalar] },
 }));
-fs.writeFileSync(path.join(PUB, 'turkiye.geojson'), JSON.stringify({ type: 'Feature', properties: {}, geometry: ulkeGeo }));
 
 const boyut = (f) => `${(fs.statSync(f).size / 1024).toFixed(0)} KB`;
 console.log(`${iller.length} il, ${ilceler.length} ilçe hazırlandı.`);
 for (const f of ['iller.json', 'ilceler.json']) console.log(' ', f, boyut(path.join(__dirname, f)));
-for (const f of ['iller.geojson', 'il-etiketleri.geojson', 'maske.geojson', 'turkiye.geojson']) console.log('  public/veri/' + f, boyut(path.join(PUB, f)));
+for (const f of ['iller.geojson', 'il-etiketleri.geojson', 'maske.geojson']) console.log('  public/veri/' + f, boyut(path.join(PUB, f)));
 const ilBasina = {};
 for (const i of ilceler) ilBasina[i.plaka] = (ilBasina[i.plaka] || 0) + 1;
 console.log('  ilçe sayısı (örnek): Konya', ilBasina['42'], '· İstanbul', ilBasina['34'], '· Ankara', ilBasina['06'], '· Bayburt', ilBasina['69']);

@@ -30,7 +30,8 @@ async function npcSeedEt({ sessiz = false } = {}) {
       try {
         const kimlikler = await hucreAra(n.yer[0], n.yer[1], n.imar, n.adet, 3);
         if (!kimlikler.length) continue;
-        for (const id of kimlikler) await parselHazirla(id);
+        for (let k = 0; k < kimlikler.length; k++) kimlikler[k] = await parselHazirla(kimlikler[k]);
+        kimlikler.splice(0, kimlikler.length, ...new Set(kimlikler));   // aynı tarlaya düşen hücreler tek parsel
         db.transaction(() => {
           const uid = db.prepare('INSERT INTO users (display_name, is_npc) VALUES (?, 1)').run(n.ad).lastInsertRowid;
           const simdi = Date.now();

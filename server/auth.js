@@ -193,22 +193,23 @@ function epostaDenetle(email) {
   if (!metinMi(email, 5, 254) || !EPOSTA_RE.test(email)) throw new OyunHatasi(400, 'Geçerli bir e-posta girin');
   return email.trim().toLowerCase();
 }
-function kayit(req, res) {
+// Parola özeti eşzamansız: bcryptjs işi parçalara bölüp olay döngüsünü kilitlemez (girişlerde diğer istekler beklemez)
+async function kayit(req, res) {
   const { email, sifre, pazarlamaOnay } = req.body || {};
   const e = epostaDenetle(email);
   if (!metinMi(sifre, 8, 128)) throw new OyunHatasi(400, 'Parola 8–128 karakter olmalı');
   const p = profilDenetle(req.body || {});
-  const userId = hesapOlustur({ email: e, hash: bcrypt.hashSync(sifre, 10), ...p, pazarlamaOnay });
+  const userId = hesapOlustur({ email: e, hash: await bcrypt.hash(sifre, 10), ...p, pazarlamaOnay });
   if (!otomatikDogrula()) dogrulamaPostasi(q.kullanici.get(userId));
   oturumAc(req, res, userId);
   res.status(201).json({ tamam: true, dogrulamaGerekli: !otomatikDogrula() });
 }
 
-function giris(req, res) {
+async function giris(req, res) {
   const { email, sifre } = req.body || {};
   if (!metinMi(email, 3, 254) || !metinMi(sifre, 1, 128)) throw new OyunHatasi(400, 'E-posta ve parola gerekli');
   const u = q.epostaIle.get(email.trim().toLowerCase());
-  const dogru = bcrypt.compareSync(sifre, u?.password_hash || DUMMY_HASH);
+  const dogru = await bcrypt.compare(sifre, u?.password_hash || DUMMY_HASH);
   if (!u || !dogru) throw new OyunHatasi(401, 'E-posta veya parola hatalı');
   if (u.status !== 'ACTIVE') throw new OyunHatasi(403, 'Hesap askıya alınmış', 'ASKIDA');
   if (u.totp_aktif) {
@@ -260,8 +261,22 @@ function kodDogrula(u, kod) {
 }
 
 // Kritik işlemler (parola değiştirme, 2FA kapatma, hesap silme): parola + (açıksa) 2FA kodu
-function yenidenKimlik(userId, { sifre, kod } = {}) {
+// Hassas hesap işlemleri için oturum son 15 dakikada açılmış olmalı (çalınmış eski bir oturum çerezi kalıcı erişime
+// dönüşmesin: passkey ekleme, Google/Apple bağlama, 2FA kurma; parolasız hesapta parolanın yerini tutar)
+const TAZE_OTURUM_MS = 15 * 60_000;
+function tazeOturumMu(req) {
+  const s = req.kullanici?.oturum && db.prepare('SELECT created_at FROM sessions WHERE token_hash = ?').get(req.kullanici.oturum);
+  return !!s && Date.now() - Date.parse(`${s.created_at.replace(' ', 'T')}Z`) < TAZE_OTURUM_MS;
+}
+function tazeOturumGerekli(req, _res, next) {
+  if (!tazeOturumMu(req)) return next(new OyunHatasi(403, 'Güvenliğin için çıkış yapıp yeniden giriş yap, sonra tekrar dene', 'YENIDEN_GIRIS'));
+  next();
+}
+// Parolayla yeniden kimlik. Parolası olmayan (Google, Apple, passkey) hesapta taze oturum yeterlidir.
+function yenidenKimlik(userId, { sifre, kod } = {}, { taze = false } = {}) {
   const u = q.kullanici.get(userId);
+  if (!u.password_hash && taze) { if (u.totp_aktif && !kodDogrula(u, kod)) throw new OyunHatasi(401, 'İki adımlı doğrulama kodu hatalı'); return u; }
+  if (!u.password_hash) throw new OyunHatasi(403, 'Güvenliğin için çıkış yapıp yeniden giriş yap, sonra tekrar dene', 'YENIDEN_GIRIS');
   if (!metinMi(sifre, 1, 128) || !bcrypt.compareSync(sifre, u.password_hash || DUMMY_HASH)) throw new OyunHatasi(401, 'Parola hatalı');
   if (u.totp_aktif && !kodDogrula(u, kod)) throw new OyunHatasi(401, 'İki adımlı doğrulama kodu hatalı');
   return u;
@@ -363,7 +378,7 @@ function ikiAdimEtkinlestir(req) {
   return { tamam: true, kurtarmaKodlari: kodlar };
 }
 function ikiAdimKapat(req) {
-  const u = yenidenKimlik(req.kullanici.id, req.body);
+  const u = yenidenKimlik(req.kullanici.id, req.body, { taze: tazeOturumMu(req) });
   if (!u.totp_aktif) return { tamam: true };
   if (['MODERATOR', 'DENETCI', 'ADMIN'].includes(u.rol) && yoneticiIkiAdimZorunlu()) throw new OyunHatasi(403, 'Yetkili hesaplarda iki adımlı doğrulama kapatılamaz');
   db.prepare(`UPDATE users SET totp_aktif = 0, totp_sir = NULL, kurtarma_kodlari = NULL WHERE id = ?`).run(u.id);
@@ -410,7 +425,7 @@ function eskiOturumlariTemizle() {
 }
 
 module.exports = {
-  CEREZ, kimlik, cereztenKullanici, girisGerekli, dogrulanmisGerekli, rolGerekli, kayit, giris, ikinciAdim, cikis, yenidenKimlik, kodDogrula,
+  CEREZ, kimlik, cereztenKullanici, girisGerekli, dogrulanmisGerekli, rolGerekli, kayit, giris, ikinciAdim, cikis, yenidenKimlik, kodDogrula, tazeOturumMu, tazeOturumGerekli,
   oturumAc, hesapOlustur, profilDenetle, adUygun, adAnahtari, epostaDenetle, dogrulamaPostasi, TABAN_URL, AVATAR_RE,
   epostaDogrula, dogrulamaYenidenGonder, sifreUnuttum, sifreSifirla, sifreDegistir, ikiAdimKur, ikiAdimEtkinlestir, ikiAdimKapat,
   oturumlar, oturumKapat, digerOturumlariKapat, hesapDurumu, eskiOturumlariTemizle, gencMi, yas,

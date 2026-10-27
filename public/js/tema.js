@@ -50,7 +50,6 @@ const TEMALAR = {
       'il-ad': { ...ETIKET_CIFTLIK, 'text-halo-width': 2.4 },
       rolyef: { 'hillshade-exaggeration': z(3, 0.55, 10, 0.45, 13, 0.3, 15, 0.12), 'hillshade-shadow-color': '#5e4a2a', 'hillshade-highlight-color': '#fffbe6',
         'hillshade-accent-color': '#5a4a2c' },
-      'imar-karo': { 'raster-opacity': z(14, 0, 14.5, 0.3, 16.5, 0.34, 18, 0.3) },
       izgara: { 'line-color': '#fff6dc', 'line-opacity': z(16, 0, 16.5, 0.3, 18, 0.42) },
       zirve: { 'text-color': '#fff6dc', 'text-halo-color': '#5a3511' },
       'etiket-su': { 'text-color': '#ffffff', 'text-halo-color': '#235f86', 'text-halo-width': 1.8 },

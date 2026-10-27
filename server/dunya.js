@@ -205,7 +205,16 @@ function puanlar(n) {
   }
   return iller_;
 }
+// Lig tablosu 28 günlük olayları tarar: 60 sn önbellek (testlerde kapalı)
+const ligOnbellek = new Map();
 function ligTablosu(n = sezonNo()) {
+  const o = process.env.ONBELLEK !== 'kapali' && ligOnbellek.get(n);
+  if (o && Date.now() - o.t < 60_000) return o.v;
+  const v = ligTablosuHesapla(n);
+  ligOnbellek.set(n, { t: Date.now(), v });
+  return v;
+}
+function ligTablosuHesapla(n) {
   const p = puanlar(n);
   const adlar = new Map(db.prepare(`SELECT id, name, plaka FROM regions WHERE type = 'IL'`).all().map((r) => [r.id, r]));
   const tablo = [...p].map(([ilId, k]) => ({ ilId, il: adlar.get(ilId)?.name, plaka: adlar.get(ilId)?.plaka, puan: Math.round(k.puan * 10) / 10,
@@ -283,7 +292,7 @@ function memleketBilgisi(plaka, userId) {
 const rozetlerim = (userId) => db.prepare(`SELECT kod, ad, ikon, aciklama, created_at FROM rozetler WHERE user_id = ? ORDER BY id DESC`).all(userId);
 
 function rotalar(app, { h, auth }) {
-  app.get('/api/hava', h(() => havaListesi()));
+  app.get('/api/hava', h(require('./lib/onbellek').ortakYanit(60_000, () => havaListesi())));
   app.get('/api/lig', h((req) => lig(req.kullanici?.id ?? null)));
   app.get('/api/memleket/:plaka', h((req) => memleketBilgisi(req.params.plaka, req.kullanici?.id ?? null)));
   app.post('/api/hesap/memleket', auth.girisGerekli, h((req) => memleketSec(req.kullanici.id, req.body?.plaka)));

@@ -35,6 +35,8 @@ function ilFiyati(urun, plaka, satilan) {
 function teklif({ urun, miktar, kaynak, hedef, mod }) {
   const u = URUNLER[urun];
   if (!u || !Object.hasOwn(URUNLER, urun)) throw new OyunHatasi(400, 'Bilinmeyen ürün');
+  // Dükkân ürünleri ve paket sarfları NPC'ye satılmaz; sevkiyatla da satılamaz (ucuz paket → il pazarı farkı akçe basardı)
+  if (u.dukkan) throw new OyunHatasi(422, `${u.ad} dükkân ürünüdür; il pazarlarına sevk edilemez`);
   const m = Number(miktar);
   if (!Number.isInteger(m) || m < 1 || m > LOJISTIK.maxMiktar) throw new OyunHatasi(400, `Miktar 1–${LOJISTIK.maxMiktar} olmalı`);
   const md = Object.hasOwn(LOJISTIK.modlar, mod) ? LOJISTIK.modlar[mod] : null;

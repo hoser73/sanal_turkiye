@@ -6,7 +6,17 @@ const { yol } = require('./lib/olaylar');
 const { kanalCoz } = require('./sohbet');
 
 const MAKS_KANAL = 6;
+// Bağlantı sınırı: IP başına ve toplam (boşta binlerce bağlantı her olayı pahalılaştırmasın)
+const MAKS_IP_BAGLANTI = Number(process.env.WS_IP_SINIRI || 8), MAKS_BAGLANTI = Number(process.env.WS_TOPLAM_SINIRI || 20000);
+const ipSayilari = new Map();
+const istemciIp = (req) => (process.env.NODE_ENV === 'production' ? String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() : '') || req.socket.remoteAddress || '?';
 const istemciler = new Set();
+const kullaniciSoketleri = new Map();   // userId → Set<ws>: bildirim yalnızca o oyuncunun bağlantılarına gider (herkes taranmaz)
+function kullaniciBagla(ws, kullanici) {
+  if (ws.kullanici) { const s = kullaniciSoketleri.get(ws.kullanici.id); s?.delete(ws); if (s && !s.size) kullaniciSoketleri.delete(ws.kullanici.id); }
+  ws.kullanici = kullanici;
+  if (kullanici) { if (!kullaniciSoketleri.has(kullanici.id)) kullaniciSoketleri.set(kullanici.id, new Set()); kullaniciSoketleri.get(kullanici.id).add(ws); }
+}
 
 function bagla(sunucu) {
   const wss = new WebSocketServer({ noServer: true, maxPayload: 4096 });
@@ -18,7 +28,9 @@ function bagla(sunucu) {
       try { tamam = new URL(origin).host === req.headers.host; } catch { /* geçersiz */ }
       if (!tamam) { soket.write('HTTP/1.1 403 Forbidden\r\n\r\n'); return soket.destroy(); }
     }
-    wss.handleUpgrade(req, soket, bas, (ws) => baglandi(ws, req));
+    const ip = istemciIp(req);
+    if ((ipSayilari.get(ip) || 0) >= MAKS_IP_BAGLANTI || istemciler.size >= MAKS_BAGLANTI) { soket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n'); return soket.destroy(); }
+    wss.handleUpgrade(req, soket, bas, (ws) => { ws.ip = ip; ipSayilari.set(ip, (ipSayilari.get(ip) || 0) + 1); baglandi(ws, req); });
   });
   const nabiz = setInterval(() => {
     for (const ws of istemciler) {
@@ -26,7 +38,7 @@ function bagla(sunucu) {
       ws.canli = false;
       ws.ping();
       // Oturum kapatıldıysa (çıkış, parola sıfırlama, hesap silme) kimlik düşer
-      if (ws.kullanici && !auth.cereztenKullanici(ws.cerez)) { ws.kullanici = null; gonder(ws, { tip: 'oturum-kapandi' }); }
+      if (ws.kullanici && !auth.cereztenKullanici(ws.cerez)) { kullaniciBagla(ws, null); gonder(ws, { tip: 'oturum-kapandi' }); }
     }
   }, 30_000);
   nabiz.unref();
@@ -35,18 +47,23 @@ function bagla(sunucu) {
 }
 
 function gonder(ws, veri) {
-  if (ws.readyState === 1) ws.send(JSON.stringify(veri));
+  if (ws.readyState === 1) ws.send(typeof veri === 'string' ? veri : JSON.stringify(veri));
 }
 
 function baglandi(ws, req) {
   ws.cerez = req.headers.cookie || '';
-  ws.kullanici = auth.cereztenKullanici(ws.cerez);
+  ws.kullanici = null;
+  kullaniciBagla(ws, auth.cereztenKullanici(ws.cerez));
   ws.kanallar = new Set();
   ws.canli = true;
   ws.kova = { t: Date.now(), n: 0 };
   istemciler.add(ws);
   ws.on('pong', () => { ws.canli = true; });
-  ws.on('close', () => { istemciler.delete(ws); kanalSayilariniYay([...ws.kanallar]); });
+  ws.on('close', () => {
+    istemciler.delete(ws); kullaniciBagla(ws, null); kanalSayilariniYay([...ws.kanallar]);
+    const n = (ipSayilari.get(ws.ip) || 1) - 1;
+    if (n > 0) ipSayilari.set(ws.ip, n); else ipSayilari.delete(ws.ip);
+  });
   ws.on('message', (ham) => {
     const t = Date.now();
     if (t - ws.kova.t > 10_000) ws.kova = { t, n: 0 };
@@ -63,22 +80,40 @@ function baglandi(ws, req) {
   gonder(ws, { tip: 'merhaba', kullanici: ws.kullanici ? { id: ws.kullanici.id, ad: ws.kullanici.display_name } : null });
 }
 
+// Çevrimiçi sayıları: her abonelik/ayrılışta değil, değişen kanallar biriktirilip 3 sn'de bir tek geçişte yayılır
+// (yeniden bağlanma fırtınasında her bağlantı için bütün istemcileri taramak O(N²) olurdu)
+const kirliKanallar = new Set();
+const SAYIM_GECIKME = process.env.ONBELLEK === 'kapali' ? 0 : 3000;   // testte anında
+let sayimZamanlayici = 0;
 function kanalSayilariniYay(kanallar) {
-  for (const k of kanallar) {
-    let sayi = 0;
-    for (const ws of istemciler) if (ws.kanallar.has(k)) sayi++;
-    for (const ws of istemciler) if (ws.kanallar.has(k)) gonder(ws, { tip: 'cevrimici', kanal: k, sayi });
-  }
+  for (const k of kanallar) kirliKanallar.add(k);
+  if (sayimZamanlayici) return;
+  sayimZamanlayici = setTimeout(() => {
+    sayimZamanlayici = 0;
+    const sayilar = new Map([...kirliKanallar].map((k) => [k, 0]));
+    kirliKanallar.clear();
+    for (const ws of istemciler) for (const k of ws.kanallar) if (sayilar.has(k)) sayilar.set(k, sayilar.get(k) + 1);
+    const iletiler = new Map([...sayilar].map(([k, sayi]) => [k, JSON.stringify({ tip: 'cevrimici', kanal: k, sayi })]));
+    for (const ws of istemciler) for (const k of ws.kanallar) if (iletiler.has(k)) gonder(ws, iletiler.get(k));
+  }, SAYIM_GECIKME);
+  sayimZamanlayici.unref?.();
 }
 
 yol.on('bildirim', (b) => {
-  for (const ws of istemciler) if (ws.kullanici?.id === b.userId) gonder(ws, { tip: 'bildirim', metin: b.metin, link: b.link });
+  const soketler = kullaniciSoketleri.get(b.userId);
+  if (!soketler) return;
+  const ileti = JSON.stringify({ tip: 'bildirim', metin: b.metin, link: b.link });
+  for (const ws of soketler) gonder(ws, ileti);
 });
 // Herkese açık olay: haritadaki canlı baloncuklar için parsel kimliği (konum) gider; kimin yaptığı gitmez, yalnızca alıcının kendisi mi
 const PARSEL_KIMLIGI = /^TR-\d{7}-\d{7}$/;
 yol.on('olay', (o) => {
   const parsel = typeof o.varlik === 'string' && PARSEL_KIMLIGI.test(o.varlik) ? o.varlik : undefined;
-  for (const ws of istemciler) gonder(ws, { tip: 'olay', eylem: o.eylem, bolge: o.bolge, parsel, ben: !!o.aktor && ws.kullanici?.id === o.aktor });
+  // İleti bir kez metne çevrilir (herkese aynı); yalnızca olayı yapanın kendi bağlantılarına "ben" sürümü gider
+  const herkes = JSON.stringify({ tip: 'olay', eylem: o.eylem, bolge: o.bolge, parsel, ben: false });
+  const kendi = o.aktor ? kullaniciSoketleri.get(o.aktor) : null;
+  const benIleti = kendi ? JSON.stringify({ tip: 'olay', eylem: o.eylem, bolge: o.bolge, parsel, ben: true }) : null;
+  for (const ws of istemciler) gonder(ws, kendi?.has(ws) ? benIleti : herkes);
 });
 yol.on('sohbet', ({ kanal, mesaj }) => {
   for (const ws of istemciler) {

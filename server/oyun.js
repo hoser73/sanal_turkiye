@@ -2,6 +2,8 @@
 // Bütün kurallar SUNUCUDA denetlenir (§3.2); her değişiklik tek atomik işlemde yapılır (§8.4).
 const db = require('./db');
 const { IMAR, IMAR_KAYNAK_NOTU, YAPILAR, URUNLER, TARIM, NPC_PAZAR, HESAP, GOREVLER, BELEDIYE, BOZULMA, BAKIM, HAVA, CARSI } = require('./config/rules');
+const { adaParsel } = require('./harita/ada');
+const SIHIRBAZ_ILK_EKIN = () => require('./sihirbaz').SIHIRBAZ.ilkEkinMs;
 const L = require('./lib/ledger');
 const I = require('./harita/izgara');
 const belediye = require('./belediye');
@@ -11,6 +13,10 @@ const bildir = (userId, metin, link) => require('./pazar').bildir(userId, metin,
 const PARSEL_SEC = `SELECT p.*, r.name AS mahalle, r.attractiveness, r.code AS mahalle_kodu, r.place_class,
     ri.name AS ilce, rl.name AS il, rl.plaka
   FROM parcels p JOIN regions r ON r.id = p.region_id JOIN regions ri ON ri.id = p.ilce_id JOIN regions rl ON rl.id = p.il_id`;
+// Hücre → gerçek tarla eşlemesi (tablo harita/tarla.js'te kurulur; ilk kullanımda hazırlanır)
+let tarlaHucreSt = null;
+const tarlaHucreSorgusu = () => (tarlaHucreSt ??= (require('./harita/tarla'), db.prepare(`SELECT x, y, tarla_id FROM tarla_hucreleri WHERE x BETWEEN ? AND ? AND y BETWEEN ? AND ?`)));
+
 const q = {
   parsel: db.prepare(`${PARSEL_SEC} WHERE p.id = ?`),
   kullanici: db.prepare(`SELECT id, display_name, is_npc FROM users WHERE id = ?`),
@@ -102,6 +108,28 @@ function gelismislikSkoru(parsel, yapilar, ekin) {
   return Math.min(100, Math.round(yapiPuani + (ekin ? 8 : 0) + (parsel.attractiveness - 0.9) * 40));
 }
 
+// Oyun içi tahmini değer (akçe): arsa (tahsis bedeli × mahalle çarpanı, piyasa.js) + üstündeki yapıların yatırım
+// değeri (yapım maliyeti ve yükseltme harcamaları; tamamlanmış yapı sağlığına göre en çok yarıya kadar aşınır) + süsler.
+// Satış ilanındaki fiyatı sahibi belirler; bu bir oyun göstergesidir.
+// carpanZorla: Hazine teklifinde satıcı hariç hesaplanan çarpan
+function tahminiDeger(parsel, yapilar, t = simdi(), carpanZorla = null) {
+  const piyasa = require('./piyasa');
+  const carpan = carpanZorla ?? piyasa.mahalleCarpani(parsel.region_id, t).carpan;
+  const arsa = Math.round(birincilBedel(parsel) * carpan);
+  let yapi = 0;
+  for (const s of yapilar) {
+    let v = piyasa.yapiYatirimi(s.type, s.seviye || 1);
+    if (s.status === 'ACTIVE') v *= Math.max(0.5, saglik(s, t) / 100);
+    yapi += v;
+  }
+  const { SUSLER } = require('./config/rules');
+  const sus = require('./ciftlik').parselSusleri(parsel.id).reduce((a, x) => a + (SUSLER[x.tur]?.fiyat || 0), 0);
+  return { toplam: Math.round(arsa + yapi + sus), arsa, tahsis: birincilBedel(parsel), carpan, yapilar: Math.round(yapi), susler: sus };
+}
+const parselDegeri = (p, t = simdi()) => tahminiDeger(p, q.yapilar.all(p.id), t);
+// Boş parselin tahsis fiyatı: taban bedel × güncel mahalle çarpanı (ucuz tahsis + hemen Hazine'ye satış kârı olmasın)
+const tahsisFiyati = (p, t = simdi()) => Math.round(birincilBedel(p) * require('./piyasa').mahalleCarpani(p.region_id, t).carpan);
+
 function birincilBedel(parsel) {
   const imar = IMAR[parsel.zoning_type];
   return Math.round(parsel.area_m2 * imar.m2Fiyat * parsel.attractiveness);
@@ -132,7 +160,8 @@ function kozmetikKodu(userId) {
 
 // ---------- Parsel kartı ----------
 // komsuImar: { "dx,dy": imar } — HTTP katmanı karo önbelleğinden doldurur (async)
-function parselKarti(id, userId, komsuImar = {}) {
+// hafif: arka plan işleri (işçi turu, demo sakinler, aday listesi) için piyasa ve Hazine hesapları atlanır
+function parselKarti(id, userId, komsuImar = {}, { hafif = false } = {}) {
   bekleyenleriIsle();
   const p = parselGetir(id);
   const yapilar = q.yapilar.all(id);
@@ -143,20 +172,37 @@ function parselKarti(id, userId, komsuImar = {}) {
   const t = simdi();
   const hizmetler = belediye.mahalleHizmetleri(p.region_id);
 
+  // Çevre hücreleri (5 × 5): kayıtlı ızgara parselleri ve gerçek tarlalar. Bir hücreyi gerçek bir tarla kaplıyorsa
+  // (tarla_hucreleri) o hücrenin sahibi tarlanın sahibidir; kimlik tarlanınkidir (satın alma ve geçiş o tarlaya).
+  const R = 2;
   const kayitliKomsular = db.prepare(`
     SELECT p.id, p.zoning_type, p.owner_user_id, p.grid_x, p.grid_y, u.display_name AS sahip
     FROM parcels p LEFT JOIN users u ON u.id = p.owner_user_id
     WHERE p.grid_x BETWEEN ? AND ? AND p.grid_y BETWEEN ? AND ? AND p.id <> ?`)
-    .all(p.grid_x - 1, p.grid_x + 1, p.grid_y - 1, p.grid_y + 1, p.id);
-  const komsular = [];
-  for (let dy = -1; dy <= 1; dy++) {
-    for (let dx = -1; dx <= 1; dx++) {
+    .all(p.grid_x - R, p.grid_x + R, p.grid_y - R, p.grid_y + R, p.id);
+  const tarlaHucreleri = new Map(tarlaHucreSorgusu().all(p.grid_x - R, p.grid_x + R, p.grid_y - R, p.grid_y + R).map((h) => [`${h.x},${h.y}`, h.tarla_id]));
+  const tarlaKimlikleri = [...new Set(tarlaHucreleri.values())].filter((t) => t !== p.id);
+  const tarlaSahipleri = new Map(tarlaKimlikleri.length ? db.prepare(`
+    SELECT p.id, p.owner_user_id, u.display_name AS sahip FROM parcels p LEFT JOIN users u ON u.id = p.owner_user_id
+    WHERE p.id IN (${tarlaKimlikleri.map(() => '?').join(',')})`).all(...tarlaKimlikleri).map((r) => [r.id, r]) : []);
+  const komsular = [], cevre = [];   // komsular: 3 × 3 (parsel kartı); cevre: dış halka (tam sayfa çiftlik 5 × 5 çizer)
+  for (let dy = -R; dy <= R; dy++) {
+    for (let dx = -R; dx <= R; dx++) {
       if (!dx && !dy) continue;
-      const k = kayitliKomsular.find((n) => n.grid_x === p.grid_x + dx && n.grid_y === p.grid_y + dy);
-      komsular.push({
-        id: I.parselId(p.grid_x + dx, p.grid_y + dy), dx, dy,
-        imar: k?.zoning_type || komsuImar[`${dx},${dy}`] || null,
-        sahip: k?.sahip || null, ben: !!userId && k?.owner_user_id === userId,
+      const x = p.grid_x + dx, y = p.grid_y + dy;
+      const k = kayitliKomsular.find((n) => n.grid_x === x && n.grid_y === y && n.owner_user_id);
+      const tarlaId = tarlaHucreleri.get(`${x},${y}`);
+      if (!k && tarlaId && tarlaId !== p.id) {
+        const t = tarlaSahipleri.get(tarlaId);
+        (Math.max(Math.abs(dx), Math.abs(dy)) <= 1 ? komsular : cevre).push({ id: tarlaId, dx, dy, imar: 'TARIM', tarla: true, sahip: t?.sahip || null, ben: !!userId && !!t && t.owner_user_id === userId });
+        continue;
+      }
+      if (tarlaId && tarlaId === p.id) continue;   // parselin kendi tarlası
+      const kk = k || kayitliKomsular.find((n) => n.grid_x === x && n.grid_y === y);
+      (Math.max(Math.abs(dx), Math.abs(dy)) <= 1 ? komsular : cevre).push({
+        id: I.parselId(x, y), dx, dy,
+        imar: kk?.zoning_type || komsuImar[`${dx},${dy}`] || null,
+        sahip: kk?.sahip || null, ben: !!userId && kk?.owner_user_id === userId,
       });
     }
   }
@@ -168,11 +214,11 @@ function parselKarti(id, userId, komsuImar = {}) {
   let insaatSecenekleri = null;
   if (benim) {
     insaatSecenekleri = imar.parselDegil ? [] : Object.entries(YAPILAR)
-      .filter(([, y]) => y.izin.includes(p.zoning_type))
+      .filter(([, y]) => y.izin.includes(p.zoning_type) && !y.gizli)   // gizli: artık atölyede sunulmayan (var olan durur)
       .map(([tip, y]) => {
         const kilit = y.minSeviye && require('./ciftlik').oyuncuSeviyesi(userId) < y.minSeviye;
         return { tip, ad: y.ad, ikon: y.ikon, kategori: y.kategori, maliyet: y.maliyet, sureMs: y.sureMs, minSeviye: y.minSeviye || 1,
-          taban: y.taban, kat: y.kat, etki: y.etki, ...(kilit ? { uygun: false, sebep: `Seviye ${y.minSeviye}'te açılır`, kilitli: true } : insaatUygunluk(p, tip, yapilar)) };
+          taban: y.taban, kat: y.kat, etki: y.etki, gelir: y.gelir || null, ...(kilit ? { uygun: false, sebep: `Seviye ${require('./lib/turkce').sayiBulunma(y.minSeviye)} açılır`, kilitli: true } : insaatUygunluk(p, tip, yapilar)) };
       });
   }
 
@@ -180,19 +226,28 @@ function parselKarti(id, userId, komsuImar = {}) {
     id: p.id, mahalle: p.mahalle, mahalleId: p.region_id, ilce: p.ilce, belediyeId: p.ilce_id, il: p.il, plaka: p.plaka,
     hizmetler: [...hizmetler].map((k) => ({ kod: k, ad: BELEDIYE.projeler[k].ad, ikon: BELEDIYE.projeler[k].ikon, etki: BELEDIYE.projeler[k].etki })),
     konum: { lon: p.centroid_lon, lat: p.centroid_lat }, hucre: { x: p.grid_x, y: p.grid_y },
-    geometri: I.hucrePoligonu(p.grid_x, p.grid_y),
+    adaParsel: adaParsel(p.grid_x, p.grid_y),   // oyun içi Ada/Parsel no (gerçek tapu değil)
+    geometri: parselGeometrisi(p), tarla: tarlaBilgisi(p),
     imarKaynak: { surum: p.zoning_source, not: IMAR_KAYNAK_NOTU },
     alan: p.area_m2, durum: p.status, geomVersiyon: p.geom_version,
     imar: { tip: p.zoning_type, ...imar },
     imarKullanimi: imarKullanimi(p, yapilar),
     sahip: sahip ? { ad: sahip.display_name, npc: !!sahip.is_npc, demoSakin: !!sahip.is_npc && !!q.npcKisilik.get(sahip.id)?.npc_kisilik, ben: benim, unvan: sahip.is_npc ? null : require('./kozmetik').secili(sahip.id).unvan?.ad || null } : null,
     kozmetik: sahip && !sahip.is_npc ? require('./kozmetik').haritaKodu(sahip.id) : '',
-    birincilBedel: !p.owner_user_id && imar.satilik ? birincilBedel(p) : null,
+    birincilBedel: !p.owner_user_id && imar.satilik ? tahsisFiyati(p, t) : null,
     gelismislikSkoru: gelismislikSkoru(p, yapilar, ekin),
+    ...(() => {
+      const deger = tahminiDeger(p, yapilar, t);
+      if (hafif) return { deger };
+      const piyasa = require('./piyasa');
+      return { deger, piyasa: piyasa.parselPiyasasi(p, t), getirim: benim ? piyasa.parselGetirisi(userId, p.id, deger.toplam) : null,
+        hazine: benim ? piyasa.hazineTeklifi(userId, p, t) : null };
+    })(),
     yapilar: yapilar.map((s) => ({ id: s.id, tip: s.type, ad: YAPILAR[s.type]?.ad, ikon: YAPILAR[s.type]?.ikon,
+      seviye: s.seviye || 1, yukseltBedeli: benim && s.status === 'ACTIVE' ? require('./gelisim').yukseltmeBedeli(s) : null,
       durum: s.status, bitis: s.completes_at, kalanMs: Math.max(0, s.completes_at - t),
       saglik: saglik(s, t), bakimMaliyeti: bakimMaliyeti(s, t), etkisiz: s.status === 'ACTIVE' && saglik(s, t) < BAKIM.etkisizEsik,
-      hayvan: require('./ciftlik').hayvanDurumu(s, t) })),
+      hayvan: require('./ciftlik').hayvanDurumu(s, t), kira: require('./gelisim').kiraDurumu(s, yapilar, t) })),
     susler: require('./ciftlik').parselSusleri(id),
     komsuluk: require('./komsuluk').parselIliskisi(userId, id),
     susSecenekleri: benim ? require('./ciftlik').susSecenekleri(userId) : null,
@@ -212,10 +267,23 @@ function parselKarti(id, userId, komsuImar = {}) {
       kod, uygun: !u.bolgeler || u.bolgeler.includes(p.plaka), bolgeAd: u.bolgeAd || null,
       buyume: require('./dunya').buyumeKati(kod, aktifYapiVar(yapilar, 'SERA', t), t, p.plaka) })) : null,
     insaatSecenekleri,
-    komsular,
+    komsular, cevre,
     gecmis,
     simdi: t,
   };
+}
+
+// Parseli devlete geri bırak (hesap silme, demo sakin taşınması): yapılara bağlı hayvan ve üretim kayıtları, süsler,
+// yapılar silinir (yabancı anahtar sırası); ekin kapanır; sahiplik kaydı biter
+function parseliBosalt(id) {
+  const yapilar = 'SELECT id FROM structures WHERE parcel_id = ?';
+  db.prepare(`DELETE FROM hayvan_bakim WHERE structure_id IN (${yapilar})`).run(id);
+  db.prepare(`DELETE FROM uretimler WHERE structure_id IN (${yapilar})`).run(id);
+  db.prepare(`DELETE FROM parsel_susleri WHERE parcel_id = ?`).run(id);
+  db.prepare(`DELETE FROM structures WHERE parcel_id = ?`).run(id);
+  db.prepare(`UPDATE crops SET status = 'HARVESTED', harvested_qty = 0 WHERE parcel_id = ? AND status = 'GROWING'`).run(id);
+  db.prepare(`UPDATE parcel_ownership SET end_at = datetime('now') WHERE parcel_id = ? AND end_at IS NULL`).run(id);
+  db.prepare(`UPDATE parcels SET owner_user_id = NULL, acquired_at = NULL, version = version + 1 WHERE id = ?`).run(id);
 }
 
 // ---------- Parsel edinme: birincil tahsis (§8.1) ----------
@@ -236,7 +304,7 @@ const parselEdin = db.transaction((userId, id) => {
   if (q.mahalleParselSayisi.get(userId, p.region_id).c >= HESAP.maxParselMahalle) {
     throw new OyunHatasi(409, `Bir mahallede en fazla ${HESAP.maxParselMahalle} parsel`);
   }
-  const bedel = birincilBedel(p);
+  const bedel = tahsisFiyati(p);
   // Optimistik kilit: okuduğumuz sürüm hâlâ geçerliyse ve parsel boşsa ata
   if (sahipAta.run(userId, id, p.version).changes !== 1) {
     throw new OyunHatasi(409, 'Parsel az önce başka bir oyuncuya tahsis edildi', 'TAHSISLI');
@@ -343,9 +411,10 @@ const ek = db.transaction((userId, id, urun) => {
   const t = simdi();
   const dunya = require('./dunya');
   const buyume = dunya.buyumeKati(urun, aktifYapiVar(q.yapilar.all(id), 'SERA', t), t, p.plaka);
+  const ilkEkin = require('./sihirbaz').hizliIlkEkin(userId);   // ilk giriş sihirbazında ilk ekin 1 dakikada olur
   const m = dunya.mevsim(t);
   db.prepare(`INSERT INTO crops (parcel_id, user_id, crop_type, planted_at, ready_at, mevsim) VALUES (?, ?, ?, ?, ?, ?)`)
-    .run(id, userId, urun, t, t + Math.round(u.sureMs * buyume), m.kod);
+    .run(id, userId, urun, t, t + (ilkEkin ? Math.min(SIHIRBAZ_ILK_EKIN(), Math.round(u.sureMs * buyume)) : Math.round(u.sureMs * buyume)), m.kod);
   L.denetim({ aktor: userId, eylem: 'CROP_PLANTED', varlik: id, sonra: { urun }, bolge: p.region_id, herkese: true });
   const gorev = gorevTamamla(userId, 'ILK_EKIM', tx);
   return { tamam: true, maliyet: u.tohum * kat, buyume, mevsim: m.ad, gorev };
@@ -368,6 +437,7 @@ const sula = db.transaction((userId, id) => {
   const birim = sulamaBirimi(yapilar, belediye.mahalleHizmetleri(p.region_id), p.plaka);
   const tx = L.yeniTx();
   L.harca(userId, L.yuvarla(birim * kat), `Sulama/enerji (${id})`, tx);
+  L.denetim({ aktor: userId, eylem: 'CROP_WATERED', varlik: id, bolge: p.region_id });
   const r = db.prepare(`UPDATE crops SET waterings = waterings + 1, last_watered_at = ? WHERE id = ? AND waterings = ?`).run(t, e.id, e.waterings);
   if (r.changes !== 1) throw new OyunHatasi(409, 'Eşzamanlı işlem, tekrar deneyin');
   const gorev = gorevTamamla(userId, 'ILK_SULAMA', tx);
@@ -497,7 +567,7 @@ function oyuncuOzeti(userId) {
   bekleyenleriIsle();
   const bozulma = require('./ekonomi').envanterBozulmasi(userId);
   const u = db.prepare(`SELECT id, email, display_name, created_at FROM users WHERE id = ?`).get(userId);
-  const parseller = db.prepare(`SELECT p.id, p.zoning_type, p.area_m2, p.centroid_lon AS lon, p.centroid_lat AS lat,
+  const parseller = db.prepare(`SELECT p.id, p.zoning_type, p.area_m2, p.centroid_lon AS lon, p.centroid_lat AS lat, p.grid_x, p.grid_y,
                                   p.region_id AS mahalleId, p.il_id AS ilId, r.name AS mahalle, ri.name AS ilce, rl.name AS il
                                 FROM parcels p JOIN regions r ON r.id = p.region_id JOIN regions ri ON ri.id = p.ilce_id JOIN regions rl ON rl.id = p.il_id
                                 WHERE p.owner_user_id = ? ORDER BY p.acquired_at`).all(userId);
@@ -505,7 +575,7 @@ function oyuncuOzeti(userId) {
   const portfoy = parseller.map((p) => {
     const yapilar = q.yapilar.all(p.id);
     const e = q.ekin.get(p.id);
-    return { ...p, imarAd: IMAR[p.zoning_type].ad, yapiSayisi: yapilar.filter((s) => s.status === 'ACTIVE').length,
+    return { ...p, adaParsel: adaParsel(p.grid_x, p.grid_y), imarAd: IMAR[p.zoning_type].ad, yapiSayisi: yapilar.filter((s) => s.status === 'ACTIVE').length,
       insaatta: yapilar.filter((s) => s.status === 'BUILDING').length, ekin: e && ekinDurumu(e, yapilar, t) };
   });
   return {
@@ -519,6 +589,10 @@ function oyuncuOzeti(userId) {
     seviye: (({ tp, seviye, esik, sonraki, odulBekleyen }) => ({ tp, seviye, esik, sonraki, odulBekleyen: odulBekleyen.length }))(require('./ciftlik').seviyeBilgisi(userId)),
     gunlukOdul: require('./ciftlik').gunlukDurum(userId).alinabilir,
     limitler: { maxParsel: HESAP.maxParsel, maxParselMahalle: HESAP.maxParselMahalle },
+    baslangicTarlasi: require('./baslangic').hakVar(userId),   // istemci "Tarlamı al" düğmesini gösterir
+    sihirbaz: require('./sihirbaz').aktifMi(userId),   // ilk giriş sihirbazı sürüyor mu
+    // Seçimlerde aday olmuş ya da makam taşımış oyuncuya köy yönetimi seviyeden bağımsız açık kalır
+    siyasette: !!db.prepare(`SELECT 1 FROM adaylar WHERE user_id = ? UNION SELECT 1 FROM muhtarlar WHERE user_id = ? UNION SELECT 1 FROM belediye_uyeleri WHERE user_id = ? LIMIT 1`).get(userId, userId, userId),
     simdi: t,
   };
 }
@@ -546,13 +620,24 @@ function haberAkisi({ ilId = null, limit = 30 } = {}) {
 // ---------- Harita katmanları (görünür alan) ----------
 // Yalnızca sahipli ya da ilandaki parseller döner; boş hücrelerin imarı istemciye karo görüntüsü olarak gider.
 const MAKS_HUCRE_KENARI = 600;   // ≈ 18 km — daha geniş alanlar istenmez (§2.4)
+// Parselin harita geometrisi: deneme ilçesinin tarlalarında gerçek tarla şekli, diğerlerinde hücre karesi
+function parselGeometrisi(p) {
+  if (p.geom_version === 'tarla-v1') { const T = require('./harita/tarla'), t = T.tarlaGetir(p.id); if (t) return T.geometri(t); }
+  return I.hucrePoligonu(p.grid_x, p.grid_y);
+}
+function tarlaBilgisi(p) {
+  if (p.geom_version !== 'tarla-v1') return null;
+  const t = require('./harita/tarla').tarlaGetir(p.id);
+  return t ? { yon: t.yon, alan: t.alan_m2, hucre: t.uye } : null;
+}
+
 function haritaParselleri(userId, bbox) {
   bekleyenleriIsle();
   const { x0, x1, y0, y1 } = I.kutuHucreleri(bbox);
   if (x1 - x0 > MAKS_HUCRE_KENARI || y1 - y0 > MAKS_HUCRE_KENARI) throw new OyunHatasi(400, 'Alan çok geniş; yakınlaşın');
   const t = simdi();
   const satirlar = db.prepare(`
-    SELECT p.id, p.zoning_type, p.owner_user_id, p.grid_x, p.grid_y, u.is_npc, u.display_name AS sahip,
+    SELECT p.id, p.zoning_type, p.owner_user_id, p.grid_x, p.grid_y, p.geom_version, p.centroid_lon, p.centroid_lat, u.is_npc, u.display_name AS sahip,
       EXISTS (SELECT 1 FROM listings l WHERE l.parcel_id = p.id AND l.status = 'ACTIVE') AS ilanda
     FROM parcels p LEFT JOIN users u ON u.id = p.owner_user_id
     WHERE p.grid_x BETWEEN ? AND ? AND p.grid_y BETWEEN ? AND ?
@@ -566,9 +651,11 @@ function haritaParselleri(userId, bbox) {
       const e = q.ekin.get(s.id);
       return {
         type: 'Feature',
-        geometry: I.hucrePoligonu(s.grid_x, s.grid_y),
+        geometry: parselGeometrisi(s),
         properties: {
           id: s.id, z: s.zoning_type, gx: s.grid_x, gy: s.grid_y,
+          // tarla (deneme): 3B katman parseli tarla merkezine ve şekline oturtur
+          ...(s.geom_version === 'tarla-v1' ? { tg: 1, mlon: s.centroid_lon, mlat: s.centroid_lat, yon: tarlaBilgisi(s)?.yon ?? 0 } : {}),
           // s: 1 benim, 2 başka oyuncu, 0 sahipsiz (yalnızca ilan varsa gelir)
           s: s.owner_user_id ? (s.owner_user_id === userId ? 1 : 2) : 0,
           sahip: s.sahip, npc: s.is_npc ? 1 : 0,
@@ -615,6 +702,6 @@ module.exports = {
   gorevTamamla,
   parselKarti, parselEdin, insaatBaslat, ek, sula, hasat, bakimYap, npcSat, ziyaret, saglik, aktifYapiVar, birimFiyat,
   oyuncuOzeti, cuzdanHareketleri, haberAkisi, haritaParselleri, bolgeler, ilIstatistikleri, pazarDurumu,
-  insaatUygunluk, imarKullanimi, birincilBedel, bekleyenleriIsle,
+  insaatUygunluk, imarKullanimi, birincilBedel, tahsisFiyati, parseliBosalt, bekleyenleriIsle, tahminiDeger, parselDegeri,
   parselGetir, sahibiOlmali, gelismislikSkoru, ekinDurumu, bul, verimKati,
 };

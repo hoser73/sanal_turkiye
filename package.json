@@ -1,6 +1,6 @@
 {
   "name": "sanal-turkiye",
-  "version": "0.21.0",
+  "version": "0.39.0",
   "private": true,
   "description": "Sanal Türkiye — yaşayan dijital ülke simülasyonu (prototip)",
   "main": "server/index.js",
@@ -15,8 +15,10 @@
     "yedek": "node scripts/yedek.js",
     "geri-yukle": "node scripts/geri-yukle.js",
     "yuk-testi": "node scripts/yuk-testi.js",
+    "yuk-oyuncu": "node scripts/yuk-oyuncu.mjs",
     "postgres-aktar": "node scripts/postgres-aktar.js",
-    "posta-dene": "node scripts/posta-dene.js"
+    "posta-dene": "node scripts/posta-dene.js",
+    "tarla-aktar": "node scripts/tarla-aktar.js"
   },
   "engines": {
     "node": ">=20"

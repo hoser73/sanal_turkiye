@@ -234,8 +234,8 @@ function oyunAyarlari(h) {
       <label class="onay"><input type="checkbox" data-h="hatirlatma" ${a.hatirlatma !== false ? 'checked' : ''}> <span>Hasat hazır olunca, hayvan ürünleri birikince ve sipariş süresi dolmak üzereyken haber ver (gece 23.00–08.00 arası gönderilmez)</span></label>
     </section>
     <section><h3>Rehber</h3>
-      <p class="kucuk">Hasan Dayı'nın ilk adımlar rehberini baştan başlat.</p>
-      <button type="button" class="dugme ince" data-h="rehber">🧑‍🌾 Rehberi yeniden başlat</button>
+      <p class="kucuk">İlk adımlar görev şeridini baştan başlat.</p>
+      <button type="button" class="dugme ince" data-h="rehber">📜 Rehberi yeniden başlat</button>
     </section>`;
 }
 

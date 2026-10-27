@@ -1,0 +1,4 @@
+Bu klasördeki SVG emoji görselleri Twemoji projesindendir (https://github.com/jdecked/twemoji, sürüm 15.1.0).
+Grafikler: Copyright Twitter, Inc ve diğer katkıcılar, CC-BY 4.0 (https://creativecommons.org/licenses/by/4.0/).
+Yalnızca cihaz emoji yazı tipini çizemediğinde yedek olarak gösterilir (public/js/emoji.js). Değiştirilmemiştir.
+Yeni emoji eklenince: oyunda geçen emojileri tarayıp eksik dosyaları aynı sürümden indirin.

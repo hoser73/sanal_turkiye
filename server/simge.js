@@ -54,7 +54,7 @@ const geojson = () => ({ type: 'FeatureCollection', features: hucreli.map((s) =>
   properties: { kod: s.kod, ad: s.ad, ikon: s.ikon, parsel: s.parsel } })) });
 
 function rotalar(app, { h, auth }) {
-  app.get('/api/simgeler', h(() => geojson()));
+  app.get('/api/simgeler', h(require('./lib/onbellek').ortakYanit(30_000, () => geojson())));
   app.get('/api/album', h((req) => album(req.kullanici?.id ?? null)));
   app.post('/api/simge/:kod/topla', auth.girisGerekli, h((req) => topla(req.kullanici.id, req.params.kod)));
 }

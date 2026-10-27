@@ -1,5 +1,5 @@
 // Oyun nesnelerinin three.js karşılığı: modeller.js parçalarını (kutu, silindir, çatı) ağ nesnelerine çevirir.
-// Parsel sahnesi (sahne3d.js) ve haritadaki 3B dünya katmanı (dunya-bina.js) aynı kurucuyu kullanır.
+// Haritadaki 3B dünya katmanı (dunya-bina.js) bu kurucuyu kullanır.
 import * as THREE from '/vendor/three/three.module.js';
 import { PALET } from './modeller.js';
 

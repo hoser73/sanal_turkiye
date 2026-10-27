@@ -173,16 +173,17 @@ export function tanitimKur({ api, girisli, kayitAc, epostaKayit, girisAc, kapat,
   }
   yenile().finally(() => { if (!kok.hidden) ucKur(); });
 
-  // 3B kahraman: gerçek zamanlı çiftlik sahnesi (tanitim3d.js); WebGL yoksa SVG manzara kalır
+  // 3B kahraman: gerçek zamanlı sevimli çiftlik sahnesi (tanitim-sevimli.js); WebGL yoksa SVG manzara kalır
   const webgl = (() => { try { const c = document.createElement('canvas'); return !!(c.getContext('webgl2') || c.getContext('webgl')); } catch { return false; } })();
   let uc = null, ucYukleniyor = false;
   async function ucKur() {
     if (uc || ucYukleniyor || !webgl) return;   // hareket azaltılmışsa da çizilir; yalnızca kamera sabit durur
     ucYukleniyor = true;
     try {
-      const { ciftlik3d } = await import('./tanitim3d.js');
+      // Oyunun görsel diliyle aynı sevimli çiftlik
+      const { sevimliTanitim } = await import('./tanitim-sevimli.js');
       if (kok.hidden) return;
-      uc = ciftlik3d(kok.querySelector('.tn-manzara'), { sakin: az, hava: veri?.hava?.find((h) => h.plaka === '42') || null, kaydirmaKok: kok, olcek: () => Math.min(1, kok.scrollTop / innerHeight) });
+      uc = sevimliTanitim(kok.querySelector('.tn-manzara'), { sakin: az });
       await uc.hazir;
       kahraman.classList.add('uc');
       kahraman.classList.toggle('gece', uc.gece > 0.5);

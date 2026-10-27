@@ -6,6 +6,7 @@ const { hucreImari, karoSiniflandir, mahalleBul, KOD_AD } = require('./imar');
 const { veriSurumu } = require('./karolar');
 const { IMAR, YERLESIM_CEKICILIK } = require('../config/rules');
 const { OyunHatasi } = require('../lib/ledger');
+const { tarlaBul } = require('./tarla');
 
 const q = {
   var: db.prepare(`SELECT 1 FROM parcels WHERE id = ?`),
@@ -13,6 +14,8 @@ const q = {
   bolge: db.prepare(`SELECT id FROM regions WHERE code = ?`),
   bolgeEkle: db.prepare(`INSERT OR IGNORE INTO regions (parent_id, type, code, name, plaka, center_lon, center_lat, place_class, attractiveness)
                          VALUES (?, 'MAHALLE', ?, ?, ?, ?, ?, ?, ?)`),
+  tarlaGuncelle: db.prepare(`UPDATE parcels SET area_m2 = ?, centroid_lon = ?, centroid_lat = ?, geom_version = 'tarla-v1'
+                              WHERE id = ? AND owner_user_id IS NULL`),
   parselEkle: db.prepare(`INSERT OR IGNORE INTO parcels (id, region_id, ilce_id, il_id, district_code, area_m2, zoning_type, zoning_source,
                            centroid_lon, centroid_lat, grid_x, grid_y) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
 };
@@ -36,9 +39,27 @@ function mahalleBolgesi(ilceSatir, ilceVeri, lon, lat) {
   return q.bolge.get(kod).id;
 }
 
+// Döndürdüğü kimlik asıl parseldir: deneme ilçesinde hücre bir tarlaya aitse tarlanın kimliği (tarla.js)
 async function parselHazirla(id) {
-  if (q.var.get(id)) return;
   const { x, y } = koordinatlar(id);
+  const tarla = await tarlaBul(x, y);
+  if (tarla) {
+    if (q.var.get(tarla.id)) {
+      q.tarlaGuncelle.run(tarla.alan_m2, tarla.merkez_lon, tarla.merkez_lat, tarla.id);   // önce kare olarak açılmış ya da tarla yeniden üretilmişse
+      return tarla.id;
+    }
+    const c = I.idCoz(tarla.id);
+    const { ilce } = await hucreImari(c.x, c.y);
+    const ilceSatir = q.ilce.get(ilce.idx);
+    db.transaction(() => {
+      const mahalleId = mahalleBolgesi(ilceSatir, ilce, tarla.merkez_lon, tarla.merkez_lat);
+      q.parselEkle.run(tarla.id, mahalleId, ilceSatir.id, ilceSatir.parent_id, ilceSatir.code, tarla.alan_m2, 'TARIM', veriSurumu(),
+        tarla.merkez_lon, tarla.merkez_lat, c.x, c.y);
+      db.prepare(`UPDATE parcels SET geom_version = 'tarla-v1' WHERE id = ?`).run(tarla.id);
+    })();
+    return tarla.id;
+  }
+  if (q.var.get(id)) return id;
   let kod, ilce;
   try {
     ({ kod, ilce } = await hucreImari(x, y));
@@ -54,6 +75,7 @@ async function parselHazirla(id) {
     q.parselEkle.run(id, mahalleId, ilceSatir.id, ilceSatir.parent_id, ilceSatir.code, I.hucreAlani(x, y), kod, veriSurumu(),
       Math.round(lon * 1e7) / 1e7, Math.round(lat * 1e7) / 1e7, x, y);
   })();
+  return id;
 }
 
 // Komşu 8 hücrenin imarı (çoğu aynı karodadır; önbellekten gelir)

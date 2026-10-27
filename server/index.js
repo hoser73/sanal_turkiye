@@ -9,6 +9,8 @@ const { seedEt } = require('./seed');
 const auth = require('./auth');
 const oyun = require('./oyun');
 const pazar = require('./pazar');
+const piyasa = require('./piyasa');
+piyasa.hazineId(true);   // Hazine (oyunun alıcısı) hesabı açılışta hazır olsun
 const arama = require('./arama');
 const secim = require('./secim');
 const belediye = require('./belediye');
@@ -36,6 +38,7 @@ const { npcSeedEt } = require('./npc');
 const { IMAR, IMAR_KAYNAK_NOTU, YAPILAR, URUNLER, BIRIM, HESAP, PAZAR, BELEDIYE, BOZULMA, BAKIM, BORSA, MEVSIMLER, LIG, RECETELER, MESLEKLER } = require('./config/rules');
 const { OyunHatasi } = require('./lib/ledger');
 const { gunluk, istekGunlugu, sonHatalar } = require('./lib/gunluk');
+const { ortakYanit } = require('./lib/onbellek');   // herkese aynı uçlar: kısa süreli önbellek
 
 seedEt();
 
@@ -53,9 +56,16 @@ const koken = (u) => { try { return new URL(u.replace(/[{}]/g, '')).origin; } ca
 const DIS_KAYNAKLAR = [...new Set([...Object.values(HARITA_KAYNAK).map(koken), ...String(process.env.EK_KARO_KOKENLERI || '').split(',')].filter(Boolean))];
 // Canlı bağlantı: bazı tarayıcılar 'self' ile ws:// eşleştirmez; aynı kökenin ws/wss adresi açıkça eklenir
 const WS_KAYNAKLARI = [(process.env.TABAN_URL || `http://localhost:${process.env.PORT || 3400}`).replace(/^http/, 'ws').replace(/\/$/, '')];
+// Aynı ağdaki telefondan (ör. http://192.168.1.106:3400) açılınca da canlı bağlantı izinli olsun: isteğin kendi adresi
+const istekWs = (req) => `${req.secure ? 'wss' : 'ws'}://${String(req.headers.host || '').replace(/[^\w.:\-[\]]/g, '')}`;
+// Yalnızca https ile yayındayken http isteklerini https'e yükselt ve HSTS gönder. Geliştirmede (http://localhost)
+// Safari / iOS uygulaması (WKWebView) yükseltmeyi localhost'a da uyguladığı için CSS ve JS yüklenmiyordu.
+const HTTPS = /^https:/.test(process.env.TABAN_URL || '');
 app.use(helmet({
+  strictTransportSecurity: HTTPS ? { maxAge: 31536000, includeSubDomains: true } : false,
   contentSecurityPolicy: {
     directives: {
+      upgradeInsecureRequests: HTTPS ? [] : null,
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'"],
       workerSrc: ["'self'", 'blob:'],
@@ -63,7 +73,7 @@ app.use(helmet({
       styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
       fontSrc: ["'self'", 'https://fonts.gstatic.com'],
       imgSrc: ["'self'", 'data:', 'blob:', ...DIS_KAYNAKLAR],
-      connectSrc: ["'self'", ...WS_KAYNAKLARI, ...DIS_KAYNAKLAR],
+      connectSrc: ["'self'", ...WS_KAYNAKLARI, istekWs, ...DIS_KAYNAKLAR],
       frameAncestors: ["'none'"],
     },
   },
@@ -80,21 +90,39 @@ app.use('/api/karo/', rateLimit({ windowMs: 60_000, limit: 2400, standardHeaders
 app.use('/api/', rateLimit({ windowMs: 60_000, limit: Number(process.env.API_HIZ_SINIRI || 600), standardHeaders: 'draft-8', legacyHeaders: false, skip: (req) => req.path.startsWith('/karo/') }));
 // Testler aynı IP'den çok sayıda hesap açar: KIMLIK_HIZ_CARPANI yalnızca test/geliştirme içindir
 const kimlikSiniri = (n) => n * Number(process.env.KIMLIK_HIZ_CARPANI || 1);
-app.use(['/api/kayit', '/api/giris', '/api/passkey', '/api/oauth'], rateLimit({ windowMs: 15 * 60_000, limit: kimlikSiniri(30), standardHeaders: 'draft-8', legacyHeaders: false }));
+// Yalnızca kimlik bilgisi gönderen istekler sayılır (açılışta çağrılan GET /api/giris/yollar sınırı tüketmesin)
+app.use(['/api/kayit', '/api/giris', '/api/passkey', '/api/oauth'], rateLimit({ windowMs: 15 * 60_000, limit: kimlikSiniri(30), standardHeaders: 'draft-8', legacyHeaders: false,
+  skip: (req) => req.method === 'GET' && !req.originalUrl.startsWith('/api/oauth') }));
 app.use(['/api/telefon'], rateLimit({ windowMs: 15 * 60_000, limit: kimlikSiniri(15), standardHeaders: 'draft-8', legacyHeaders: false }));
 app.use(['/api/oyuncu-adi'], rateLimit({ windowMs: 15 * 60_000, limit: kimlikSiniri(90), standardHeaders: 'draft-8', legacyHeaders: false }));
 // Kaba kuvvet ve e-posta bombalamasına karşı: sıfırlama, doğrulama, 2FA ve kritik hesap işlemleri
 app.use(['/api/sifre', '/api/eposta', '/api/giris/2fa', '/api/2fa', '/api/hesap/sil'],
   rateLimit({ windowMs: 15 * 60_000, limit: kimlikSiniri(20), standardHeaders: 'draft-8', legacyHeaders: false }));
-app.use(auth.kimlik);
-// Süresi dolan inşaat ve ilanları tembel biçimde işle (idempotent)
-app.use('/api/', (req, _res, next) => {
-  if (req.path.startsWith('/karo/')) return next();
-  try { oyun.bekleyenleriIsle(); pazar.pazarBakim(); secim.secimBakim(); belediye.belediyeBakim(); moderasyon.gorevdenAlmaBakim(); ekonomi.borsaBakim(); dunya.sezonBakim(); dunya.havaBakim(); require('./carsi').bankaBakim();
-    lojistik.lojistikBakim(); kira.kiraBakim(); referandum.referandumBakim();
-    posta.postaBakim().catch(() => {});   // başarısız e-postaları arka planda yeniden dene
-    next(); } catch (e) { next(e); }
-});
+// Oturum yalnızca API isteklerinde okunur (statik dosyalar için her seferinde oturum sorgusu yapılmaz)
+app.use((req, res, next) => (req.path.startsWith('/api/') ? auth.kimlik(req, res, next) : next()));
+// Bakım işleri (süresi dolan inşaat, ilan, seçim, proje, borsa emri, hava, kira, referandum…). Eskiden her /api
+// isteğinde hepsi çalışıyordu (her istekte bir düzine tablo taraması). Artık en sık BAKIM_ARALIGI_MS'de bir (varsayılan
+// 1 sn; testte 0 = her istekte) ve ayrıca zamanlayıcıyla; her iş ayrı korunur: biri hata verirse istekler düşmez.
+const BAKIM_ARALIGI = Number(process.env.BAKIM_ARALIGI_MS ?? 1000);
+const BAKIM_ISLERI = [
+  ['inşaat', () => oyun.bekleyenleriIsle()], ['pazar', () => pazar.pazarBakim()], ['seçim', () => secim.secimBakim()],
+  ['belediye', () => belediye.belediyeBakim()], ['görevden alma', () => moderasyon.gorevdenAlmaBakim()], ['borsa', () => ekonomi.borsaBakim()],
+  ['sezon', () => dunya.sezonBakim()], ['hava', () => dunya.havaBakim()], ['banka', () => require('./carsi').bankaBakim()],
+  ['lojistik', () => lojistik.lojistikBakim()], ['kira', () => kira.kiraBakim()], ['referandum', () => referandum.referandumBakim()],
+  ['endeks', () => piyasa.endeksBakim()], ['hazine', () => piyasa.hazineBakim()],
+];
+let sonBakim = 0;
+function bakim() {
+  const t = Date.now();
+  if (BAKIM_ARALIGI && t - sonBakim < BAKIM_ARALIGI) return;
+  sonBakim = t;
+  for (const [ad, is] of BAKIM_ISLERI) {
+    try { is(); } catch (e) { gunluk.error('bakım işi başarısız', { is: ad, hata: e }); }
+  }
+  posta.postaBakim().catch(() => {});   // başarısız e-postaları arka planda yeniden dene
+}
+app.use('/api/', (req, _res, next) => { if (!req.path.startsWith('/karo/')) bakim(); next(); });
+if (BAKIM_ARALIGI) setInterval(bakim, BAKIM_ARALIGI).unref();   // kimse istek atmasa da süreler işlesin
 
 // Sync ve async işleyicilerin hatalarını tek yerde toplayan sarmalayıcı
 const h = (fn) => (req, res, next) => {
@@ -103,7 +131,8 @@ const h = (fn) => (req, res, next) => {
 const uid = (req) => req.kullanici.id;
 const parselId = (req) => String(req.params.id || '');
 // Parsel işlemlerinden önce hücreyi hazırla (ilk dokunuşta imar + mahalle; sonraki çağrılar anında döner)
-const hazir = (fn) => h(async (req, res) => { await parselHazirla(parselId(req)); return fn(req, res); });
+// Deneme ilçesinde hücre bir tarlaya aitse işlem tarlanın (asıl parselin) kimliğiyle sürer
+const hazir = (fn) => h(async (req, res) => { req.params.id = await parselHazirla(parselId(req)); return fn(req, res); });
 
 uretim.rotalar(app, { h, auth, hazir });
 kira.rotalar(app, { h, auth, hazir });
@@ -118,7 +147,7 @@ app.post('/api/eposta/yeniden', auth.girisGerekli, h(auth.dogrulamaYenidenGonder
 app.post('/api/sifre/unuttum', h(auth.sifreUnuttum));
 app.post('/api/sifre/sifirla', h(auth.sifreSifirla));
 app.post('/api/sifre/degistir', auth.girisGerekli, h(auth.sifreDegistir));
-app.post('/api/2fa/kur', auth.girisGerekli, h(auth.ikiAdimKur));
+app.post('/api/2fa/kur', auth.girisGerekli, auth.tazeOturumGerekli, h(auth.ikiAdimKur));
 app.post('/api/2fa/etkinlestir', auth.girisGerekli, h(auth.ikiAdimEtkinlestir));
 app.post('/api/2fa/kapat', auth.girisGerekli, h(auth.ikiAdimKapat));
 app.get('/api/oturumlar', auth.girisGerekli, h(auth.oturumlar));
@@ -133,7 +162,8 @@ dunya.rotalar(app, { h, auth });
 kooperatif.rotalar(app, { h, auth });
 simge.rotalar(app, { h, auth });
 // Komşuluk, yöresel ürünler, etkinlikler, balık tutma, hatırlatmalar
-for (const m of ['./komsuluk', './yoresel', './etkinlik', './balik', './hatirlatma', './iklim', './carsi', './giris-yollari', './tanitim']) require(m).rotalar(app, { h, auth, hazir });
+for (const m of ['./komsuluk', './yoresel', './etkinlik', './balik', './hatirlatma', './iklim', './carsi', './giris-yollari', './tanitim', './baslangic', './gelisim', './sihirbaz']) require(m).rotalar(app, { h, auth, hazir });
+require('./db').indeksleriKur();   // tüm modüllerin tabloları kurulduktan sonra
 yz.rotalar(app, { h, auth });
 kozmetik.rotalar(app, { h, auth });
 zaman.rotalar(app, { h });
@@ -143,13 +173,13 @@ referandum.rotalar(app, { h, auth });
 if (process.env.NODE_ENV !== 'production') app.get('/api/gelistirici/posta', h(() => posta.gelistirmeKutusu()));
 
 // ---- Statik oyun verisi
-app.get('/api/kurallar', h(() => ({ haritaKaynak: HARITA_KAYNAK, yoresel: require('./config/rules').YORESEL, hayvanlar: require('./config/rules').HAYVANLAR, susler: require('./config/rules').SUSLER, receteler: RECETELER, meslekler: MESLEKLER, mevsimler: MEVSIMLER, lig: LIG, bozulma: BOZULMA, bakim: BAKIM, borsa: { ucretOrani: BORSA.ucretOrani, sureler: BORSA.sureler, minTutar: BORSA.minTutar }, birim: BIRIM, imar: IMAR, imarKaynakNotu: IMAR_KAYNAK_NOTU, yapilar: YAPILAR, urunler: URUNLER, hesap: HESAP,
+app.get('/api/kurallar', h(ortakYanit(10 * 60_000, () => ({ haritaKaynak: HARITA_KAYNAK, yoresel: require('./config/rules').YORESEL, hayvanlar: require('./config/rules').HAYVANLAR, susler: require('./config/rules').SUSLER, receteler: RECETELER, meslekler: MESLEKLER, mevsimler: MEVSIMLER, lig: LIG, bozulma: BOZULMA, bakim: BAKIM, borsa: { ucretOrani: BORSA.ucretOrani, sureler: BORSA.sureler, minTutar: BORSA.minTutar }, birim: BIRIM, imar: IMAR, imarKaynakNotu: IMAR_KAYNAK_NOTU, yapilar: YAPILAR, urunler: URUNLER, hesap: HESAP,
   belediye: { projeler: BELEDIYE.projeler, gelir: BELEDIYE.gelir },
   pazar: { ucretOrani: PAZAR.ucretOrani, minUcret: PAZAR.minUcret, maxFiyat: PAZAR.maxFiyat, ilanSureleri: PAZAR.ilanSureleri,
-    aliciKosullari: Object.fromEntries(Object.entries(PAZAR.aliciKosullari).map(([k, v]) => [k, v.ad])) } })));
+    aliciKosullari: Object.fromEntries(Object.entries(PAZAR.aliciKosullari).map(([k, v]) => [k, v.ad])) } }))));
 
 // ---- Harita
-app.get('/api/bolgeler', h(() => oyun.bolgeler()));
+app.get('/api/bolgeler', h(ortakYanit(60_000, () => oyun.bolgeler())));
 // İl → ilçe → mahalle gezintisi (sınırlar ve oyun kuralıyla çıkarılan mahalle alanları)
 const bolgeHaritasi = require('./harita/bolgeler');
 // Ağır uçlar (ilçe taraması, karo arama): IP başına dakikada 20
@@ -169,7 +199,7 @@ app.post('/api/siparis/:id/reddet', auth.girisGerekli, h((req) => ciftlik.sipari
 app.get('/api/yarisma/:mahalleId', h((req) => ciftlik.yarisma(Number(req.params.mahalleId), req.kullanici?.id ?? null)));
 app.post('/api/parsel/:id/sus', auth.girisGerekli, hazir((req) => ciftlik.susEkle(uid(req), parselId(req), String(req.body?.tur || ''))));
 app.post('/api/sus/:id/kaldir', auth.girisGerekli, h((req) => ciftlik.susKaldir(uid(req), req.params.id)));
-app.get('/api/istatistik/iller', h(() => oyun.ilIstatistikleri()));
+app.get('/api/istatistik/iller', h(ortakYanit(30_000, () => oyun.ilIstatistikleri())));
 app.get('/api/ara', h((req) => arama.ara(req.query.q)));
 app.get('/api/konum', h((req) => arama.konum(Number(req.query.lon), Number(req.query.lat))));
 app.get('/api/harita/parseller', h((req) => {
@@ -177,13 +207,24 @@ app.get('/api/harita/parseller', h((req) => {
   if (bbox.length !== 4 || bbox.some((v) => !Number.isFinite(v))) throw new OyunHatasi(400, 'bbox=w,s,e,n gerekli');
   return oyun.haritaParselleri(req.kullanici?.id ?? null, bbox);
 }));
+// Karo numarası geçerli olmalı ve Türkiye'nin sınır kutusuna (25,5–45,0 D; 35,7–42,2 K) düşmeli: dünyanın her
+// karosu hesaplanıp diske yazılmasın
+const TR_KARO = (() => {
+  const x = (lon) => Math.floor(((lon + 180) / 360) * 2 ** 14);
+  const y = (lat) => { const r = (lat * Math.PI) / 180; return Math.floor(((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * 2 ** 14); };
+  return { x0: x(25.5), x1: x(45.0), y0: y(42.2), y1: y(35.7) };
+})();
+function karoDenetle(kx, ky) {
+  if (!Number.isInteger(kx) || !Number.isInteger(ky) || kx < 0 || ky < 0 || kx >= 2 ** 14 || ky >= 2 ** 14) throw new OyunHatasi(400, 'Geçersiz karo');
+  if (kx < TR_KARO.x0 || kx > TR_KARO.x1 || ky < TR_KARO.y0 || ky > TR_KARO.y1) throw new OyunHatasi(404, 'Karo Türkiye dışında');
+}
 // İmar karosu: 64 × 64 PNG, her piksel bir parsel hücresi (z14)
 app.get('/api/karo/imar/:kx/:ky.png', h(async (req, res) => {
   const kx = Number(req.params.kx), ky = Number(req.params.ky);
-  if (!Number.isInteger(kx) || !Number.isInteger(ky) || kx < 0 || ky < 0 || kx >= 2 ** 14 || ky >= 2 ** 14) throw new OyunHatasi(400, 'Geçersiz karo');
+  karoDenetle(kx, ky);
   let png;
   try {
-    png = await imar.imarPng(kx, ky, IMAR);
+    png = await imar.imarPng(kx, ky, IMAR, await require('./harita/tarla').karoMaskesi(kx, ky));
   } catch (e) {
     console.warn(`İmar karosu ${kx}/${ky} hazırlanamadı: ${e.message}`);
     throw new OyunHatasi(503, 'İmar karosu şu an hazırlanamıyor');
@@ -197,8 +238,14 @@ app.get('/api/parsel/:id', hazir(async (req) => {
   const komsu = await komsuImarlari(x, y);
   return { ...oyun.parselKarti(id, uidVeya, komsu), pazar: pazar.parselPazarBilgisi(id, uidVeya) };
 }));
-app.get('/api/akis', h((req) => oyun.haberAkisi({ ilId: Number(req.query.il) || null })));
-app.get('/api/pazar', h(() => oyun.pazarDurumu()));
+app.get('/api/akis', h(ortakYanit(3000, (req) => oyun.haberAkisi({ ilId: Number(req.query.il) || null }), (req) => String(Number(req.query.il) || ''))));
+app.get('/api/pazar', h(ortakYanit(5000, () => oyun.pazarDurumu())));
+// Oyun içi piyasa: Türkiye ve mahalle endeksleri, bölge endeks serisi, oyuncunun portföy kâr/zararı (piyasa.js)
+app.get('/api/piyasa', h(ortakYanit(30000, () => piyasa.piyasaOzeti())));
+app.get('/api/piyasa/endeks', h(ortakYanit(30000, (req) => piyasa.bolgeEndeksi(String(req.query.tur || ''), req.query.id) || { seri: [] },
+  (req) => `${String(req.query.tur || '')}:${Number(req.query.id) || 0}`)));
+app.get('/api/portfoy', auth.girisGerekli, h((req) => piyasa.portfoy(uid(req))));
+app.post('/api/parsel/:id/hazineye-sat', auth.dogrulanmisGerekli, hazir((req) => piyasa.hazineyeSat(uid(req), parselId(req), req.body)));
 
 // ---- Mahalle ve muhtarlık seçimi (§6)
 const bboxOku = (req) => {
@@ -208,8 +255,18 @@ const bboxOku = (req) => {
 };
 app.get('/api/mahalle/:id', h((req) => secim.mahalleBilgisi(req.params.id, req.kullanici?.id ?? null)));
 app.get('/api/mahallelerim', auth.girisGerekli, h((req) => secim.mahallelerim(uid(req))));
+// Tarla karosu (deneme ilçeleri): tarlalar karo başına bir kez üretilip saklanır, değişmez → önbelleklenir ve sıkıştırılır
+app.get('/api/harita/tarla/:kx/:ky', h(async (req, res) => {
+  const kx = Number(req.params.kx), ky = Number(req.params.ky);
+  karoDenetle(kx, ky);
+  const tarla = require('./harita/tarla');
+  const govde = Buffer.from(JSON.stringify((await tarla.karoVerisi(kx, ky)) || { m: null, t: [] }));
+  res.set({ 'content-type': 'application/json; charset=utf-8', 'cache-control': 'public, max-age=3600', vary: 'accept-encoding' });
+  if (/\bgzip\b/.test(req.get('accept-encoding') || '')) res.set('content-encoding', 'gzip').send(require('zlib').gzipSync(govde));
+  else res.send(govde);
+}));
 app.get('/api/harita/secimler', h((req) => secim.haritaSecimleri(bboxOku(req))));
-app.get('/api/secim/:id/yeniden-say', h((req) => secim.yenidenSay(req.params.id)));
+app.get('/api/secim/:id/yeniden-say', agirSinir, h(ortakYanit(30000, (req) => secim.yenidenSay(req.params.id), (req) => String(Number(req.params.id) || 0))));
 app.post('/api/secim/:id/aday', auth.dogrulanmisGerekli, h((req) => secim.adayOl(uid(req), req.params.id, req.body)));
 app.post('/api/secim/:id/adaylik-geri', auth.dogrulanmisGerekli, h((req) => secim.adaylikGeriCek(uid(req), req.params.id)));
 app.post('/api/secim/:id/oy', auth.dogrulanmisGerekli, h((req) =>
@@ -243,7 +300,7 @@ app.post('/api/parsel/:id/ziyaret', auth.girisGerekli, hazir((req) => oyun.ziyar
 // ---- Oyuncular arası pazar (§8)
 const ilanId = (req) => req.params.id;
 app.get('/api/ilanlar', h((req) => pazar.ilanlar({ il: req.query.il || null, ilce: req.query.ilce || null, imar: req.query.imar || null, sirala: String(req.query.sirala || '') }, req.kullanici?.id ?? null)));
-app.get('/api/islemler', h(() => pazar.sonIslemler()));
+app.get('/api/islemler', h(ortakYanit(5000, () => pazar.sonIslemler())));
 app.get('/api/benim-pazarim', auth.girisGerekli, h((req) => pazar.benimPazarim(uid(req))));
 app.post('/api/parsel/:id/ilan', auth.dogrulanmisGerekli, hazir((req) => pazar.ilanAc(uid(req), parselId(req), req.body)));
 app.post('/api/ilan/:id/fiyat', auth.dogrulanmisGerekli, h((req) => pazar.fiyatDegistir(uid(req), ilanId(req), req.body)));
@@ -324,6 +381,7 @@ if (require.main === module) {
   canli.bagla(sunucu);
   nufus.baslat();   // yaşayan nüfus: gerçek oyuncusu az mahallelerde demo sakinler
   require('./hatirlatma').baslat();   // geri çağıran bildirimler (hasat, hayvan, sipariş)
+  require('./gelisim').baslat();   // işçiler: olgun ekini hasat eder, susuz tarlayı sular, hayvanları yemler
   // Düzenli kapanış (docker stop / systemd): yeni bağlantıları kes, veritabanını kapat
   const kapat = (sinyal) => {
     gunluk.info('kapanıyor', { sinyal });

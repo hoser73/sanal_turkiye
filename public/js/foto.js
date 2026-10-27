@@ -1,6 +1,6 @@
 // Fotoğraf modu ve paylaşım kartı: parselin 3B maketinden 1200×630 kart üretir; Web Share destekliyse paylaşır, yoksa indirir.
 // Zaman yolculuğu: parselin geçmişini kare kare 3B sahnede oynatır.
-import { api, tost } from './yardimci.js';
+import { tost } from './yardimci.js';
 
 const yukle = (src) => new Promise((coz, red) => { const i = new Image(); i.onload = () => coz(i); i.onerror = red; i.src = src; });
 
@@ -48,9 +48,10 @@ function satirla(g, metin, x, y, max, yuk) {
   g.fillText(satir, x, yy);
 }
 
-export async function paylas(kart, sahne) {
-  if (!sahne) return tost('3B görünüm bu cihazda kullanılamıyor', 'hata');
-  const blob = await paylasimKarti(kart, sahne.fotograf());
+// kaynak: { fotograf() → resim adresi } (tam sayfa çiftliğin anlık görüntüsü)
+export async function paylas(kart, kaynak) {
+  if (!kaynak) return tost('3B görünüm bu cihazda kullanılamıyor', 'hata');
+  const blob = await paylasimKarti(kart, kaynak.fotograf());
   const dosya = new File([blob], `sanal-turkiye-${kart.id}.png`, { type: 'image/png' });
   const link = `${location.origin}/?parsel=${encodeURIComponent(kart.id)}`;
   if (navigator.canShare?.({ files: [dosya] })) {
@@ -62,30 +63,4 @@ export async function paylas(kart, sahne) {
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   try { await navigator.clipboard?.writeText(link); tost('📸 Kart indirildi; parsel bağlantısı panoya kopyalandı'); } catch { tost('📸 Kart indirildi'); }
-}
-
-// Zaman yolculuğu: kareler sahnede sırayla gösterilir; altyazı ve ilerleme çubuğu sahnenin üstünde
-let oynuyor = null;
-export async function zamanYolculugu(kart, sahne, yer) {
-  if (!sahne) return;
-  if (oynuyor) { oynuyor.dur = true; return; }
-  const kareler = await api(`/api/parsel/${encodeURIComponent(kart.id)}/zaman`);
-  if (!kareler.length) return tost('Bu parselin henüz bir geçmişi yok');
-  const yazi = document.createElement('div');
-  yazi.className = 'zaman-yazi';
-  yer.appendChild(yazi);
-  const durum = { dur: false };
-  oynuyor = durum;
-  sahne.kendiliginden(true);
-  for (const [i, k] of kareler.entries()) {
-    if (durum.dur || !yer.isConnected) break;
-    const yapilar = k.yp ? k.yp.split(',').map((x) => { const [tip, t] = x.split(':'); return { tip, durum: t === '1' ? 'ACTIVE' : 'BUILDING' }; }) : [];
-    const ekin = k.ek ? { tip: k.ek.split(':')[0], ilerleme: Number(k.ek.split(':')[1]) } : null;
-    sahne.goster({ ...kart, yapilar, ekin }, yer);
-    yazi.innerHTML = `<b>${new Date(k.t).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}</b> ${k.etiket}<span style="width:${((i + 1) / kareler.length) * 100}%"></span>`;
-    await new Promise((r) => setTimeout(r, 1400));
-  }
-  yazi.remove();
-  oynuyor = null;
-  if (yer.isConnected) sahne.goster(kart, yer);
 }

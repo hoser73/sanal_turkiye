@@ -40,8 +40,11 @@ function belediyePayi(ilceId, tutar, oranAdi, sebep, tx) {
 }
 
 // Aktif sakin başına günlük devlet katkısı: (ilçe, oyun günü) başına bir kez
+let sonKatkiGunu = -1;
 function gunlukKatki(t) {
   const gun = Math.floor(t / SECIM.gunMs);
+  if (gun === sonKatkiGunu) return;   // gün değişmediyse tarama yok (bakım saniyede bir çalışır)
+  sonKatkiGunu = gun;
   const ilceler = db.prepare(`
     SELECT p.ilce_id AS r, COUNT(DISTINCT p.owner_user_id) AS c FROM parcels p JOIN users u ON u.id = p.owner_user_id
     WHERE u.is_npc = 0 AND u.status = 'ACTIVE' GROUP BY p.ilce_id`).all();
@@ -282,9 +285,10 @@ function belediyeBilgisi(ilceId, userId) {
   const uyeOzet = (u) => ({ id: u.id, userId: u.user_id, ad: u.ad, demo: !!db.prepare(`SELECT is_npc FROM users WHERE id = ?`).get(u.user_id)?.is_npc, makam: u.makam, ben: u.user_id === userId, bitis: u.bitis,
     vaatler: db.prepare(`SELECT id, sira, metin, durum, aciklama FROM gorev_vaatleri WHERE uye_id = ? ORDER BY sira`).all(u.id) });
   const mahalleler = db.prepare(`
-    SELECT r.id, r.name AS ad, COUNT(DISTINCT p.owner_user_id) AS sakin,
+    SELECT r.id, r.name AS ad, COUNT(DISTINCT u.id) AS sakin,
       EXISTS (SELECT 1 FROM muhtarlar m WHERE m.region_id = r.id AND m.baslangic <= ? AND m.bitis > ?) AS muhtarVar
     FROM regions r LEFT JOIN parcels p ON p.region_id = r.id AND p.owner_user_id IS NOT NULL
+      LEFT JOIN users u ON u.id = p.owner_user_id AND u.is_npc = 0 AND u.status = 'ACTIVE'   -- Hazine ve demolar sakin sayılmaz
     WHERE r.parent_id = ? AND r.type = 'MAHALLE' GROUP BY r.id ORDER BY sakin DESC, r.name LIMIT 60`).all(t, t, ilce.id)
     .map((m) => ({ ...m, hizmetler: [...mahalleHizmetleri(m.id)] }));
   const muhtarlikMahallelerim = userId ? db.prepare(`SELECT r.id, r.name AS ad FROM muhtarlar m JOIN regions r ON r.id = m.region_id

@@ -301,12 +301,20 @@ const krediOde = db.transaction((userId, tutar) => {
   L.denetim({ aktor: userId, eylem: r.kapandi ? 'LOAN_CLOSED' : 'LOAN_PAYMENT', varlik: `KREDI:${k.id}`, sonra: { odeme: r.ode, gecikmeli: b.gecikmede } });
   return { tamam: true, odeme: r.ode, kapandi: r.kapandi, kalan: r.kapandi ? 0 : L.yuvarla(b.kalan - r.ode) };
 });
+// Vadesi geçmiş kredisi olan oyuncu borcunu kapatmadan başka oyunculara değer aktaramaz (kira, parsel ve ürün alımı):
+// borç alıp başka hesaba kaçırmak olmasın. Satış (akçe girişi) serbest: bakımda borca tahsil edilir
+function gecikmeEngeli(userId, t = simdi()) {
+  if (db.prepare(`SELECT 1 FROM banka_kredi WHERE user_id = ? AND durum = 'ACIK' AND vade < ?`).get(userId, t)) {
+    throw new OyunHatasi(409, 'Vadesi geçmiş kredin var: önce Çarşı → Banka\'dan borcunu kapat', 'KREDI_GECIKMEDE');
+  }
+}
 // Vadesi geçen kredi: oyuncuya bir kez haber ver, bakiyesinden tahsil etmeye çalış (dakikada en çok bir tarama)
 let sonBakim = 0;
 function bankaBakim(t = simdi()) {
   if (t - sonBakim < 60_000) return;
   sonBakim = t;
   for (const k of db.prepare(`SELECT * FROM banka_kredi WHERE durum = 'ACIK' AND vade < ?`).all(t)) {
+    if (k.uyarildi && L.bakiye(k.user_id) <= 0) continue;   // uyarılmış ve tahsil edilecek bakiye yok: her dakika boşuna işlenmesin
     db.transaction(() => {
       const r = krediOdemeYap(k, L.bakiye(k.user_id), t, L.yeniTx());
       if (r.kapandi) bildir(k.user_id, `🏦 ${marka('BANKA').ad}: vadesi geçen kredin bakiyenden tahsil edildi ve kapandı.`, 'carsi:BANKA');
@@ -320,7 +328,7 @@ function bankaBakim(t = simdi()) {
 
 function rotalar(app, { h, auth }) {
   app.get('/api/carsi', h((req) => ({ isletmeler: markalar(), urunler: CARSI.urunler, sarf: CARSI.sarf })));
-  app.get('/api/carsi/subeler', h(() => subeler()));
+  app.get('/api/carsi/subeler', h(require('./lib/onbellek').ortakYanit(30_000, () => subeler())));
   app.get('/api/carsi/:kategori', h((req) => vitrin(req.kullanici?.id ?? null, String(req.params.kategori))));
   app.post('/api/carsi/satin-al', auth.girisGerekli, h((req) => satinAl(req.kullanici.id, String(req.body?.urun || ''), req.body?.adet ?? 1)));
   app.post('/api/carsi/kullan', auth.girisGerekli, h((req) => kullan(req.kullanici.id, req.body || {})));
@@ -335,4 +343,4 @@ function rotalar(app, { h, auth }) {
 }
 
 module.exports = { rotalar, marka, markalar, markaGuncelle, subeler, subeYukle, vitrin, satinAl, kullan, stoktanKullan, sahip,
-  bankaOzet, vadeliAc, vadeliKapat, krediAl, krediOde, krediBorcu, krediLimiti, krediNotu, bankaBakim };
+  bankaOzet, vadeliAc, vadeliKapat, krediAl, krediOde, krediBorcu, krediLimiti, krediNotu, bankaBakim, gecikmeEngeli };

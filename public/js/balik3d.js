@@ -498,7 +498,7 @@ export function balikSahnesi(tuval, { tip = 'ic', gunes = { yukseklik: 40, azimu
     kapat() {
       gozlem.disconnect();
       sahne.traverse((o) => { o.geometry?.dispose(); if (o.material) [].concat(o.material).forEach((m) => m.dispose()); });
-      renderer.dispose();
+      renderer.dispose(); renderer.forceContextLoss();
     },
   };
 }

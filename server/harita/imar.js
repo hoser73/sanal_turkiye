@@ -309,11 +309,13 @@ function renkTablosu(imarKurallari) {
   return RENKLER;
 }
 
-async function imarPng(kx, ky, imarKurallari) {
+// `bos`: boş bırakılacak hücreler (64 × 64; tarlalar haritada ayrı çizilir)
+async function imarPng(kx, ky, imarKurallari, bos = null) {
   const { kod } = await karoSiniflandir(kx, ky);
   const renk = renkTablosu(imarKurallari);
   const rgba = Buffer.alloc(KENAR * KENAR * 4);
   for (let idx = 0; idx < kod.length; idx++) {
+    if (bos?.[idx]) continue;
     const c = renk.get(kod[idx]);
     if (c) rgba.set(c, idx * 4);
   }

@@ -133,6 +133,7 @@ function oauthBasla(req, res) {
   if (!p?.etkin()) throw new OyunHatasi(404, 'Bu giriş yolu açık değil');
   const mod = req.query.mod === 'bagla' ? 'bagla' : 'giris';
   if (mod === 'bagla' && !req.kullanici) throw new OyunHatasi(401, 'Bağlamak için önce giriş yap');
+  if (mod === 'bagla' && !auth.tazeOturumMu(req)) throw new OyunHatasi(403, 'Güvenliğin için çıkış yapıp yeniden giriş yap, sonra tekrar bağla', 'YENIDEN_GIRIS');
   eskileriTemizle();
   const state = rastgele(), nonce = rastgele(), dogrulayici = p.pkce ? rastgele(48) : null, tarayici = rastgele();
   db.prepare(`INSERT INTO oauth_durumlari (state_ozet, saglayici, nonce, dogrulayici, tarayici_ozet, mod, user_id, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
@@ -434,8 +435,8 @@ function rotalar(app, { h }) {
   app.post('/api/passkey/giris/dogrula', h((req, res) => girisDogrula(req, res)));
   app.post('/api/passkey/yeni/secenekler', h((req) => yeniHesapSecenek(req)));
   app.post('/api/passkey/yeni/dogrula', h((req, res) => yeniHesapDogrula(req, res)));
-  app.post('/api/passkey/ekle/secenekler', auth.girisGerekli, h((req) => passkeyEkleSecenek(req)));
-  app.post('/api/passkey/ekle/dogrula', auth.girisGerekli, h((req) => passkeyEkle(req)));
+  app.post('/api/passkey/ekle/secenekler', auth.girisGerekli, auth.tazeOturumGerekli, h((req) => passkeyEkleSecenek(req)));
+  app.post('/api/passkey/ekle/dogrula', auth.girisGerekli, auth.tazeOturumGerekli, h((req) => passkeyEkle(req)));
   app.get('/api/passkey', auth.girisGerekli, h((req) => passkeyListe(req)));
   app.post('/api/passkey/:id/sil', auth.girisGerekli, h((req) => passkeySil(req)));
   app.post('/api/telefon/kod', auth.girisGerekli, h((req) => telefonKod(req)));

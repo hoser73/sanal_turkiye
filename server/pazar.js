@@ -33,6 +33,8 @@ const q = {
   benimAktifTeklifim: db.prepare(`SELECT * FROM bids WHERE listing_id = ? AND buyer_id = ? AND status = 'ACTIVE'`),
   teklifDurum: db.prepare(`UPDATE bids SET status = ?, updated_at = ? WHERE id = ? AND status = 'ACTIVE'`),
   bildir: db.prepare(`INSERT INTO notifications (user_id, text, link) VALUES (?, ?, ?)`),
+  // Aynı bildirim (metin + bağlantı) yinelenmez: eskisi silinip yenisi en üste yazılır (ör. dönen seçim aşamaları)
+  bildirimYineleme: db.prepare(`DELETE FROM notifications WHERE user_id = ? AND text = ? AND IFNULL(link, '') = IFNULL(?, '')`),
   parselSayisi: db.prepare(`SELECT COUNT(*) AS c FROM parcels WHERE owner_user_id = ?`),
   mahalleParselSayisi: db.prepare(`SELECT COUNT(*) AS c FROM parcels WHERE owner_user_id = ? AND region_id = ?`),
 };
@@ -40,6 +42,7 @@ const q = {
 function bildir(userId, metin, link = null) {
   const u = q.kullanici.get(userId);
   if (!u || u.is_npc) return;
+  q.bildirimYineleme.run(userId, metin, link);
   const id = q.bildir.run(userId, metin, link).lastInsertRowid;
   require('./lib/olaylar').yay('bildirim', { id, userId, metin, link });
 }
@@ -111,7 +114,7 @@ function aliciUygunMu(userId, ilan, p) {
 }
 
 // ---------- §8.5 / §10.3 manipülasyon işaretleri ----------
-function manipulasyonIsaretleri(saticiId, aliciId, p, fiyat) {
+function manipulasyonIsaretleri(saticiId, aliciId, p, fiyat, deger) {
   const isaretler = [];
   const pencere = simdi() - PAZAR.washPencereGun * 86400000;
   const geriDonus = db.prepare(`SELECT 1 FROM trades WHERE parcel_id = ? AND seller_id = ? AND buyer_id = ? AND created_at >= ?`)
@@ -120,7 +123,8 @@ function manipulasyonIsaretleri(saticiId, aliciId, p, fiyat) {
   const cift = db.prepare(`SELECT COUNT(*) AS c FROM trades WHERE created_at >= ? AND
     ((seller_id = ? AND buyer_id = ?) OR (seller_id = ? AND buyer_id = ?))`).get(pencere, saticiId, aliciId, aliciId, saticiId).c;
   if (cift + 1 >= PAZAR.washCiftEsigi) isaretler.push('TEKRARLI_CIFT');
-  const bedel = oyun.birincilBedel(p);
+  // Olağandışı fiyat: satış anındaki tahmini değere göre (yapılı parsel arsa bedelinin çok üstünde satılabilir)
+  const bedel = deger?.toplam || oyun.birincilBedel(p);
   if (fiyat > bedel * PAZAR.sapmaUst || fiyat < bedel * PAZAR.sapmaAlt) isaretler.push('FIYAT_SAPMASI');
   return isaretler;
 }
@@ -133,6 +137,7 @@ function devret(ilan, aliciId, fiyat, teklif) {
   if (require('./kira').aktifKira(p.id)) throw new OyunHatasi(409, 'Parsel kirada; kira bitmeden devredilemez');
   aliciUygunMu(aliciId, ilan, p);
   require('./kira').devirdeKapat(p.id);
+  const degerAni = oyun.parselDegeri(p);   // devirden önce: endeks ve fiyat sapması bu değere göre
 
   // İlan kilidi: aynı ilan iki kez satılamaz
   const t = simdi();
@@ -158,14 +163,14 @@ function devret(ilan, aliciId, fiyat, teklif) {
   const pr = db.prepare(`UPDATE parcels SET owner_user_id = ?, acquired_at = datetime('now'), version = version + 1
                          WHERE id = ? AND owner_user_id = ? AND version = ?`).run(aliciId, p.id, ilan.seller_id, p.version);
   if (pr.changes !== 1) throw new OyunHatasi(409, 'Parsel az önce değişti; tekrar deneyin');
-  db.prepare(`UPDATE structures SET owner_user_id = ? WHERE parcel_id = ?`).run(aliciId, p.id);
+  db.prepare(`UPDATE structures SET owner_user_id = ?, gelir_at = ? WHERE parcel_id = ?`).run(aliciId, t, p.id);   // kira sayacı yeni sahiple başlar
   db.prepare(`UPDATE crops SET user_id = ? WHERE parcel_id = ? AND status = 'GROWING'`).run(aliciId, p.id);
 
-  const isaretler = manipulasyonIsaretleri(ilan.seller_id, aliciId, p, fiyat);
-  const tradeId = db.prepare(`INSERT INTO trades (listing_id, parcel_id, seller_id, buyer_id, price, fee, via, asset_snapshot, flags, created_at)
-                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+  const isaretler = manipulasyonIsaretleri(ilan.seller_id, aliciId, p, fiyat, degerAni);
+  const tradeId = db.prepare(`INSERT INTO trades (listing_id, parcel_id, seller_id, buyer_id, price, fee, via, asset_snapshot, flags, created_at, deger_ani, carpan_ani)
+                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .run(ilan.id, p.id, ilan.seller_id, aliciId, fiyat, ucret, teklif ? 'BID' : 'BUY_NOW',
-      JSON.stringify(varlikOzeti(p)), JSON.stringify(isaretler), t).lastInsertRowid;
+      JSON.stringify(varlikOzeti(p)), JSON.stringify(isaretler), t, degerAni.toplam, degerAni.carpan).lastInsertRowid;
 
   teklifleriIadeEt(ilan, 'CANCELLED', 'parsel başka bir alıcıya devredildi', teklif?.id);
 
@@ -256,6 +261,7 @@ const teklifRed = db.transaction((userId, teklifId) => {
 const teklifVer = db.transaction((userId, ilanId, govde) => {
   const i = aktifIlanGetir(ilanId);
   if (i.seller_id === userId) throw new OyunHatasi(409, 'Kendi ilanına teklif veremezsin');
+  require('./carsi').gecikmeEngeli(userId);
   const p = oyun.parselGetir(i.parcel_id);
   aliciUygunMu(userId, i, p);
   const tutar = tamSayi(govde?.tutar, 'Teklif', 1, PAZAR.maxFiyat);
@@ -272,7 +278,7 @@ const teklifVer = db.transaction((userId, ilanId, govde) => {
   L.denetim({ aktor: userId, eylem: 'BID_PLACED', varlik: `LISTING:${i.id}`, sonra: { teklif: id, tutar } });
 
   const satici = q.kullanici.get(i.seller_id);
-  if (satici.is_npc) {
+  if (satici.is_npc && satici.id !== require('./piyasa').hazineId(false)) {   // Hazine pazarlık yapmaz: yalnızca ilan fiyatından satar
     // Demo komşu: istenen fiyatın belirli oranı ve üstünü kabul eder, altını reddeder
     if (tutar >= Math.ceil(i.asking_price * PAZAR.npcKabulOrani)) {
       return { ...devret(q.ilan.get(i.id), userId, tutar, q.teklif.get(id)), npcKabul: true };
@@ -298,6 +304,7 @@ const teklifGeriCek = db.transaction((userId, ilanId) => {
 const hemenAl = db.transaction((userId, ilanId, govde) => {
   const i = aktifIlanGetir(ilanId);
   if (i.seller_id === userId) throw new OyunHatasi(409, 'Kendi ilanını satın alamazsın');
+  require('./carsi').gecikmeEngeli(userId);
   // İstemcinin gördüğü fiyat değiştiyse işlemi yapma (fiyat sürprizi yok)
   if (govde?.fiyat != null && Number(govde.fiyat) !== i.asking_price) {
     throw new OyunHatasi(409, `İstenen fiyat ₳${i.asking_price} olarak güncellendi; tekrar kontrol et`, 'FIYAT_DEGISTI');
@@ -443,7 +450,7 @@ function pazarOzeti(userId) {
 }
 
 function bildirimler(userId) {
-  return db.prepare(`SELECT id, text, link, read_at IS NOT NULL AS okundu, created_at FROM notifications WHERE user_id = ? ORDER BY id DESC LIMIT 30`).all(userId);
+  return db.prepare(`SELECT id, text, link, read_at IS NOT NULL AS okundu, created_at FROM notifications WHERE user_id = ? ORDER BY id DESC LIMIT 60`).all(userId);
 }
 function bildirimleriOku(userId) {
   db.prepare(`UPDATE notifications SET read_at = datetime('now') WHERE user_id = ? AND read_at IS NULL`).run(userId);

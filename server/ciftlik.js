@@ -87,15 +87,21 @@ function tpEkle(userId, tp, eylem, bolge = null) {
   db.prepare(`UPDATE users SET tp = tp + ? WHERE id = ?`).run(tp, userId);
   const sonra = oyuncuSeviyesi(userId);
   if (sonra > once) {
-    require('./pazar').bildir(userId, `⭐ Seviye ${sonra} oldun! Seviye ödülün seni bekliyor.`, 'gorevler');
-    require('./lib/olaylar').yay('bildirim', { userId });
+    require('./pazar').bildir(userId, `⭐ Seviye ${sonra} oldun! Seviye ödülün seni bekliyor.`, 'gorevler');   // bildir canlı kanala da iletir
   }
 }
 // Oyun eylemleri TP kazandırır (işlem bittikten sonra, olay yolu üzerinden)
+db.exec('CREATE INDEX IF NOT EXISTS ix_tp_gun ON tp_kayitlari(user_id, eylem, at)');
+const tpGunSayisi = db.prepare(`SELECT COUNT(*) AS c FROM tp_kayitlari WHERE user_id = ? AND eylem = ? AND at >= ?`);
 yol.on('eylem', ({ eylem, aktor, bolge }) => {
   const tp = SEVIYE.tp[eylem];
   if (!tp || !aktor) return;
-  try { tpEkle(aktor, tp, eylem, bolge); } catch { /* kullanıcı silinmiş olabilir */ }
+  // Günlük tavan: Türkiye saatiyle bugün başlayan kayıtlar
+  const gunBasi = Date.parse(`${new Date(simdi() + 3 * 3600_000).toISOString().slice(0, 10)}T00:00:00Z`) - 3 * 3600_000;
+  try {
+    if (tpGunSayisi.get(aktor, eylem, gunBasi).c >= SEVIYE.gunlukEylemTavani) return;
+    tpEkle(aktor, tp, eylem, bolge);
+  } catch { /* kullanıcı silinmiş olabilir */ }
 });
 function seviyeBilgisi(userId) {
   const u = db.prepare(`SELECT tp, odul_seviye FROM users WHERE id = ?`).get(userId);
@@ -127,7 +133,7 @@ function seviyeKontrol(userId, minSeviye, ad) {
   if (!minSeviye || minSeviye <= 1) return;
   const npc = db.prepare(`SELECT is_npc FROM users WHERE id = ?`).get(userId)?.is_npc;
   if (npc) return;
-  if (oyuncuSeviyesi(userId) < minSeviye) throw new OyunHatasi(403, `${ad} seviye ${minSeviye}'te açılır`, 'SEVIYE');
+  if (oyuncuSeviyesi(userId) < minSeviye) throw new OyunHatasi(403, `${ad} seviye ${require('./lib/turkce').sayiBulunma(minSeviye)} açılır`, 'SEVIYE');
 }
 
 // ---------- Günlük giriş ödülü (İstanbul tarihine göre)
@@ -150,13 +156,15 @@ const gunlukAl = db.transaction((userId) => {
 
 // ---------- Hayvancılık
 const bakimSatiri = (sid) => db.prepare(`SELECT * FROM hayvan_bakim WHERE structure_id = ?`).get(sid);
+// Yükseltilmiş barınak (gelisim.js) her seviyede yarım kat fazla ürün verir
+const seviyeliMiktar = (h, s) => h.miktar + Math.ceil(h.miktar / 2) * ((s.seviye || 1) - 1);
 function hayvanDurumu(s, t = simdi()) {
   const h = HAYVANLAR[s.type];
   if (!h || s.status !== 'ACTIVE') return null;
   const b = bakimSatiri(s.id);
   const beslendi = b?.durum === 'BESLENDI';
   return {
-    hayvan: h.hayvan, ikon: h.ikon, sayi: h.sayi, urun: h.urun, urunAd: URUNLER[h.urun].ad, urunIkon: URUNLER[h.urun].ikon, miktar: h.miktar, yem: h.yem,
+    hayvan: h.hayvan, ikon: h.ikon, sayi: h.sayi + ((s.seviye || 1) - 1), urun: h.urun, urunAd: URUNLER[h.urun].ad, urunIkon: URUNLER[h.urun].ikon, miktar: seviyeliMiktar(h, s), yem: h.yem,
     asiBitis: s.asi_bitis && s.asi_bitis > t ? s.asi_bitis : null,
     durum: !beslendi ? 'AC' : t >= b.hazir_at ? 'HAZIR' : 'BESLENDI', hazir: beslendi ? b.hazir_at : null, kalanMs: beslendi ? Math.max(0, b.hazir_at - t) : 0,
   };
@@ -193,11 +201,11 @@ const topla = db.transaction((userId, structureId) => {
   if (b?.durum !== 'BESLENDI') throw new OyunHatasi(409, 'Önce hayvanları yemle');
   if (simdi() < b.hazir_at) throw new OyunHatasi(409, 'Ürün henüz hazır değil');
   // Zirai bayiden aşı yapılmış barınak her toplamada fazladan ürün verir
-  const miktar = h.miktar + (s.asi_bitis && s.asi_bitis > simdi() ? require('./config/rules').CARSI.etki.asiEk : 0);
+  const miktar = seviyeliMiktar(h, s) + (s.asi_bitis && s.asi_bitis > simdi() ? require('./config/rules').CARSI.etki.asiEk : 0);
   L.envanterDegis(userId, h.urun, miktar, `${h.hayvan} ürünü: ${URUNLER[h.urun].ad}`);
   db.prepare(`UPDATE hayvan_bakim SET durum = 'AC', hazir_at = NULL WHERE structure_id = ?`).run(s.id);
   L.denetim({ aktor: userId, eylem: 'ANIMAL_PRODUCE_COLLECTED', varlik: p.id, sonra: { urun: h.urun, miktar }, bolge: p.region_id });
-  return { tamam: true, urun: h.urun, miktar, asili: miktar > h.miktar };
+  return { tamam: true, urun: h.urun, miktar, asili: miktar > seviyeliMiktar(h, s) };
 });
 // Harita için: parselde toplanmayı bekleyen hayvan ürünü var mı
 function parselHayvanHazir(parcelId, t = simdi()) {
@@ -232,7 +240,7 @@ function siparisUret(userId, t) {
     deger += u.tabanFiyat * adet;
     adetToplam += adet;
   }
-  const odul = L.yuvarla(Math.max(5, deger * SIPARIS.primOrani));
+  const odul = Math.max(5, Math.round(deger * SIPARIS.primOrani));   // sipariş ödülü tam akçe
   const tp = Math.round(5 + adetToplam * SIPARIS.tpCarpani * 0.5);
   const musteri = SIPARIS.musteriler[Math.floor(Math.random() * SIPARIS.musteriler.length)];
   db.prepare(`INSERT INTO siparisler (user_id, musteri, kalemler, odul, tp, olusturma, son) VALUES (?, ?, ?, ?, ?, ?, ?)`)
