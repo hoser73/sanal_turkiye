@@ -17,9 +17,9 @@ import { sohbetKur, sohbetKanallariniYenile } from './sohbet-ui.js';
 import { meslekBolumu, kooperatifBolumu, albumBolumu, yarisKarti } from './topluluk-ui.js';
 import { hayvanSatiri, susBolumu, ciftlikBolumu } from './ciftlik-ui.js';
 import { ses, sesDurumu, sesAyarla, muzikAyarla } from './ses.js';
-import { imeceKarti, komsularBolumu, parselKomsuDugmeleri, urunGonderFormu, yoreselBolumu, etkinlikBolumu, etkinlikSeridi } from './komsuluk-ui.js';
+import { imeceKarti, komsularBolumu, parselKomsuDugmeleri, urunGonderFormu, yoreselBolumu, etkinlikBolumu } from './komsuluk-ui.js';
 import { balikOyunu } from './balik-ui.js';
-import { havaSeridi, havaPenceresi, iklimSatiri, ortuSatiri } from './hava-ui.js';
+import { havaPenceresi, iklimSatiri, ortuSatiri } from './hava-ui.js';
 import { carsiGirisi, dukkanHTML, bankaHTML } from './carsi-ui.js';
 import { girisKur } from './giris-ui.js';
 import { tanitimKur } from './tanitim-ui.js';
@@ -279,16 +279,15 @@ async function basla() {
 async function havaYenile() {
   try { durum.harita?.havaGoster((await api('/api/hava')).iller); } catch { /* hava isteğe bağlıdır */ }
 }
-// Çiftliğin havası şeridi (haritanın üstünde): giriş yapmış ve tarlası olan oyuncuya. Dakikada en çok bir istek.
+// Çiftliğin havası (hava penceresi için): giriş yapmış oyuncuya, dakikada en çok bir istek. Haritanın üstündeki hava
+// şeridi kaldırıldı (v0.43: haritayı kalabalıklaştırıyordu); pencere Çiftlik sekmesindeki "Çiftliğinin havası"ndan açılır,
+// riskli hava uyarıları ayrıca bildirim olarak gelir (iklim.js).
 let havaSeridiZaman = 0;
 async function havaSeridiYenile({ zorla = false } = {}) {
-  let serit = document.getElementById('havaSerit');
-  if (!girisli()) { durum.benimHavam = null; if (serit) serit.innerHTML = ''; return; }
+  if (!girisli()) { durum.benimHavam = null; return; }
   if (!zorla && Date.now() - havaSeridiZaman < 60_000) return;
   havaSeridiZaman = Date.now();
   try { durum.benimHavam = await api('/api/hava/benim'); } catch { return; }
-  if (!serit) { serit = document.createElement('div'); serit.id = 'havaSerit'; $('#harita')?.appendChild(serit); }
-  serit.innerHTML = havaSeridi(durum.benimHavam);
   if ($('#genelModal').open && $('#genelGovde .hava-penceresi')) $('#genelGovde').innerHTML = `<div class="hava-penceresi">${havaPenceresi(durum.benimHavam)}</div>`;
 }
 async function havaPenceresiAc() {
@@ -1859,15 +1858,10 @@ $('#genelModal').addEventListener('submit', (e) => {
   eylem('/api/urun/gonder', { kullaniciId: Number(e.target.dataset.id), urun: d.urun, adet: Number(d.adet) }, () => `📦 ${sayi(Number(d.adet))} ${urunAd(d.urun)} gönderildi`);
 });
 
-// Etkinlik şeridi (haritanın üstünde)
+// Etkinlik verisi (Çiftlik → Etkinlik sekmesi ve rozeti). Haritanın üstündeki etkinlik şeridi v0.43'te kaldırıldı.
 async function etkinlikYenile() {
-  try { durum.etkinlik = await api('/api/etkinlik'); } catch { return; }
-  let serit = document.getElementById('etkinlikSerit');
-  if (!serit) { serit = document.createElement('div'); serit.id = 'etkinlikSerit'; $('#harita').appendChild(serit); }
-  serit.innerHTML = etkinlikSeridi(durum.etkinlik);
+  try { durum.etkinlik = await api('/api/etkinlik'); } catch { /* etkinlik isteğe bağlıdır */ }
 }
-document.addEventListener('click', (e) => { if (e.target.closest('#etkinlikSerit [data-eylem="etkinlik-ac"]')) ciftlikAlt('etkinlik'); });
-document.addEventListener('click', (e) => { if (e.target.closest('#havaSerit [data-eylem="hava-ac"]')) havaPenceresiAc(); });
 // Hava penceresindeki tarlalar: örtü ser ya da tarlaya git
 $('#genelModal').addEventListener('click', async (e) => {
   const b = e.target.closest('.hava-penceresi [data-eylem]');
@@ -1881,24 +1875,20 @@ $('#genelModal').addEventListener('click', async (e) => {
   }
 });
 
-// Balık tutma: 🎣 → haritada su seç → mini oyun
+// Balık tutma: 🎣'a basınca oyun hemen açılır. Olta oyuncunun bölgesinin suyuna atılır (çiftliğin ili; kıyıdaysa deniz,
+// değilse göl/nehir); haritada su aramak gerekmez. Konum çiftlikten, tarla yoksa haritanın ortasından alınır.
 let balikOyun = null;
 $('#oltaDugme').addEventListener('click', (e) => {
   e.stopPropagation();
   if (!durum.harita) return;
   if (!girisli()) { tost('Balık tutmak için giriş yap', 'hata'); return; }
   if (!acikMi('balik')) { tost(`🎣 Balık tutma seviye ${sayiBulunma(ACILIMLAR.find((a) => a.kod === 'balik').seviye)} açılır`, 'hata'); return; }
-  const acik = $('#oltaDugme').getAttribute('aria-pressed') === 'true';
-  if (acik) { durum.harita.oltaModu(null); $('#oltaDugme').setAttribute('aria-pressed', 'false'); return; }
-  $('#oltaDugme').setAttribute('aria-pressed', 'true');
-  tost('🎣 Haritada bir göle, nehre ya da kıyıya dokun');
-  durum.harita.oltaModu((lngLat) => {
-    $('#oltaDugme').setAttribute('aria-pressed', 'false');
-    const d = genelPencere('<h2 class="pencere-baslik">🎣 Balık tutma</h2><div id="balikAlani"></div>');
-    balikOyun?.kapat();
-    balikOyun = balikOyunu($('#balikAlani'), { api, ses, sonuc: () => benYenile({ sessiz: true }) });
-    balikOyun.at({ lon: lngLat.lng, lat: lngLat.lat });
-    d.addEventListener('close', () => { balikOyun?.kapat(); balikOyun = null; }, { once: true });
-  });
+  const tarla = durum.ben?.portfoy?.[0];
+  const konum = tarla?.lon != null ? { lon: tarla.lon, lat: tarla.lat } : (({ lng, lat }) => ({ lon: lng, lat }))(durum.harita.merkez?.() || { lng: 32.48, lat: 37.87 });
+  const d = genelPencere('<h2 class="pencere-baslik">🎣 Balık tutma</h2><div id="balikAlani"></div>');
+  balikOyun?.kapat();
+  balikOyun = balikOyunu($('#balikAlani'), { api, ses, sonuc: () => benYenile({ sessiz: true }) });
+  balikOyun.at(konum);
+  d.addEventListener('close', () => { balikOyun?.kapat(); balikOyun = null; }, { once: true });
 });
 window.addEventListener('rehber-yeniden', () => durum.rehber?.yeniden());

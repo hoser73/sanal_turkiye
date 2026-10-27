@@ -120,11 +120,13 @@ test('etkinlik: tarih aralığı yıl dönümünü aşar; görev ilerlemesi ve �
   assert.equal((await B.c('/api/etkinlik/odul', { gorev: 0 })).durum, 409);
 });
 
-test('balık: su olmayan yerde atılmaz; zamanında çekilen balık takılır, mücadeleden sonra envantere girer; erken çekince ya da misina kopunca kaçar', async () => {
+test('balık: su seçmeden atılan olta bölgenin suyuna gider; zamanında çekilen balık takılır, mücadeleden sonra envantere girer; erken çekince ya da misina kopunca kaçar', async () => {
   const balik = require('../server/balik');
   const eski = balik.ayar.suBul;
   balik.ayar.suBul = async () => null;
-  assert.equal((await A.c('/api/balik/at', { lon: 32.5, lat: 37.9 })).durum, 422);
+  const bolge = await A.c('/api/balik/at', {});   // konum yok: oyuncunun bölgesinin suyu
+  assert.equal(bolge.durum, 200, JSON.stringify(bolge.veri));
+  assert.ok(['ic', 'deniz'].includes(bolge.veri.tip));
   balik.ayar.suBul = async () => ({ tip: 'ic', plaka: '65' });   // Van Gölü
   const at = await A.c('/api/balik/at', { lon: 43.2, lat: 38.6 });
   assert.equal(at.durum, 200);
@@ -216,15 +218,16 @@ test('güvenlik: tarla önerisi giriş ister ve Türkiye dışını reddeder; ya
   }
 });
 
-test('güvenlik: suya düşmeyen olta da günlük hakkı tüketir', async () => {
+test('güvenlik: balık günlük atış hakkı (su seçmeden atılan da sayılır)', async () => {
   const balik = require('../server/balik');
   const eski = balik.ayar.suBul;
   balik.ayar.suBul = async () => null;
   const E = await kayit('ece');
   db.prepare('UPDATE users SET tp = 240 WHERE id = ?').run(E.id);   // balık 3. seviyede açılır
   const g = new Date(Date.now() + 3 * 3600e3).toISOString().slice(0, 10);
-  for (let i = 0; i < BALIK.gunlukAtis; i++) assert.equal((await E.c('/api/balik/at', { lon: 32, lat: 37 })).durum, 422);
-  assert.equal(db.prepare(`SELECT COUNT(*) c FROM balik_atislari WHERE user_id = ? AND gun = ?`).get(E.id, g).c, BALIK.gunlukAtis);
+  assert.equal((await E.c('/api/balik/at', { lon: 32, lat: 37 })).durum, 200);
+  const ekle = db.prepare(`INSERT INTO balik_atislari (user_id, plaka, tur, isirma, gun, at, durum) VALUES (?, '42', 'SAZAN', 0, ?, ?, 'KACTI')`);
+  for (let i = 1; i < BALIK.gunlukAtis; i++) ekle.run(E.id, g, Date.now());
   assert.equal((await E.c('/api/balik/at', { lon: 32, lat: 37 })).durum, 429);
   balik.ayar.suBul = eski;
 });

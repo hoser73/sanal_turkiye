@@ -795,6 +795,7 @@ export async function haritaKur(kap, { parselTik, ilTik, ilceTik, mahalleAlanTik
     },
     hareketli: () => dunya.hareketli(),
     oltaModu,
+    merkez: () => map.getCenter(),
     efekt: (tur, konum, ikon) => { if (konum) dunya.efekt(tur, konum.lon, konum.lat, ikon); },
     hareketAyarla: (acik) => dunya.hareketAyarla(acik),
     grafikAyarla(ad) {

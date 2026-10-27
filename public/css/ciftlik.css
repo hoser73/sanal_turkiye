@@ -919,3 +919,32 @@ body:has(.bm-perde) .tostlar { z-index: 3001; }
 .imece-kart .yaris-cubuk b { background: linear-gradient(90deg, #9fe07a, #48a83a); }
 .imece-adaylar { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .imece-adaylar .cip { border: 0; cursor: pointer; font: 700 13px 'Baloo 2', system-ui; padding: 6px 10px; background: #e8f4de; color: #2f6a1f; }
+
+/* ---------- Panel sekme çubuğu (Çiftlik · Pazar · Köy · Ben): oyun düğmeleri ----------
+   Çiftlikteki alt eylem çubuğuyla aynı aile: her sekme kabarık krem bir kart, ikon renkli kare içinde; seçili sekme parlak
+   yeşil, yükselmiş ve gölgeli. (v0.43; eski düz sekme görünümü amatör duruyordu.) */
+body .panel .sekmeler { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); grid-template-columns: none; gap: 8px;
+  padding: 12px 10px 10px; background: linear-gradient(#fbf7ec, #f2ead3); border-bottom: 1.5px solid #e2d6b4; box-shadow: none; }
+body .panel .sekmeler button[hidden] { display: none; }
+body .panel .sekmeler button { display: grid; justify-items: center; gap: 3px; padding: 6px 2px 5px; border: 0; border-radius: 16px;
+  background: #fffdf6; color: #6a5a3a; font: 800 12px/1.1 'Baloo 2', system-ui, sans-serif; text-shadow: none; cursor: pointer;
+  box-shadow: 0 3px 0 #e0d4b0, inset 0 0 0 1.5px #efe5c8; transition: transform .15s, box-shadow .15s, background .15s; }
+body .panel .sekmeler button:hover { background: #fff; color: #4a3a1a; }
+body .panel .sekmeler button:active { transform: translateY(2px); box-shadow: 0 1px 0 #e0d4b0, inset 0 0 0 1.5px #efe5c8; }
+body .panel .sekmeler .sekme-ikon { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 11px; font-size: 20px; line-height: 1;
+  filter: none; background: #f3eedf; box-shadow: inset 0 -2px 0 rgba(0, 0, 0, .06); transition: transform .2s; }
+body .panel .sekmeler [data-sekme="parsel"] .sekme-ikon { background: #ebe4fa; }
+body .panel .sekmeler [data-sekme="gorevler"] .sekme-ikon { background: #ffeab8; }
+body .panel .sekmeler [data-sekme="pazar"] .sekme-ikon { background: #ddf1cf; }
+body .panel .sekmeler [data-sekme="haberler"] .sekme-ikon { background: #dbe8fb; }
+body .panel .sekmeler [data-sekme="arazilerim"] .sekme-ikon { background: #f8dfe6; }
+body .panel .sekmeler button[aria-selected="true"] { background: linear-gradient(#7ad35a, #48a83a); color: #fff; text-shadow: 0 1px 0 #2d7a22;
+  box-shadow: 0 4px 0 #2f7d24, 0 8px 14px rgba(47, 125, 36, .28); transform: translateY(-4px); border: 0; }
+body .panel .sekmeler button[aria-selected="true"] .sekme-ikon { background: rgba(255, 255, 255, .92); transform: scale(1.06); }
+body .panel .sekmeler .sekme-ad { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+body .panel .sekmeler .rozet { top: -5px; left: auto; right: 4px; box-shadow: 0 0 0 2px #fffdf6; }
+@media (max-width: 820px) {
+  body .panel .sekmeler { gap: 6px; padding: 10px 8px 8px; }
+  body .panel .sekmeler button { font-size: 11.5px; padding: 5px 1px 4px; }
+  body .panel .sekmeler .sekme-ikon { width: 30px; height: 30px; font-size: 18px; }
+}

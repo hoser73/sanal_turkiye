@@ -56,7 +56,7 @@ test('aktivite: fırtınada balık durgun, bulutlu havada iştahlı; sebepler a�
   assert.ok(['yüksek', 'normal', 'düşük'].includes(firtina.etiket));
 });
 
-test('ortam: atıştan önce su türü, yöre türleri ve kalan hak; su olmayan yer ve giriş yapmamış ziyaretçi', async () => {
+test('ortam: atıştan önce su türü, yöre türleri ve kalan hak; su olmayan yerde bölgenin suyu; giriş yapmamış ziyaretçi', async () => {
   const c = await oyuncu('ortamci');
   const o = (await c(`/api/balik/ortam?lon=${KONYA.lon}&lat=${KONYA.lat}`)).veri;
   assert.equal(o.su.tip, 'ic');
@@ -64,8 +64,9 @@ test('ortam: atıştan önce su türü, yöre türleri ve kalan hak; su olmayan 
   assert.ok(o.turler[0].yem && o.turler[0].derinlik);
   assert.equal(o.kalan, BALIK.gunlukAtis);
   assert.ok(o.aktivite.kat > 0);
-  assert.equal((await c('/api/balik/ortam?lon=10&lat=10')).veri.su, null);
-  assert.equal((await c('/api/balik/ortam?lon=x&lat=1')).durum, 400);
+  // Su olmayan yer ya da konum yok: oyuncunun bölgesinin suyu (tarlası/memleketi yoksa Konya: göl)
+  assert.deepEqual((await c('/api/balik/ortam?lon=10&lat=10')).veri.su, { tip: 'ic', plaka: '42' });
+  assert.equal((await c('/api/balik/ortam')).veri.su.plaka, '42');
   assert.equal((await istemci()(`/api/balik/ortam?lon=${KONYA.lon}&lat=${KONYA.lat}`)).durum, 401);
   const tk = (await istemci()('/api/balik/takim')).veri;
   assert.ok(tk.yemler.KARIDES.fiyat > 0 && tk.misinalar.INCE.dayanim < tk.misinalar.KALIN.dayanim);

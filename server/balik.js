@@ -1,4 +1,5 @@
-// Balık tutma mini oyunu. Oyuncu haritada göl, nehir ya da kıyıya olta atar; sunucu ısırma anını ve tutulacak balığı
+// Balık tutma mini oyunu. Oyuncu 🎣'a basınca kendi bölgesinin suyuna (kıyı ilinde deniz, değilse göl/nehir) olta atar;
+// haritada belirli bir suya dokunduysa oraya. Sunucu ısırma anını ve tutulacak balığı
 // belirler. Isırma anı şamandıranın batışını çizebilmek için istemciye bildirilir (zamanlama oyunu doğası gereği).
 // Zamanında "Çek!" denirse balık oltaya takılır (TAKILDI) ve mücadele başlar; istemci yalnızca balığın gücünü öğrenir.
 // Mücadele istemcide oynanır; sunucu en kısa süreyi ve süre aşımını denetler, türü ve ağırlığı balık çıkınca söyler.
@@ -105,11 +106,21 @@ function takim(govde = {}) {
 }
 
 // Atıştan önce: bu noktada su var mı, hangi türler, aktivite (tür olasılıkları istemcide takımla hesaplanır)
+// Olta nereye atılır: verilen nokta su ise oraya; değilse (ya da nokta yoksa) oyuncunun bölgesinin suyuna. Bölge: noktanın
+// ili, yoksa ilk tarlasının ili, yoksa memleketi, yoksa Konya. Kıyı ilinde deniz, değilse göl/nehir. (v0.43: balık tutmak
+// için haritada su aramak gerekmiyor; 🎣'a basınca oyun başlar.)
+async function suVeyaBolge(userId, lon, lat) {
+  const nokta = Number.isFinite(lon) && Number.isFinite(lat);
+  if (nokta) { const su = await ayar.suBul(lon, lat); if (su) return su; }
+  const plaka = (nokta && ilceBul(lon, lat)?.plaka)
+    || db.prepare(`SELECT r.plaka FROM parcels p JOIN regions r ON r.id = p.il_id WHERE p.owner_user_id = ? ORDER BY p.acquired_at LIMIT 1`).get(userId)?.plaka
+    || db.prepare('SELECT memleket_plaka FROM users WHERE id = ?').get(userId)?.memleket_plaka || '42';
+  const kiyi = Object.values(BALIK.deniz).some((d) => d.iller.includes(plaka));
+  return { tip: kiyi ? 'deniz' : 'ic', plaka };
+}
+
 async function ortam(userId, { lon, lat } = {}) {
-  lon = Number(lon); lat = Number(lat);
-  if (!Number.isFinite(lon) || !Number.isFinite(lat)) throw new OyunHatasi(400, 'Geçersiz konum');
-  const su = await ayar.suBul(lon, lat);
-  if (!su) return { su: null };
+  const su = await suVeyaBolge(userId, Number(lon), Number(lat));
   const yore = yoreTurleri(su);
   return {
     su: { tip: su.tip, plaka: su.plaka },
@@ -124,22 +135,16 @@ async function ortam(userId, { lon, lat } = {}) {
 async function at(userId, govde = {}) {
   require('./ciftlik').seviyeKilidi(userId, 'balik');
   const lon = Number(govde.lon), lat = Number(govde.lat);
-  if (!Number.isFinite(lon) || !Number.isFinite(lat)) throw new OyunHatasi(400, 'Geçersiz konum');
   const tk = takim(govde);
   const g = gun();
   const say = () => db.prepare(`SELECT COUNT(*) c FROM balik_atislari WHERE user_id = ? AND gun = ?`).get(userId, g).c;
   if (say() >= BALIK.gunlukAtis) throw new OyunHatasi(429, `Bugün ${BALIK.gunlukAtis} kez olta attın; balıklar yarın yine burada`);
-  const su = await ayar.suBul(lon, lat);
+  const su = await suVeyaBolge(userId, lon, lat);
   // Su denetimi beklenirken başka istekler gelmiş olabilir: sayım ve kayıt beklemeden sonra, tek işlemde
   const sonuc = db.transaction(() => {
     const bugun = say();
     if (bugun >= BALIK.gunlukAtis) throw new OyunHatasi(429, `Bugün ${BALIK.gunlukAtis} kez olta attın; balıklar yarın yine burada`);
     const t = Date.now();
-    if (!su) {
-      // Suya düşmeyen atış da hakkı tüketir (her atış karo sorgusu yaptırır)
-      db.prepare(`INSERT INTO balik_atislari (user_id, plaka, tur, isirma, gun, at, durum) VALUES (?, NULL, 'YOK', 0, ?, ?, 'KACTI')`).run(userId, g, t);
-      return null;
-    }
     // Yem: marketten alınmış paket ya da nalburdan sahte yem takımı varsa stoktan, yoksa akçe
     const yem = BALIK.yemler[tk.yem], carsi = require('./carsi');
     const stok = { KARIDES: 'YEM_KARIDES', MISIR: 'YEM_MISIR' }[tk.yem];
@@ -159,7 +164,6 @@ async function at(userId, govde = {}) {
     return { id, isirmaMs: isirma - t, pencereMs: BALIK.pencere, tip: su.tip, plaka: su.plaka, kalan: BALIK.gunlukAtis - bugun - 1, aktivite: akt, ...tk,
       yemFiyat: yemStok ? 0 : yem.fiyat, yemStok: !!yemStok };
   })();
-  if (!sonuc) throw new OyunHatasi(422, 'Burada su yok; bir göl, nehir ya da kıyı seç');
   return sonuc;
 }
 

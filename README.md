@@ -35,6 +35,12 @@ Ortam değişkenleri (v0.6 eklemeleri): `TABAN_URL` (e-posta bağlantıları; ü
 
 > Not: v0.1–0.2'nin Meram ızgarası ulusal ızgarayla uyumsuz olduğundan eski `data/sanalturkiye.db` dosyası kullanılmaz (silinmedi).
 
+## v0.43 — sade harita, oyun düğmesi sekmeler, her yerden balık
+
+- **Harita sadeleşti:** üstteki hava şeridi ("Konya 18°") ve bayram/etkinlik şeridi kalktı. Hava penceresi Çiftlik sekmesindeki "🌦️ Çiftliğinin havası ve uyarılar"dan açılır; riskli hava yine bildirim olarak gelir. Etkinlikler Çiftlik → Etkinlik'te.
+- **Panel sekmeleri (Çiftlik · Pazar · Köy · Ben):** çiftlikteki eylem çubuğuyla aynı aile; kabarık krem kartlar, renkli ikon kareleri, seçili sekme parlak yeşil ve yükselmiş.
+- **Balık tutma her yerden:** 🎣'a basınca oyun hemen açılır; haritada su aramak gerekmez. Olta oyuncunun bölgesinin suyuna atılır (ilk tarlasının ili, yoksa memleketi; kıyı ilinde deniz, değilse göl/nehir). Belirli bir suya ait nokta gelirse yine oraya.
+
 ## v0.42 — rakip oyun araştırmasından: yöre setleri, İmece, yardım istekleri, pazar gazetesi; fazlalık temizliği
 
 Tür oyunları (kasaba/çiftlik kurma, harita üzerinde arazi oyunları) ve kendi özellik dökümümüz karşılaştırıldı; aşağıdakiler uygulandı.

@@ -59,5 +59,6 @@ export function ciftlikBolumu(c, { simdi }) {
   const y = c.yaris;
   const yaris = y ? `<button type="button" class="yaris-ozet" data-eylem="yaris-ac"><span class="yaris-ikon">🏁</span>
       <span><b>Hasat yarışı</b><small>${y.il ? `${esc(y.il)}${y.sira ? ` Türkiye ${y.sira}.` : ''} · katkın ${sayi(y.katkim)}${y.katkim < y.minKatki ? `/${y.minKatki}` : ' ✓'}` : 'Tarla edinince ilin adına yarışırsın'} · bitişe ${sure(y.kalanMs)}</small></span><i>›</i></button>` : '';
-  return seviye + gunluk + siparis + yaris;
+  const hava = '<button type="button" class="bag hava-bag" data-eylem="hava-ac">🌦️ Çiftliğinin havası ve uyarılar</button>';
+  return seviye + gunluk + siparis + yaris + hava;
 }
