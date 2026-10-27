@@ -59,7 +59,7 @@ export function urlTokenleri() {
   return t;
 }
 export async function epostaDogrula(token) {
-  try { await api('/api/eposta/dogrula', { token }); tost('✅ E-posta adresin doğrulandı. Pazar ve seçimler artık açık.'); await ctx.yenile(); }
+  try { await api('/api/eposta/dogrula', { token }); tost('✅ E-posta adresin doğrulandı. Pazar ve kooperatifler artık açık.'); await ctx.yenile(); }
   catch (e) { tost(e.message, 'hata'); }
 }
 
@@ -224,7 +224,7 @@ function oyunAyarlari(h) {
       ${h.genc ? '<p class="kucuk">Genç hesaplarda sohbet varsayılan olarak kapalı başlar; özel mesaj yoktur.</p>' : ''}
     </section>
     <section><h3>Cihaz bildirimleri</h3>
-      <p>Oyun kapalıyken teklif, seçim ve meclis gelişmelerini telefonuna ya da bilgisayarına bildirim olarak al.</p>
+      <p>Oyun kapalıyken teklif, sipariş ve hasat gelişmelerini telefonuna ya da bilgisayarına bildirim olarak al.</p>
       <div id="pushAlani"><span class="kucuk">Denetleniyor…</span></div>
     </section>
     <section><h3>Bildirim sesi</h3>

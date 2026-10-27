@@ -127,9 +127,6 @@ h1, h2, h3, .modal h1, .pusula-baslik, .fiyat { font-family: var(--baslik-font);
 .siparis-kalemler span.var { border-color: #7bb33a; background: #eef7df; }
 .siparis-kalemler span.yok { border-color: #e2a38c; background: #fff1ea; }
 .siparis-kalemler small { font-weight: 500; color: var(--soluk); }
-.yarisma-liste { list-style: none; margin: 6px 0; padding: 0; display: grid; gap: 4px; }
-.yarisma-liste li { display: grid; grid-template-columns: 30px 1fr auto; gap: 6px; align-items: center; padding: 6px 10px; border-radius: 10px; background: rgba(255,250,236,.8); border: 1.5px solid #e6cfa0; }
-.yarisma-liste li.ben { border-color: #8a5414; background: #fff3cf; }
 
 /* ---------- Telefon: dokunmatik dostu, çakışmasız ---------- */
 @media (max-width: 700px) {
@@ -868,3 +865,57 @@ body:has(.bm-perde) .tostlar { z-index: 3001; }
 .bm-sonuc-bas { font: 400 26px 'Lilita One', system-ui; color: #1f4f8a; }
 .bm-sonuc.kaybetti .bm-sonuc-bas { color: #b8432f; }
 .bm-sonuc-odul { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; }
+
+/* Çiftlik sekmesinde hasat yarışı özeti (Köy → Hasat yarışı'na götürür) */
+.yaris-ozet { display: flex; align-items: center; gap: 10px; width: 100%; margin: 12px 0 4px; padding: 10px 12px; border: 0; border-radius: 16px; text-align: left; cursor: pointer;
+  background: linear-gradient(180deg, #eef7ff, #fff); box-shadow: inset 0 0 0 1.5px #cfe2f3; font: inherit; color: inherit; }
+.yaris-ozet > span:nth-child(2) { flex: 1; min-width: 0; display: grid; line-height: 1.2; }
+.yaris-ozet b { font: 400 17px 'Lilita One', 'Baloo 2', system-ui; color: #23458a; }
+.yaris-ozet small { font-size: 12.5px; color: #5a6a8a; font-weight: 600; }
+.yaris-ozet i { font-style: normal; font-size: 22px; color: #7a8aa8; }
+
+/* Yöre setleri (Ben → Arazilerim) */
+.set-liste { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 6px; }
+.set-kart { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 14px; background: #f6f3ea; box-shadow: inset 0 0 0 1.5px #e6dfcc; }
+.set-kart.tamam { background: linear-gradient(180deg, #f1fae9, #fff); box-shadow: inset 0 0 0 2px #9fd27f; }
+.set-ikon { font-size: 26px; flex: none; width: 34px; text-align: center; }
+.set-kart .govde { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.set-iller { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 12.5px; color: #8a8270; font-weight: 600; }
+.set-iller .var { color: #2f8a24; }
+.set-durum { flex: none; font: 400 17px 'Lilita One', 'Baloo 2', system-ui; color: #7a6a4a; }
+.set-kart.tamam .set-durum { color: #2f8a24; }
+
+/* Pazar gazetesi (Pazar → Bugün) */
+.gazete { display: grid; gap: 10px; margin-top: 10px; }
+.gz-ust { display: flex; align-items: baseline; justify-content: space-between; border-bottom: 3px double #c9b98a; padding-bottom: 4px; }
+.gz-ust b { font: 700 22px Georgia, 'Times New Roman', serif; color: #3d2a12; letter-spacing: .5px; }
+.gz-ust small { font-size: 12.5px; color: #8a6a2a; font-weight: 700; }
+.gz-manset { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 12px; border-radius: 14px; background: #fbf6e6; box-shadow: inset 0 0 0 1.5px #ecdcae; }
+.gz-manset span { font-weight: 800; color: #7a5a2a; font-size: 13px; }
+.gz-manset b { font: 400 24px 'Lilita One', system-ui; color: #3d2a12; }
+.gz-manset small { color: #8a7a5a; font-size: 12px; }
+.gz-blok h3 { margin: 4px 0 6px; font-size: 14.5px; color: #3d2a12; }
+.gz-liste { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.gz-liste li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 10px; border-radius: 10px; background: #f7f4ec; font-size: 13.5px; }
+.gz-liste li > span { min-width: 0; display: grid; line-height: 1.2; }
+.gz-liste small { color: #7a7060; font-size: 12px; }
+.gz-ilan { all: unset; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; }
+.gz-ilan > span { display: grid; line-height: 1.2; }
+.gz-liste li:has(.gz-ilan) { padding: 0; } .gz-ilan { padding: 7px 10px; box-sizing: border-box; }
+.gz-not { margin: 0; }
+
+/* Kooperatif yardım istekleri */
+.yardim-liste { list-style: none; margin: 6px 0; padding: 0; display: grid; gap: 6px; }
+.yardim-satir { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 14px; background: #f3f7fc; }
+.yardim-ikon { font-size: 24px; flex: none; }
+.yardim-satir .govde { flex: 1; min-width: 0; display: grid; gap: 3px; }
+.yardim-satir small { font-size: 12px; color: #5a6a8a; }
+.yardim-cubuk { position: relative; top: 0; height: 7px; }
+
+/* İmece kartı (Çiftlik → Komşular) */
+.imece-kart { background: linear-gradient(180deg, #f1fae9, #fff); box-shadow: inset 0 0 0 1.5px #cfe8bf; }
+.imece-ikon { background: linear-gradient(#7ad35a, #48a83a); box-shadow: 0 3px 0 #2f7d24; }
+.imece-kart .yaris-ust b { color: #2f6a1f; }
+.imece-kart .yaris-cubuk b { background: linear-gradient(90deg, #9fe07a, #48a83a); }
+.imece-adaylar { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.imece-adaylar .cip { border: 0; cursor: pointer; font: 700 13px 'Baloo 2', system-ui; padding: 6px 10px; background: #e8f4de; color: #2f6a1f; }

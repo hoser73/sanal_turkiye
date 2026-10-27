@@ -147,6 +147,7 @@ function vitrin(userId, kategori) {
   return { marka: m, urunler };
 }
 const satinAl = db.transaction((userId, kod, adet = 1) => {
+  require('./ciftlik').seviyeKilidi(userId, 'carsi');
   const u = bul(CARSI.urunler, kod);
   if (!u) throw new OyunHatasi(400, 'Bu ürün satılmıyor');
   adet = Number(adet);
@@ -207,6 +208,7 @@ function bankaOzet(userId, t = simdi()) {
   };
 }
 const vadeliAc = db.transaction((userId, tutar) => {
+  require('./ciftlik').seviyeKilidi(userId, 'carsi');
   tutar = Number(tutar);
   if (!Number.isInteger(tutar) || tutar < B.vadeliMin) throw new OyunHatasi(400, `Vadeli hesap en az ${B.vadeliMin} akçe`);
   const acik = db.prepare(`SELECT COALESCE(SUM(tutar), 0) s FROM banka_vadeli WHERE user_id = ? AND durum = 'ACIK'`).get(userId).s;

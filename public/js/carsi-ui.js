@@ -34,13 +34,8 @@ export function dukkanHTML(v, { girisli, bakiye, envanter = [], kurallar }) {
           <button class="dugme ince" ${bakiye < u.fiyat ? 'disabled' : ''}>${akce(u.fiyat)}</button></form>`}</li>`;
   }).join('');
   let ek = '';
-  if (v.marka.kategori === 'MARKET' && girisli) {
-    const satilik = envanter.filter((i) => !kurallar.urunler[i.item_id]?.dukkan);
-    ek = `<h3 class="bolum">Ürününü sat</h3><p class="kucuk">Market, ürünlerini günlük alım sınırına kadar taban fiyattan alır (çok satınca fiyat düşer).</p>
-      ${satilik.length ? `<ul class="liste">${satilik.map((i) => `<li class="liste-oge"><span class="ikon">${i.ikon}</span><div class="govde"><b>${esc(i.ad)}</b><span class="kucuk">${sayi(i.miktar)} adet</span></div>
-        <form class="sat-form" data-urun="${esc(i.item_id)}"><input type="number" name="miktar" min="1" max="${i.miktar}" value="${i.miktar}" aria-label="Satış miktarı"><button class="dugme ince">Sat</button></form></li>`).join('')}</ul>`
-        : '<p class="kucuk">Satacak ürünün yok. Hasat et, hayvanlarını besle ya da balık tut.</p>'}`;
-  }
+  // Ürün satışı tek yerde: Pazar → Tüccara sat (market eskiden aynı alımı ikinci kez sunuyordu)
+  if (v.marka.kategori === 'MARKET' && girisli) ek = '<p class="kucuk">Ürünlerini satmak için <button type="button" class="bag" data-eylem="tuccara-git">Pazar → Tüccara sat</button>.</p>';
   if (v.marka.kategori === 'ZIRAI') ek = '<p class="kucuk">Gübre ve ilacı tarlanın kartından, aşıyı barınağın satırından uygularsın.</p>';
   return `<button type="button" class="bag geri-dugme" data-eylem="carsi-geri">← Çarşı</button>
     ${markaBasligi(v.marka)}${v.marka.web ? `<p class="kucuk"><a href="${esc(v.marka.web)}" target="_blank" rel="noopener sponsored">${esc(new URL(v.marka.web).host)}</a></p>` : ''}

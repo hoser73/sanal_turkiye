@@ -112,6 +112,8 @@ const sonuclandir = db.transaction((h) => {
     for (const k of q.ilKatkilar.all(h, x.il_id)) {
       if (k.puan < Y.minKatki) continue;
       L.odul(k.user_id, odul, `Hasat yarışı: ${x.il} ${x.sira}.`, tx);
+      // SEZON_ ile başlayan rozet altın varak çatıyı ve "İl Şampiyonu" unvanını açar (kozmetik.js)
+      require('./dunya').rozetVer(k.user_id, `SEZON_${h}_${x.plaka}`, `${h}. hafta ${x.il} ${x.sira}.si`, ['🥇', '🥈', '🥉'][x.sira - 1], `Hasat yarışında ${x.il} Türkiye ${x.sira}. oldu; katkın ${k.puan} puan.`);
       require('./pazar').bildir(k.user_id, `🗺️ Hasat yarışında ${x.il} Türkiye ${x.sira}. oldu! Katkın için +${odul} akçe`, 'arazilerim');
     }
   }
@@ -168,7 +170,14 @@ function rotalar(app, { h }) {
   app.get('/api/hasat-yarisi', h((req) => durumu(req.kullanici?.id ?? null)));
 }
 
+// Çiftlik sekmesindeki kısa özet: haftanın bitişi, ilin sırası ve katkın
+function ozet(userId, t = Date.now()) {
+  const h = haftaNo(t), il = q.il.get(userId)?.il_id;
+  const katki = il ? db.prepare('SELECT puan FROM koop_yaris_il WHERE hafta = ? AND il_id = ? AND user_id = ?').get(h, il, userId)?.puan || 0 : 0;
+  const x = il ? ilSiralamasi(h).find((i) => i.il_id === il) : null;
+  return { kalanMs: haftaBitis(h) - t, il: il ? db.prepare('SELECT name FROM regions WHERE id = ?').get(il).name : null, sira: x?.sira || null, katkim: katki, minKatki: Y.minKatki };
+}
 // Memleket bilgisi için: ilin bu haftaki yarış sırası
 const ilSirasi = (ilId, t = Date.now()) => { const x = ilSiralamasi(haftaNo(t)).find((i) => i.il_id === ilId); return x ? { sira: x.sira, ilPuani: x.ilPuani } : null; };
 
-module.exports = { rotalar, durumu, puanVer, sonuclandir, yarisBakim, haftaNo, ilSirasi };
+module.exports = { rotalar, durumu, ozet, puanVer, sonuclandir, yarisBakim, haftaNo, ilSirasi };

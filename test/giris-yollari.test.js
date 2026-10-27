@@ -249,6 +249,7 @@ test('telefon: geliştirme kodu, hatalı deneme sınırı, numara tekilliği, bi
   assert.equal((await b('/api/telefon/dogrula', { kod: k2.gelistirmeKodu })).durum, 400, 'kilitlendi');
   // TELEFON_ZORUNLU: değer aktaran işlem telefon ister
   process.env.TELEFON_ZORUNLU = '1';
+  db.prepare('UPDATE users SET tp = 240').run();   // çarşı 4. seviyede açılır
   try {
     assert.equal((await b('/api/banka/vadeli', { tutar: 100 })).veri.kod, 'TELEFON_GEREKLI');
     assert.equal((await a('/api/banka/vadeli', { tutar: 100 })).durum, 200);

@@ -148,10 +148,12 @@ for (const h of Object.values(HAYVANLAR)) h.sureMs = dk(h.sure);
 const YEM_FIYATI = 1.2;   // envanterde yem yoksa birim başına
 
 // Oyuncu seviyesi: eylemler tecrübe puanı (TP) kazandırır. Seviye n için toplam TP = 20 × n × (n − 1) (açık formül)
+// Seviyeyle açılan bölümler (istemcide ACILIMLAR ile aynı); sunucu da denetler
+const SEVIYE_KILIDI = { balik: { seviye: 3, ad: 'Balık tutma' }, carsi: { seviye: 4, ad: 'Çarşı' } };
 const SEVIYE = {
   tp: { PARCEL_ACQUIRED: 10, CROP_PLANTED: 2, CROP_HARVESTED: 6, STRUCTURE_COMPLETED: 8, PRODUCTION_COLLECTED: 4, ANIMALS_FED: 1,
     ANIMAL_PRODUCE_COLLECTED: 4, PARCEL_VISITED: 1, COMMODITY_TRADE: 2, TRADE_SETTLED: 5, DECORATION_PLACED: 2,
-    NEIGHBOR_HELPED: 3, GI_PRODUCED: 5, FISH_CAUGHT: 2 },
+    NEIGHBOR_HELPED: 3, GI_PRODUCED: 5, FISH_CAUGHT: 2, COOP_HELPED: 3 },
   gunlukEylemTavani: 20,   // aynı eylem türünden günde en çok bu kadar TP kaydı (tek tek satarak TP kasılmasın)
   katsayi: 20, maks: 60,
   seviyeOdulu: (n) => 20 + n * 10,   // her yeni seviyede akçe
@@ -165,8 +167,6 @@ const SIPARIS = {
   musteriler: ['Ayşe Teyze', 'Hasan Amca', 'Fadime Nine', 'Bakkal Mehmet', 'Fırıncı Rıza', 'Muhtar Kâzım', 'Öğretmen Zeynep', 'Lokantacı Yusuf',
     'Pazarcı Emine', 'Çoban Ali', 'Kahveci İsmail', 'Doktor Elif'],
 };
-// Haftalık köy yarışması: mahallede bu hafta en çok TP kazanan üç oyuncu ödül alır (hafta pazartesi 00:00 UTC başlar)
-const YARISMA = { odul: [150, 90, 50], minTp: 20, minKatilimci: 3 };
 // Çiftlik süsleri: parselde 3B görünür; seviyeyle açılır; parsel başına en çok 8
 const SUSLER = {
   CICEK_TARHI:   { ad: 'Çiçek tarhı',   ikon: '🌷', fiyat: 15, minSeviye: 1 },
@@ -324,6 +324,26 @@ const KOY_MEYDANI = {
   PTT:          { ad: 'Postane', ikon: '📮', seviye: 8, akce: 1300, malzeme: { EKMEK: 20, PEYNIR: 10 }, sureMs: dk(120), etki: 'Sipariş panosuna +1 müşteri', ek: 1 },
 };
 
+// ---------- Yöre setleri (koleksiyon.js): bir setin her ilinde en az bir parselin varsa set tamamdır; tamam olduğu sürece
+// o illerdeki tarlalarının hasadı hasatBonus kadar artar. Set ilk kez tamamlanınca bir kerelik ödül ve rozet. Hesap başına
+// 8 parsel sınırı (HESAP.maxParsel) yüzünden hangi seti kovalayacağın bir yatırım kararıdır.
+const KOLEKSIYON = {
+  hasatBonus: 0.1, odul: 120,
+  setler: {
+    KAPADOKYA: { ad: 'Kapadokya', ikon: '🎈', iller: ['50', '38', '51'] },
+    KARADENIZ: { ad: 'Çay ve fındık kıyısı', ikon: '🍃', iller: ['53', '61', '28'] },
+    EGE: { ad: 'Ege zeytinliği', ikon: '🫒', iller: ['35', '09', '48'] },
+    CUKUROVA: { ad: 'Çukurova', ikon: '☁️', iller: ['01', '33', '80'] },
+    TAHIL: { ad: 'Tahıl ambarı', ikon: '🌾', iller: ['42', '70', '03'] },
+    BEREKETLI_HILAL: { ad: 'Bereketli Hilal', ikon: '🌶️', iller: ['63', '21', '47'] },
+    TRAKYA: { ad: 'Trakya', ikon: '🌻', iller: ['22', '39', '59'] },
+    KAYISI: { ad: 'Kayısı yolu', ikon: '🍑', iller: ['44', '23', '02'] },
+    YAYLA: { ad: 'Doğu yaylaları', ikon: '🐄', iller: ['25', '36', '75'] },
+    MARMARA: { ad: 'Marmara bahçeleri', ikon: '🍐', iller: ['16', '54', '77'] },
+    GOLLER: { ad: 'Göller yöresi', ikon: '🌹', iller: ['32', '15', '07'] },
+  },
+};
+
 // ---------- Açılıp kapatılabilen bölümler. Siyaset (muhtarlık ve belediye seçimleri, meclis projeleri, referandum,
 // görevden alma) ancak yeterince gerçek oyuncu olunca anlam kazanır: SIYASET=acik ile açılır. Kapalıyken seçim ve proje
 // döngüleri durur, siyasi haberler ve ekranlar gizlenir; daha önce tamamlanmış belediye hizmetleri etkisini sürdürür.
@@ -356,11 +376,11 @@ const MEVSIM_YOLU = {
   kademe: 30, taban: 40, artis: 6, gunlukTavan: 15,
   puanlar: { DAILY_QUESTS_REWARDED: 20, ORDER_DELIVERED: 10, STRUCTURE_COMPLETED: 6, GI_PRODUCED: 5, CROP_HARVESTED: 4,
     PRODUCTION_COLLECTED: 4, ANIMAL_PRODUCE_COLLECTED: 4, NEIGHBOR_HELPED: 4, FISH_CAUGHT: 2, TRADE_SETTLED: 2, DECORATION_PLACED: 2,
-    CROP_PLANTED: 1, PARCEL_VISITED: 1, PUZZLE_WON: 3 },
+    CROP_PLANTED: 1, PARCEL_VISITED: 1, PUZZLE_WON: 3, COOP_HELPED: 3 },
   eylemAdi: { DAILY_QUESTS_REWARDED: 'Günlük görevleri bitir', ORDER_DELIVERED: 'Sipariş teslim et', STRUCTURE_COMPLETED: 'Yapı tamamla',
     GI_PRODUCED: 'Yöresel ürün üret', CROP_HARVESTED: 'Hasat et', PRODUCTION_COLLECTED: 'Üretim topla', ANIMAL_PRODUCE_COLLECTED: 'Hayvan ürünü topla',
     NEIGHBOR_HELPED: 'Komşuya yardım et', FISH_CAUGHT: 'Balık tut', TRADE_SETTLED: 'Tüccara sat', DECORATION_PLACED: 'Süs koy',
-    CROP_PLANTED: 'Ek', PARCEL_VISITED: 'Komşu ziyaret et', PUZZLE_WON: 'Motif bulmacası bölümü geç' },
+    CROP_PLANTED: 'Ek', PARCEL_VISITED: 'Komşu ziyaret et', PUZZLE_WON: 'Motif bulmacası bölümü geç', COOP_HELPED: 'Kooperatif isteğine ürün gönder' },
   // Kademe ödülü: her 5. kademe büyük (eşya/kozmetik), 3. ve 8. sıradakiler eşya, kalanlar akçe
   odul(n) {
     const ozel = { 5: { esya: ['KALIP_SETI', 2], akce: 40 }, 10: { kozmetik: 'BAYRAK_YOLCU', akce: 60 }, 15: { esya: ['BAKIM_KITI', 3], akce: 100 },
@@ -409,12 +429,25 @@ const ETKINLIKLER = {
 const HATIRLATMA = { aralikMs: 60_000, sessiz: [23, 8], siparisUyariMs: 3600_000 };
 
 const KOOPERATIF = { kurulusBedeli: 100, maxUye: 12, minAktifUye: 3, satisPrimi: 0.06, adMin: 3, adMax: 40 };
+// İmece (imece.js): iki komşunun haftalık ortak hedefi. İkisinin işleri ortak puana yazar (aynı işten günde en çok
+// gunlukTavan); ortak puan kademe eşiğini geçince en az minKatki puan katan ortak kademe ödülünü alır. Pasif ortak
+// bırakılabilir; haftada en çok haftalikOrtak ortaklık kurulur (ödül için ortak değiştirip durmak olmasın).
+const IMECE = {
+  puanlar: { ORDER_DELIVERED: 12, DAILY_QUESTS_REWARDED: 15, CROP_HARVESTED: 5, PRODUCTION_COLLECTED: 5, ANIMAL_PRODUCE_COLLECTED: 5,
+    GI_PRODUCED: 8, NEIGHBOR_HELPED: 4, COOP_HELPED: 4, PUZZLE_WON: 3, FISH_CAUGHT: 2 },
+  gunlukTavan: 15, minKatki: 30, haftalikOrtak: 2, davetSuresiMs: 24 * 3600_000,
+  kademeler: [{ esik: 150, akce: 30 }, { esik: 400, akce: 60, esya: ['GUBRE', 2] }, { esik: 800, akce: 120, esya: ['KALIP_SETI', 1] }],
+};
+// Kooperatif yardım istekleri (yardim.js): üye "şu üründen şu kadar lazım" der, diğer üyeler envanterinden gönderir.
+// Yardım eden TP, yol puanı ve yarış puanı kazanır (COOP_HELPED); akçe aktarılmaz. Değer aktarmayı sınırlamak için tek
+// istekte en çok maksAdet, üye başına tek açık istek ve istekler arasında bekleme; yardım eden günde en çok gunlukYardim kez.
+const YARDIM = { maksAdet: 20, sureMs: 12 * 3600_000, beklemeMs: 4 * 3600_000, gunlukYardim: 5 };
 // Kooperatif hasat yarışı (hasat-yarisi.js): haftalık takım yarışı. Üyelerin işleri takım puanına eklenir (aynı işten
 // günde en çok gunlukTavan kayıt). Takım sandıkları hafta sonunda en az minKatki puan veren üyelere dağıtılır; Türkiye
 // sıralamasında ilk üç (en az minAktifUye üyeli) kooperatifin ortak kasasına bonus girer.
 const HASAT_YARISI = {
   puanlar: { ORDER_DELIVERED: 12, DAILY_QUESTS_REWARDED: 15, GI_PRODUCED: 8, CROP_HARVESTED: 5, PRODUCTION_COLLECTED: 5,
-    ANIMAL_PRODUCE_COLLECTED: 5, NEIGHBOR_HELPED: 3 },
+    ANIMAL_PRODUCE_COLLECTED: 5, NEIGHBOR_HELPED: 3, COOP_HELPED: 4 },
   gunlukTavan: 15,
   sandiklar: [{ esik: 300, odul: 30, ad: 'Bakır sandık' }, { esik: 800, odul: 60, ad: 'Gümüş sandık' }, { esik: 1500, odul: 120, ad: 'Altın sandık' }],
   minKatki: 30,
@@ -754,4 +787,4 @@ const NUFUS = {
   baslangicBakiye: 500,
 };
 
-module.exports = { OZELLIK, SIYASI_EYLEMLER, BULMACA, KOY_MEYDANI, HASAT_YARISI, MEVSIM_YOLU, PIYASA, CARSI, KOMSULUK, YORESEL, YORESEL_KURAL, BALIK, ETKINLIKLER, HATIRLATMA, HAYVANLAR, YEM_FIYATI, SEVIYE, GUNLUK_ODUL, SIPARIS, YARISMA, SUSLER, SUS_MAKS, NUFUS, LOJISTIK, KIRA, ORTAKLIK, AFET, REFERANDUM, KOZMETIK, RECETELER, MESLEKLER, MESLEK, KOOPERATIF, LIG, MEVSIMLER, HAVA, BOLGE, BOZULMA, BAKIM, BORSA, GOREVDEN_ALMA, MODERASYON, YASAL, ROLLER, BIRIM, OYUN_HIZI, IMAR, IMAR_KAYNAK_NOTU, IL_CEKICILIK, YERLESIM_CEKICILIK, YAPILAR, URUNLER, TARIM, NPC_PAZAR, PAZAR, SECIM, SECIM_HIZI, BELEDIYE, ITIBAR, HESAP, GOREVLER };
+module.exports = { IMECE, YARDIM, KOLEKSIYON, SEVIYE_KILIDI, OZELLIK, SIYASI_EYLEMLER, BULMACA, KOY_MEYDANI, HASAT_YARISI, MEVSIM_YOLU, PIYASA, CARSI, KOMSULUK, YORESEL, YORESEL_KURAL, BALIK, ETKINLIKLER, HATIRLATMA, HAYVANLAR, YEM_FIYATI, SEVIYE, GUNLUK_ODUL, SIPARIS, SUSLER, SUS_MAKS, NUFUS, LOJISTIK, KIRA, ORTAKLIK, AFET, REFERANDUM, KOZMETIK, RECETELER, MESLEKLER, MESLEK, KOOPERATIF, LIG, MEVSIMLER, HAVA, BOLGE, BOZULMA, BAKIM, BORSA, GOREVDEN_ALMA, MODERASYON, YASAL, ROLLER, BIRIM, OYUN_HIZI, IMAR, IMAR_KAYNAK_NOTU, IL_CEKICILIK, YERLESIM_CEKICILIK, YAPILAR, URUNLER, TARIM, NPC_PAZAR, PAZAR, SECIM, SECIM_HIZI, BELEDIYE, ITIBAR, HESAP, GOREVLER };

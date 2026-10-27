@@ -39,6 +39,8 @@ async function oyuncu(ad = `oyuncu${++sayac}`, ek = {}) {
   const c = istemci();
   assert.equal((await c('/api/kayit', { email: `${ad}@test.local`, sifre: 'parola123', dogumYili: 1990, kosullarOnay: true, kvkkOnay: true, ad, ...ek })).durum, 201);
   c.id = (await c('/api/ben')).veri.kullanici.id;
+  // Balık 3., çarşı 4. seviyede açılır (SEVIYE_KILIDI)
+  db.prepare('UPDATE users SET tp = ? WHERE id = ?').run(require('../server/config/rules').SEVIYE.katsayi * 4 * 3, c.id);
   return c;
 }
 async function yonetici() {
@@ -182,6 +184,14 @@ test('balık takımı: karides paketi ve sahte yem stoktan; misina koparsa sahte
   assert.equal(cek.sarmaHiz, CARSI.etki.kamisSarma);
   await c(`/api/balik/${s.id}/cikar`, { basari: false, neden: 'koptu' });
   assert.equal(L.envanterMiktar(c.id, 'SAHTE_YEM_TAKIMI'), 0, 'koptu: sahte yem kayboldu');
+});
+
+test('seviye kilidi: çarşı 4. seviyeden önce satmaz', async () => {
+  const c = await oyuncu();
+  db.prepare('UPDATE users SET tp = 0 WHERE id = ?').run(c.id);
+  const r = await c('/api/carsi/satin-al', { urun: 'GUBRE', adet: 1 });
+  assert.equal(r.durum, 403);
+  assert.equal(r.veri.kod, 'SEVIYE');
 });
 
 test('banka: vadeli hesap (bozdurunca faiz yok, vadesinde getiri), üst sınır', async () => {

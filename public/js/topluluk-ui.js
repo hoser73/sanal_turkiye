@@ -47,14 +47,33 @@ export function yarisKarti(y) {
     </div>`;
 }
 
+// Kooperatif yardım istekleri (yardim.js): üyelerin açık istekleri ve kendi isteğini açma formu
+function yardimHTML(d) {
+  const benim = d.istekler.find((i) => i.ben);
+  const diger = d.istekler.filter((i) => !i.ben);
+  const satir = (i) => `<li class="yardim-satir"><span class="yardim-ikon">${i.ikon}</span>
+    <div class="govde"><b>${i.ben ? 'Senin isteğin' : esc(i.ad)}: ${i.adet} ${esc(i.urunAd)}</b>
+      <div class="yaris-cubuk yardim-cubuk"><b style="width:${Math.round((i.gelen / i.adet) * 100)}%"></b></div>
+      <small>${i.gelen}/${i.adet} geldi · ${sure(i.kalanMs)} kaldı${i.ben ? '' : ` · elinde ${sayi(i.eldeki)}`}</small></div>
+    ${i.ben ? `<button type="button" class="bag" data-eylem="yardim-kapat" data-id="${i.id}">kapat</button>`
+      : `<button type="button" class="dugme ince altin" data-eylem="yardim-gonder" data-id="${i.id}" data-adet="${Math.min(i.eldeki, i.adet - i.gelen)}" ${i.eldeki > 0 && d.bugunYardim < d.gunlukYardim ? '' : 'disabled'}>Gönder ${Math.min(i.eldeki, i.adet - i.gelen) || ''}</button>`}</li>`;
+  return `<h3 class="bolum">🙋 Yardım istekleri</h3>
+    ${d.istekler.length ? `<ul class="yardim-liste">${[...(benim ? [benim] : []), ...diger].map(satir).join('')}</ul>` : '<p class="kucuk">Şu an açık istek yok.</p>'}
+    <p class="kucuk">Yardım ettikçe TP, yol ve yarış puanı kazanırsın (bugün ${d.bugunYardim}/${d.gunlukYardim}).</p>
+    ${benim ? '' : d.beklemeMs ? `<p class="kucuk">Yeni istek için ${sure(d.beklemeMs)} bekle.</p>`
+      : `<form class="form satir yardim-form"><select name="urun" aria-label="Ürün">${d.urunler.map((u) => `<option value="${u.kod}">${u.ikon} ${esc(u.ad)}</option>`).join('')}</select>
+        <input name="adet" type="number" min="1" max="${d.maksAdet}" value="10" aria-label="Adet"><button class="dugme ince">İste</button></form>`}`;
+}
+
 export async function kooperatifBolumu({ ben, konum }) {
   const ilId = ben.portfoy[0] ? null : konum?.ilId;
-  const [l, y] = await Promise.all([api(`/api/kooperatifler${ilId ? `?il=${ilId}` : ''}`), api('/api/hasat-yarisi').catch(() => null)]);
+  const [l, y, yd] = await Promise.all([api(`/api/kooperatifler${ilId ? `?il=${ilId}` : ''}`), api('/api/hasat-yarisi').catch(() => null), api('/api/yardim').catch(() => null)]);
   const yaris = y ? yarisKarti(y) : '';
   if (l.benim) {
     const k = l.benim;
     return `${yaris}<div class="kutu vurgulu"><div class="satir"><b>🤝 ${esc(k.ad)}</b><span class="cip ${k.aktif ? 'yesil' : ''}">${k.aktif ? `aktif · satış primi %${Math.round(k.satisPrimi * 100)}` : `${k.minAktifUye} üyede aktifleşir`}</span></div>
       <p class="kucuk" style="margin:4px 0 0">${esc(k.il)} · ${k.uyeler.length}/${k.maxUye} üye · kasa <b>${akce(k.kasa)}</b></p>${k.aciklama ? `<p class="kucuk">${esc(k.aciklama)}</p>` : ''}</div>
+      ${yd?.uye ? yardimHTML(yd) : ''}
       <h3 class="bolum">Üyeler</h3><ul class="madde">${k.uyeler.map((u) => `<li>${esc(u.ad)}${u.baskan ? ' · <b>başkan</b>' : ''}${u.ben ? ' (sen)' : ''}</li>`).join('')}</ul>
       <form class="form satir koop-aidat"><label>Ortak kasaya aidat (₳)<input name="tutar" type="number" min="1" value="20"></label><button class="dugme ince">Yatır</button></form>
       ${k.ben.baskan ? `<button class="dugme ince birincil" data-eylem="koop-dagit" ${k.kasa >= 0.01 * k.uyeler.length ? '' : 'disabled'}>Kasayı üyelere eşit dağıt</button>` : ''}

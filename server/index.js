@@ -165,7 +165,7 @@ dunya.rotalar(app, { h, auth });
 kooperatif.rotalar(app, { h, auth });
 simge.rotalar(app, { h, auth });
 // Komşuluk, yöresel ürünler, etkinlikler, balık tutma, hatırlatmalar
-for (const m of ['./komsuluk', './yoresel', './etkinlik', './balik', './hatirlatma', './iklim', './carsi', './giris-yollari', './tanitim', './baslangic', './gelisim', './sihirbaz', './mevsim-yolu', './hasat-yarisi', './koy-meydani', './bulmaca']) require(m).rotalar(app, { h, auth, hazir });
+for (const m of ['./komsuluk', './yoresel', './etkinlik', './balik', './hatirlatma', './iklim', './carsi', './giris-yollari', './tanitim', './baslangic', './gelisim', './sihirbaz', './mevsim-yolu', './hasat-yarisi', './koy-meydani', './bulmaca', './koleksiyon', './yardim', './gazete', './imece']) require(m).rotalar(app, { h, auth, hazir });
 require('./db').indeksleriKur();   // tüm modüllerin tabloları kurulduktan sonra
 yz.rotalar(app, { h, auth });
 kozmetik.rotalar(app, { h, auth });
@@ -190,7 +190,7 @@ const agirSinir = rateLimit({ windowMs: 60_000, limit: Number(process.env.AGIR_H
 app.get('/api/il/:plaka/ilceler', h((req, res) => { res.set('cache-control', 'public, max-age=3600'); return bolgeHaritasi.ilIlceleri(String(req.params.plaka)); }));
 app.get('/api/ilce/:id/mahalleler', agirSinir, h((req) => bolgeHaritasi.ilceMahalleleri(req.params.id)));
 app.post('/api/ilce/:id/mahalle', agirSinir, h((req) => bolgeHaritasi.mahalleBolgesiAc(req.params.id, req.body?.yerId, req.kullanici?.id ?? null)));
-// Çiftlik: hayvancılık, seviye, günlük ödül, siparişler, köy yarışması, süsler
+// Çiftlik: hayvancılık, seviye, günlük ödül, siparişler, süsler
 const ciftlik = require('./ciftlik');
 app.get('/api/ciftlik', auth.girisGerekli, h((req) => ciftlik.ozet(uid(req))));
 app.post('/api/yapi/:id/besle', auth.girisGerekli, h((req) => ciftlik.besle(uid(req), req.params.id)));
@@ -199,7 +199,6 @@ app.post('/api/seviye-odul', auth.girisGerekli, h((req) => ciftlik.seviyeOdulAl(
 app.post('/api/gunluk-odul', auth.girisGerekli, h((req) => ciftlik.gunlukAl(uid(req))));
 app.post('/api/siparis/:id/teslim', auth.girisGerekli, h((req) => ciftlik.siparisTeslim(uid(req), req.params.id)));
 app.post('/api/siparis/:id/reddet', auth.girisGerekli, h((req) => ciftlik.siparisReddet(uid(req), req.params.id)));
-app.get('/api/yarisma/:mahalleId', h((req) => ciftlik.yarisma(Number(req.params.mahalleId), req.kullanici?.id ?? null)));
 app.post('/api/parsel/:id/sus', auth.girisGerekli, hazir((req) => ciftlik.susEkle(uid(req), parselId(req), String(req.body?.tur || ''))));
 app.post('/api/sus/:id/kaldir', auth.girisGerekli, h((req) => ciftlik.susKaldir(uid(req), req.params.id)));
 app.get('/api/istatistik/iller', h(ortakYanit(30_000, () => oyun.ilIstatistikleri())));

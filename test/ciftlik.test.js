@@ -1,5 +1,5 @@
 // Çiftlik katmanı: seviye ve TP, seviye kilidi, hayvancılık (yemle → bekle → topla), seviye ve günlük ödüller,
-// sipariş panosu (teslim / reddet), çiftlik süsleri (haritada görünür) ve haftalık köy yarışması ödülü.
+// sipariş panosu (teslim / reddet), çiftlik süsleri (haritada görünür).
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
@@ -10,7 +10,7 @@ const app = require('../server/index');
 const db = require('../server/db');
 const L = require('../server/lib/ledger');
 const ciftlik = require('../server/ciftlik');
-const { SEVIYE, HAYVANLAR, SUSLER, YARISMA, LIG } = require('../server/config/rules');
+const { SEVIYE, HAYVANLAR, SUSLER } = require('../server/config/rules');
 
 let sunucu, taban;
 before(async () => {
@@ -130,36 +130,3 @@ test('süsler: satın alınır, yuvaya yerleşir, haritada görünür; seviyesi 
   assert.equal((await c(`/api/sus/${kart.susler[0].id}/kaldir`, {})).durum, 200);
 });
 
-test('köy yarışması: yalnızca mahallede parseli olanlar; en az 3 gerçek katılımcı; ödül bir kez', async () => {
-  const bolge = db.prepare(`SELECT region_id FROM parcels WHERE id = ?`).get(parsel).region_id;
-  const gecen = LIG.baslangic + (ciftlik.haftaNo(Date.now()) - 1) * 7 * 86400_000 + 3600_000;
-  const tpYaz = (u, tp, eylem = 'TEST') => db.prepare(`INSERT INTO tp_kayitlari (user_id, tp, eylem, region_id, at) VALUES (?, ?, ?, ?, ?)`).run(u, tp, eylem, bolge, gecen);
-  db.prepare(`DELETE FROM yarisma_odulleri WHERE region_id = ?`).run(bolge);
-  tpYaz(uid, 80);
-  // Tek katılımcı: ödül yok
-  let once = L.bakiye(uid);
-  await c(`/api/yarisma/${bolge}`);
-  assert.equal(L.bakiye(uid), once, 'tek kişilik yarışmada ödül verilmez');
-  // Mahallede parseli olmayan oyuncunun (yardımla kazandığı) puanı sayılmaz; iki komşu daha yarışır
-  const yabanci = db.prepare(`SELECT id FROM users WHERE email = 'baska@test.local'`).get().id;
-  tpYaz(yabanci, 500, 'NEIGHBOR_HELPED');
-  const komsular = [];
-  for (const ad of ['k1', 'k2']) {
-    const k = istemci();
-    await k('/api/kayit', { email: `${ad}@test.local`, sifre: 'parola123', ad, dogumYili: 1990, kosullarOnay: true, kvkkOnay: true });
-    const id = db.prepare(`SELECT id FROM users WHERE email = ?`).get(`${ad}@test.local`).id;
-    const p = hucreBul('TARIM');
-    await k(`/api/parsel/${p}/edin`, {});
-    db.prepare(`UPDATE parcels SET region_id = ? WHERE id = ?`).run(bolge, p);
-    tpYaz(id, 30);
-    komsular.push(id);
-  }
-  db.prepare(`DELETE FROM yarisma_odulleri WHERE region_id = ?`).run(bolge);
-  once = L.bakiye(uid);
-  const y = (await c(`/api/yarisma/${bolge}`)).veri;
-  assert.equal(y.gecenHafta.length, 3);
-  assert.ok(!y.gecenHafta.some((r) => r.ad === 'Başka'), 'mahalle dışından gelen yardım puanı sayılmaz');
-  assert.equal(L.bakiye(uid), L.yuvarla(once + YARISMA.odul[0]));
-  await c(`/api/yarisma/${bolge}`);
-  assert.equal(L.bakiye(uid), L.yuvarla(once + YARISMA.odul[0]), 'ikinci kez dağıtılmaz');
-});

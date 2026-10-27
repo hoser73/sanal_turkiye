@@ -122,6 +122,7 @@ async function ortam(userId, { lon, lat } = {}) {
 }
 
 async function at(userId, govde = {}) {
+  require('./ciftlik').seviyeKilidi(userId, 'balik');
   const lon = Number(govde.lon), lat = Number(govde.lat);
   if (!Number.isFinite(lon) || !Number.isFinite(lat)) throw new OyunHatasi(400, 'Geçersiz konum');
   const tk = takim(govde);

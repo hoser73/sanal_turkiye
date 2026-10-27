@@ -25,7 +25,7 @@ function haritaKodu(userId) {
 function katalog(userId) {
   const s = secili(userId);
   return Object.entries(KOZMETIK).map(([kod, k]) => ({ kod, ...k, sahip: kullanilabilir(userId, kod, k), secili: s[k.tur]?.kod === kod,
-    kilit: k.yol ? 'Sezon yolu ödülü' : k.rozet ? `${k.rozet === 'SEZON_' ? 'İl ligi sezon rozeti' : 'Albüm bölge rozeti'} gerekir` : null }));
+    kilit: k.yol ? 'Sezon yolu ödülü' : k.rozet ? `${k.rozet === 'SEZON_' ? 'Hasat yarışında ilk üç il rozeti' : 'Albüm bölge rozeti'} gerekir` : null }));
 }
 const al = db.transaction((userId, kod) => {
   const k = bul(kod);

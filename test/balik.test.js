@@ -26,6 +26,8 @@ async function oyuncu(ad) {
   const c = istemci();
   assert.equal((await c('/api/kayit', { email: `${ad}@test.local`, sifre: 'parola123', dogumYili: 1990, kosullarOnay: true, kvkkOnay: true, ad })).durum, 201);
   c.id = (await c('/api/ben')).veri.kullanici.id;
+  // Balık 3., çarşı 4. seviyede açılır (SEVIYE_KILIDI)
+  db.prepare('UPDATE users SET tp = ? WHERE id = ?').run(require('../server/config/rules').SEVIYE.katsayi * 4 * 3, c.id);
   return c;
 }
 const KONYA = { lon: 32.5, lat: 37.9 }, ISTANBUL = { lon: 29, lat: 41 };

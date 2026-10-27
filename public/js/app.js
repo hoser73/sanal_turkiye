@@ -17,7 +17,7 @@ import { sohbetKur, sohbetKanallariniYenile } from './sohbet-ui.js';
 import { meslekBolumu, kooperatifBolumu, albumBolumu, yarisKarti } from './topluluk-ui.js';
 import { hayvanSatiri, susBolumu, ciftlikBolumu } from './ciftlik-ui.js';
 import { ses, sesDurumu, sesAyarla, muzikAyarla } from './ses.js';
-import { komsularBolumu, parselKomsuDugmeleri, urunGonderFormu, yoreselBolumu, etkinlikBolumu, etkinlikSeridi } from './komsuluk-ui.js';
+import { imeceKarti, komsularBolumu, parselKomsuDugmeleri, urunGonderFormu, yoreselBolumu, etkinlikBolumu, etkinlikSeridi } from './komsuluk-ui.js';
 import { balikOyunu } from './balik-ui.js';
 import { havaSeridi, havaPenceresi, iklimSatiri, ortuSatiri } from './hava-ui.js';
 import { carsiGirisi, dukkanHTML, bankaHTML } from './carsi-ui.js';
@@ -40,7 +40,7 @@ const durum = {
   harita: null,
   cuzdan: null,
   bolgeler: [],
-  pazarAlt: 'endeks',   // Pazar sekmesinin alt sekmesi
+  pazarAlt: 'gazete',   // Pazar sekmesinin alt sekmesi (açılışta günün gazetesi)
   pazarFiltre: { il: '', imar: '', sirala: 'yeni' },
   konum: null,          // haritanın merkezindeki il / ilçe (kırıntı ve "bu ildeki haberler")
   sahne: undefined,     // parsel 3B sahnesi (ilk kullanımda kurulur; WebGL yoksa null)
@@ -929,6 +929,8 @@ async function arazilerimPaneli() {
       <td>${esc(s.id)}<div class="kucuk">${kisaTarih(s.tarih)} · ${esc(s.alici)} · ${akce(s.fiyat)} (masraf ${akce(s.masraf)})</div><div class="kucuk">Maliyet ${akce(s.alis + s.yatirim)}</div></td>
       <td class="${s.kar >= 0 ? 'arti' : 'eksi'}">${s.kar >= 0 ? '+' : '−'}${sayi(Math.abs(s.kar))}${s.karYuzde != null ? `<div class="kucuk">%${sayi(s.karYuzde)}</div>` : ''}</td></tr>`).join('')}</table>`);
   }
+  const ks = await api('/api/koleksiyon').catch(() => null);
+  if (ks) parcalar.push(yoreSetleriHTML(ks));
   parcalar.push(`<h3 class="bolum">Envanter</h3>${envanterHTML()}`);
   parcalar.push(`<p class="kucuk hesap-satiri">${esc(b.kullanici.ad)} olarak oynuyorsun · <button type="button" class="bag" data-eylem="hesap-ac">Hesabım ve gizlilik</button> · <button type="button" class="bag" data-eylem="cikis">Çıkış yap</button></p>`);
   parcalar.push(`<h3 class="bolum">Cüzdan hareketleri</h3>${durum.cuzdan
@@ -936,6 +938,19 @@ async function arazilerimPaneli() {
         <td class="${c.tutar >= 0 ? 'arti' : 'eksi'}">${c.tutar >= 0 ? '+' : ''}${sayi(c.tutar)}</td></tr>`).join('')}</table>`
     : '<p class="kucuk">Yükleniyor…</p>'}`);
   return parcalar.join('');
+}
+
+// Yöre setleri: tamamlananlar ve en yakın üç set; kalanlar açılır listede (koleksiyon.js)
+function yoreSetleriHTML(k) {
+  const kart = (s) => `<li class="set-kart${s.tamam ? ' tamam' : ''}"><span class="set-ikon">${s.ikon}</span>
+    <div class="govde"><b>${esc(s.ad)}</b><span class="set-iller">${s.iller.map((i) => `<span class="${i.var ? 'var' : ''}">${i.var ? '✓' : '○'} ${esc(i.ad)}</span>`).join('')}</span></div>
+    <span class="set-durum">${s.tamam ? `+%${Math.round(k.hasatBonus * 100)}` : `${s.sahip}/${s.toplam}`}</span></li>`;
+  const one = k.setler.filter((s) => s.tamam || s.sahip > 0).slice(0, Math.max(3, k.tamam));
+  const kalan = k.setler.filter((s) => !one.includes(s));
+  return `<h3 class="bolum">🗺️ Yöre setleri${k.tamam ? ` · ${k.tamam} tamam` : ''}</h3>
+    <p class="kucuk">Bir setin üç ilinin hepsinde arazin olursa o illerdeki hasadın %${Math.round(k.hasatBonus * 100)} artar; seti ilk tamamlayışında ${akce(k.odul)} ve rozet.</p>
+    ${one.length ? `<ul class="set-liste">${one.map(kart).join('')}</ul>` : ''}
+    <details class="acilir"><summary>${one.length ? 'Diğer setler' : 'Bütün setler'} (${kalan.length})</summary><ul class="set-liste">${kalan.map(kart).join('')}</ul></details>`;
 }
 
 function envanterHTML() {
@@ -968,7 +983,11 @@ async function gorevlerPaneli() {
     <button type="button" data-eylem="ciftlik-alt" data-alt="etkinlik" aria-selected="${alt === 'etkinlik'}">${etkinlik ? etkinlik.ikon : '📅'} Etkinlik</button>
     <button type="button" data-eylem="ciftlik-alt" data-alt="yol" aria-selected="${alt === 'yol'}">🛤️ Yol${durum.ben?.yol?.alinabilir ? ` <span class="rozet">${durum.ben.yol.alinabilir}</span>` : ''}</button></div>`;
   try {
-    if (alt === 'komsular') return segment + (acikMi('komsuluk') ? komsularBolumu(await api('/api/komsuluk')) : kilitliBolum('komsuluk'));
+    if (alt === 'komsular') {
+      if (!acikMi('komsuluk')) return segment + kilitliBolum('komsuluk');
+      const [k, m] = await Promise.all([api('/api/komsuluk'), api('/api/imece').catch(() => null)]);
+      return segment + (m ? imeceKarti(m) : '') + komsularBolumu(k);
+    }
     if (alt === 'yoresel') return segment + yoreselBolumu(await api('/api/yoresel'));
     if (alt === 'etkinlik') { durum.etkinlik = await api('/api/etkinlik'); return segment + etkinlikBolumu(durum.etkinlik, { simdi: sunucuSimdi }); }
     if (alt === 'yol') return segment + yolBolumu(await api('/api/yol'), { simdi: sunucuSimdi });
@@ -1191,6 +1210,15 @@ async function eylemDagit(b, e = null) {
     case 'akis-filtre':
       durum.akisFiltre = b.dataset.filtre;
       return panelCiz();
+    case 'koop-ac':
+      durum.araziAlt = 'koop';
+      return sekmeSec('arazilerim');
+    case 'tuccara-git':
+      durum.pazarAlt = 'urun';
+      return sekmeSec('pazar');
+    case 'yaris-ac':
+      durum.akisFiltre = 'yaris';
+      return sekmeSec('haberler');
     case 'bagi-kopyala': {
       e?.preventDefault();
       const url = `${location.origin}/?parsel=${durum.secili}${location.hash}`;
@@ -1256,6 +1284,16 @@ async function eylemDagit(b, e = null) {
       return eylem('/api/meslek', { meslek: b.dataset.meslek }, 'Mesleğin kaydedildi');
     case 'koop-katil':
       return eylem(`/api/kooperatif/${b.dataset.id}/katil`, {}, 'Kooperatife katıldın 🤝');
+    case 'imece-davet':
+      b.disabled = true;
+      return eylem('/api/imece/davet', { kullaniciId: Number(b.dataset.id) }, (r) => (r.id && b.textContent.includes('demo') ? '🤝 İmece başladı' : '🤝 İmece daveti gönderildi'));
+    case 'imece-kabul':
+      return eylem(`/api/imece/${b.dataset.id}/kabul`, {}, '🤝 İmece başladı: bu hafta birlikte çalışıyorsunuz');
+    case 'imece-reddet':
+      return eylem(`/api/imece/${b.dataset.id}/reddet`, {}, 'Davet reddedildi');
+    case 'imece-birak':
+      if (!confirm('İmeceden ayrılmak istiyor musun? Aldığın ödüller sende kalır.')) return;
+      return eylem('/api/imece/birak', {}, 'İmeceden ayrıldın');
     case 'koop-ayril':
       if (!confirm('Kooperatiften ayrılmak istiyor musun?')) return;
       return eylem('/api/kooperatif/ayril', {}, 'Kooperatiften ayrıldın');
@@ -1280,6 +1318,11 @@ async function eylemDagit(b, e = null) {
       durum.carsiAlt = b.dataset.kategori; $('#panelIcerik').scrollTop = 0; return panelCiz();
     case 'carsi-geri':
       durum.carsiAlt = null; return panelCiz();
+    case 'yardim-gonder':
+      b.disabled = true;
+      return eylem(`/api/yardim/${b.dataset.id}/gonder`, { adet: Number(b.dataset.adet) }, (r) => `🤝 ${r.adet} ürün gönderildi${r.istekTamam ? '; istek tamamlandı' : ''}`);
+    case 'yardim-kapat':
+      return eylem(`/api/yardim/${b.dataset.id}/kapat`, {}, 'İsteğin kapatıldı');
     case 'vadeli-kapat':
       b.disabled = true;
       return eylem(`/api/banka/vadeli/${b.dataset.id}/kapat`, {}, (r) => (r.bozuldu ? `↩️ Vadeli hesap bozuldu; ${akce(r.anapara)} cüzdanına döndü` : `🏦 Vadeli hesap kapandı: ${akce(r.anapara)} + ${akce(r.faiz)} getiri`));
@@ -1450,6 +1493,11 @@ $('#panelIcerik').addEventListener('submit', (e) => {
     e.preventDefault();
     const adet = Number(v(e.target).adet || 1);
     return eylem('/api/carsi/satin-al', { urun: e.target.dataset.urun, adet }, (r) => `🛍️ ${r.marka}: ${adet > 1 ? `${adet} × ` : ''}${durum.kurallar.urunler[r.urun]?.ad || r.urun} alındı (${akce(r.tutar)})`);
+  }
+  if (e.target.matches('.yardim-form')) {
+    e.preventDefault();
+    const d = v(e.target);
+    return eylem('/api/yardim', { urun: d.urun, adet: Number(d.adet) }, '🙋 İsteğin kooperatife iletildi');
   }
   if (e.target.matches('.vadeli-form')) {
     e.preventDefault();

@@ -84,6 +84,8 @@ test('il sıralaması: kooperatifsiz oyuncu da iline puan yazar; ilk üç ilin y
   assert.equal(yaris.sonuclandir(h), true);
   assert.equal(Math.round(L.bakiye(yalniz.id) - once[0]), Y.ilOdulu[0]);
   assert.equal(Math.round(L.bakiye(a.id) - once[1]), 0, 'katkı eşiğin altında');
+  const koz = (await yalniz('/api/kozmetik')).veri;
+  assert.ok((Array.isArray(koz) ? koz : koz.katalog || koz.liste).find((k) => k.kod === 'UNVAN_SAMPIYON').sahip, 'il rozeti şampiyon unvanını açar');
   const s = db.prepare('SELECT sira, oyuncu, il_puani FROM koop_yaris_il_sonuc WHERE hafta = ? AND il_id = ?').get(h, ilId);
   assert.equal(s.sira, 1); assert.equal(s.oyuncu, 2);
   assert.equal(s.il_puani, Math.round(((100 + Y.minKatki - 1) / Math.sqrt(2)) * 10) / 10);

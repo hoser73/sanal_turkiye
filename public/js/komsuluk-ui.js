@@ -2,6 +2,30 @@
 // (balık tutma mini oyunu: balik-ui.js). Bölümler "Çiftliğim" sekmesinin alt başlıklarıdır; eylemler app.js'deki dağıtıcıdan geçer.
 import { esc, akce, sayi, sure, sayiBulunma } from './yardimci.js';
 
+// ---------- İmece: komşunla haftalık ortak hedef (imece.js)
+export function imeceKarti(m) {
+  const ust = (alt) => `<div class="yaris-ust"><span class="yaris-ikon imece-ikon">🤝</span><div><b>İmece</b><small>${alt}</small></div></div>`;
+  const a = m.aktif;
+  if (a) {
+    const son = a.kademeler.at(-1).esik;
+    return `<div class="yaris-kart imece-kart">${ust(`${esc(a.ortak.ad)}${a.ortak.demo ? ' (demo)' : ''} ile bu hafta · bitişe ${sure(m.kalanMs)}`)}
+      <div class="yaris-yol"><div class="yaris-cubuk"><b style="width:${Math.min(100, (a.toplam / son) * 100)}%"></b></div>
+        ${a.kademeler.map((k) => `<span class="yaris-sandik${k.gecildi ? ' acik' : ''}" style="left:${(k.esik / son) * 100}%" title="${k.esik} puan: ${akce(k.akce)}${k.esya ? ` + ${k.esya.adet} ${esc(k.esya.ad)}` : ''}">${k.alindi ? '✅' : k.gecildi ? '🎁' : '📦'}<small>${k.esik}</small></span>`).join('')}</div>
+      <p class="kucuk yaris-not">Ortak puan <b>${sayi(a.toplam)}</b> · sen ${sayi(a.katkim)}${a.katkim < m.minKatki ? ` (ödül için en az ${m.minKatki})` : ' ✓'} · ${esc(a.ortak.ad)} ${sayi(a.ortakKatki)}</p>
+      <p class="kucuk">Ödüller: ${a.kademeler.map((k) => `${akce(k.akce)}${k.esya ? ` + ${k.esya.ikon} ${k.esya.adet}` : ''}`).join(' · ')}. Hasat, sipariş, üretim, yardım ve bulmaca puan getirir.</p>
+      <button type="button" class="bag" data-eylem="imece-birak">Ortaklığı bırak</button></div>`;
+  }
+  const gelen = m.gelen.map((d) => `<li class="liste-oge"><span class="ikon">🤝</span><div class="govde"><b>${esc(d.ad)}</b><div class="kucuk">seni bu haftanın imecesine çağırıyor</div></div>
+    <button class="dugme altin ince" data-eylem="imece-kabul" data-id="${d.id}">Kabul</button><button class="bag" data-eylem="imece-reddet" data-id="${d.id}">reddet</button></li>`).join('');
+  return `<div class="yaris-kart imece-kart">${ust(`Komşunla haftalık ortak hedef · bitişe ${sure(m.kalanMs)}`)}
+    <p class="kucuk yaris-not">Bir komşunu çağır: ikinizin işleri ortak puana yazar; ${m.kademeler.join(' / ')} puanda ödül sandıkları açılır (en az ${m.minKatki} puan katana).</p>
+    ${gelen ? `<ul class="liste">${gelen}</ul>` : ''}
+    ${m.giden ? `<p class="kucuk">⏳ ${esc(m.giden.ad)} davetini bekliyor.</p>`
+      : !m.kalanOrtaklik ? '<p class="kucuk">Bu hafta imece hakkın doldu.</p>'
+      : m.adaylar.length ? `<div class="imece-adaylar">${m.adaylar.slice(0, 8).map((x) => `<button type="button" class="cip" data-eylem="imece-davet" data-id="${x.id}">＋ ${esc(x.ad)}${x.demo ? ' · demo' : ''}</button>`).join('')}</div>`
+      : '<p class="kucuk">Önce bir komşu edin.</p>'}</div>`;
+}
+
 // ---------- Komşular
 export function komsularBolumu(k) {
   const L = k.limitler;

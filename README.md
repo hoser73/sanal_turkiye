@@ -35,6 +35,16 @@ Ortam değişkenleri (v0.6 eklemeleri): `TABAN_URL` (e-posta bağlantıları; ü
 
 > Not: v0.1–0.2'nin Meram ızgarası ulusal ızgarayla uyumsuz olduğundan eski `data/sanalturkiye.db` dosyası kullanılmaz (silinmedi).
 
+## v0.42 — rakip oyun araştırmasından: yöre setleri, İmece, yardım istekleri, pazar gazetesi; fazlalık temizliği
+
+Tür oyunları (kasaba/çiftlik kurma, harita üzerinde arazi oyunları) ve kendi özellik dökümümüz karşılaştırıldı; aşağıdakiler uygulandı.
+
+- **Yöre setleri** (`koleksiyon.js`, Ben → Arazilerim): 11 tarım yöresi, her biri üç il (Kapadokya, Çay ve fındık kıyısı, Ege zeytinliği…). Setin her ilinde arazin varsa o illerdeki hasadın %10 artar; set ilk tamamlanınca 120 akçe ve rozet. 8 parsel sınırı yüzünden hangi seti kovalayacağın bir yatırım kararı.
+- **İmece** (`imece.js`, Çiftlik → Komşular): bir komşunla haftalık ortak hedef. İkinizin işleri ortak puana yazar; 150/400/800 puanda ödül (en az 30 puan katana). Pasif ortak bırakılabilir, haftada en çok 2 imece; demo komşuyla da yapılır (yalnız oynayan da imece yapsın).
+- **Kooperatif yardım istekleri** (`yardim.js`, Ben → Kooperatif): "10 buğday lazım" isteği; üyeler envanterinden gönderir, yardım eden TP, yol ve yarış puanı alır (akçe aktarılmaz). Tek istekte en çok 20, üye başına tek açık istek ve 4 saat bekleme, günde en çok 5 gönderim.
+- **Pazar gazetesi** (`gazete.js`, Pazar → 📰 Bugün, artık Pazar'ın ilk sayfası): Türkiye endeksi, en çok değer kazanan mahalleler, yöre setini tamamlayacak illerdeki ilanlar, kooperatifte bekleyen istekler, tüccarın iyi fiyat verdiği ürünler, yeni ilanlar ve son satışlar.
+- **Fazlalık temizliği:** mahalle köy yarışması kalktı (tek haftalık yarış hasat yarışı; Çiftlik sekmesinde kısa özeti); çarşı marketinin tüccarla aynı ürün alımı kalktı (Pazar → Tüccara sat'a yönlendirir); il ligi rozeti isteyen altın çatı ve "İl Şampiyonu" unvanı artık hasat yarışında ilk üç ilin rozetiyle açılır; tanıtım sayfası, e-posta ve bildirim metinlerindeki kredi/seçim/il ligi sözleri güncellendi; balık (3) ve çarşı (4) seviye kilitleri sunucuda da denetlenir.
+
 ## v0.41 — sadeleştirme: siyaset ayarla, kredi yok, tek haftalık yarış
 
 - **Siyaset ayarla açılır** (`OZELLIK.siyaset`, ortam değişkeni `SIYASET=acik`): muhtarlık ve belediye seçimleri, meclis projeleri, referandum ve görevden alma yeterince gerçek oyuncu olunca anlam kazanır. Kapalıyken (varsayılan) seçim/proje/referandum döngüleri ve demo sakinlerin siyaseti durur, uçlar 404 döner, Köy sekmesinde Yönetim yok, haritada seçim ve belediye işaretleri yok, haber akışında siyasi olay görünmez, "Mahalle seçiminde oy kullan" başlangıç görevi listelenmez. Daha önce tamamlanmış belediye hizmetleri (sulama kanalı, yol bakımı…) etkisini sürdürür. Testler siyaseti açık çalıştırır; kapalı hâli `test/siyaset.test.js` sınar.

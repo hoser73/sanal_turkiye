@@ -1,5 +1,5 @@
 // Çiftlik oyunu arayüzü: barınak kontrolleri (yemle / topla), süs dükkânı, Görevler sekmesinde seviye ve ödüller,
-// günlük giriş ödülü, sipariş panosu ve haftalık köy yarışması. Eylemler app.js'deki ortak data-eylem dağıtıcısından geçer.
+// günlük giriş ödülü, sipariş panosu ve hasat yarışı özeti. Eylemler app.js'deki ortak data-eylem dağıtıcısından geçer.
 import { esc, akce, sayi, sure, sayiBulunma } from './yardimci.js';
 
 // Barınak satırı (parsel kartındaki yapı listesinde)
@@ -55,11 +55,9 @@ export function ciftlikBolumu(c, { simdi }) {
           <button class="dugme ${o.hazir ? 'altin' : ''} ince" data-eylem="siparis-teslim" data-id="${o.id}" ${o.hazir ? '' : 'disabled'}>Teslim et</button></span></div>
       </div>`).join('')}</div>` : '<p class="kucuk">Şu an sipariş yok.</p>'}
     ${s.sonrakiMs != null ? `<p class="kucuk">Yeni müşteri: <span data-bitis="${simdi() + s.sonrakiMs}">${sure(s.sonrakiMs)}</span></p>` : ''}`;
-  const y = c.yarisma;
-  const yarisma = !y ? '<h3 class="bolum">🏆 Köy yarışması</h3><p class="kucuk">Bir parsel edinince mahallenin haftalık yarışmasına katılırsın.</p>'
-    : `<h3 class="bolum">🏆 Köy yarışması · ${esc(y.mahalle)}</h3>
-      <p class="kucuk">Bu hafta mahallede en çok TP kazanan üç komşu ${y.odul.map((o) => akce(o)).join(' / ')} kazanır (en az ${y.minTp} TP; en az ${y.minKatilimci} oyuncu yarışmalı). Bitiş: <span data-bitis="${simdi() + y.bitisMs}">${sure(y.bitisMs)}</span></p>
-      ${y.liste.length ? `<ol class="yarisma-liste">${y.liste.slice(0, 10).map((r) => `<li class="${r.ben ? 'ben' : ''}"><span>${['🥇', '🥈', '🥉'][r.sira - 1] || r.sira}</span><b>${esc(r.ad)}</b>${r.demo ? ' <span class="demo-rozet">demo</span>' : ''}<span class="kucuk">${sayi(r.tp)} TP</span></li>`).join('')}</ol>` : '<p class="kucuk">Bu hafta henüz puan yok.</p>'}
-      ${y.gecenHafta.length ? `<p class="kucuk">Geçen hafta: ${y.gecenHafta.map((r) => `${['🥇', '🥈', '🥉'][r.sira - 1]} ${esc(r.ad)}`).join(' · ')}</p>` : ''}`;
-  return seviye + gunluk + siparis + yarisma;
+  // Haftalık yarış Köy → Hasat yarışı'nda; burada kısa özeti
+  const y = c.yaris;
+  const yaris = y ? `<button type="button" class="yaris-ozet" data-eylem="yaris-ac"><span class="yaris-ikon">🏁</span>
+      <span><b>Hasat yarışı</b><small>${y.il ? `${esc(y.il)}${y.sira ? ` Türkiye ${y.sira}.` : ''} · katkın ${sayi(y.katkim)}${y.katkim < y.minKatki ? `/${y.minKatki}` : ' ✓'}` : 'Tarla edinince ilin adına yarışırsın'} · bitişe ${sure(y.kalanMs)}</small></span><i>›</i></button>` : '';
+  return seviye + gunluk + siparis + yaris;
 }

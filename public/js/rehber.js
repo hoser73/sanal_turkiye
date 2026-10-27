@@ -14,7 +14,7 @@ const ADIMLAR = [
     dugme: 'Göster', hedef: '[data-eylem="ek"]', is: 'tarlamaGit' },
   { kod: 'ILK_SULAMA', ikon: '💧', baslik: 'Tarlanı sula', metin: 'Ekinler suyu sever. <b>Sula</b> düğmesine bas; her sulama hasadı bereketlendirir.',
     dugme: 'Göster', hedef: '[data-eylem="sula"]', is: 'tarlamaGit' },
-  { kod: 'ILK_YAPI', ikon: '🔨', baslik: 'Çit ya da ağaç dik', metin: 'İnşaat atölyesinden bir çit, sulama hattı ya da ağaç dik. Sulama hattı ekinini kendiliğinden sular.',
+  { kod: 'ILK_YAPI', ikon: '🔨', baslik: 'Çit ya da sulama hattı kur', metin: 'İnşaat atölyesinden bir tel çit ya da sulama hattı kur. Sulama hattı ekinini kendiliğinden sular.',
     dugme: 'Göster', hedef: '[data-eylem="insaat"]:not([disabled])', is: 'tarlamaGit' },
   { kod: 'ILK_HASAT', ikon: '🧺', baslik: 'İlk hasadını yap', metin: 'Ekinin olgunlaşınca tarlanın üstünde 🧺 balonu belirir. O zaman <b>Hasat et</b>. Beklerken komşulara göz atabilirsin.',
     dugme: 'Tarlama git', hedef: '[data-eylem="hasat"]', is: 'tarlamaGit' },

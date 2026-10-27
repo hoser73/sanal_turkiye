@@ -156,9 +156,30 @@ export function netOnizleme(form, kurallar) {
   el.textContent = `Satılırsa eline geçecek: ${akce(Math.max(0, fiyat - ucret))} (işlem masrafı ${akce(ucret)})`;
 }
 
+// ---------- Pazar gazetesi: günün özeti (gazete.js) ----------
+function gazeteHTML(g) {
+  const tarih = new Date(g.tarih).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', weekday: 'long' });
+  const blok = (baslik, icerik) => (icerik ? `<section class="gz-blok"><h3>${baslik}</h3>${icerik}</section>` : '');
+  return `<div class="gazete">
+    <div class="gz-ust"><b>Çarşı Gazetesi</b><small>${esc(tarih)}</small></div>
+    <div class="gz-manset"><span>Türkiye arsa endeksi</span><b>${g.endeks.deger != null ? sayi(g.endeks.deger) : '—'}</b>${g.endeks.degisim7 != null ? degisimCipi(g.endeks.degisim7) : ''}<small>son 7 gün</small></div>
+    ${blok('📈 Değeri en çok artanlar', g.yukselenler.length ? `<ul class="gz-liste">${g.yukselenler.map((m) => `<li><span><b>${esc(m.ad)}</b><small>${esc(m.ilce)}, ${esc(m.il)}</small></span>${degisimCipi(m.degisim7)}</li>`).join('')}</ul>` : '')}
+    ${g.setler?.length ? blok('🗺️ Yöre seti fırsatı', `<ul class="gz-liste">${g.setler.map((s) => `<li><span><b>${s.ikon} ${esc(s.ad)}</b><small>Eksik: ${s.eksik.map(esc).join(', ')}</small></span>
+        ${s.ilanSayisi ? `<button type="button" class="dugme ince" data-eylem="pazar-alt" data-alt="ilanlar">${s.ilanSayisi} ilan · ${akce(s.enUcuz)}'den</button>` : '<small>ilan yok</small>'}</li>`).join('')}</ul>
+        <p class="kucuk">Seti tamamlayınca o illerdeki hasadın %${Math.round(g.hasatBonus * 100)} artar.</p>`) : ''}
+    ${g.yardim?.length ? blok('🙋 Kooperatifinde yardım bekleyenler', `<ul class="gz-liste">${g.yardim.map((i) => `<li><span><b>${esc(i.ad)}</b><small>${i.ikon} ${i.adet - i.gelen} ${esc(i.urunAd)} lazım</small></span>
+        <button type="button" class="dugme ince" data-eylem="koop-ac">Gönder</button></li>`).join('')}</ul>`) : ''}
+    ${blok('🧺 Tüccar bugün iyi fiyat veriyor', g.tuccar.length ? `<ul class="gz-liste">${g.tuccar.map((u) => `<li><span><b>${u.ikon} ${esc(u.ad)}</b></span><b>${akce(u.fiyat)}</b></li>`).join('')}</ul>
+        <button type="button" class="dugme ince genis" data-eylem="pazar-alt" data-alt="urun">Tüccara sat</button>` : '')}
+    ${blok('🏷️ Yeni ilanlar', g.ilanlar.length ? `<ul class="gz-liste">${g.ilanlar.map((i) => `<li><button type="button" class="gz-ilan" data-eylem="git" data-id="${esc(i.parsel)}"><span><b>${esc(i.mahalle)}</b><small>${esc(i.il)} · ${sayi(i.alan)} m²</small></span><b>${akce(i.fiyat)}</b></button></li>`).join('')}</ul>` : '<p class="kucuk">Şu an satılık parsel yok.</p>')}
+    ${blok('🤝 Son satışlar', g.satislar.length ? `<ul class="gz-liste">${g.satislar.map((x) => `<li><span><b>${esc(x.mahalle)}</b><small>${esc(x.il)} · alan ${esc(x.alici)}</small></span><b>${akce(x.fiyat)}</b></li>`).join('')}</ul>` : '')}
+    <p class="kucuk gz-not">Oyun içi göstergelerdir; akçe nakde çevrilmez.</p>
+  </div>`;
+}
+
 // ---------- Pazar sekmesi ----------
 export async function pazarPaneli({ ben, alt, filtre, bolgeler, kurallar, envanterHTML, sunucuSimdi }) {
-  const sekmeler = [['endeks', '📈 Endeksler'], ['ilanlar', 'Parsel ilanları'], ['benim', 'Benim pazarım'], ['borsa', 'Ürün borsası'], ['sevkiyat', 'Sevkiyat'], ['kiralik', 'Kiralık tarla'], ['islemler', 'Son işlemler'], ['urun', 'Tüccara sat']];
+  const sekmeler = [['gazete', '📰 Bugün'], ['endeks', '📈 Endeksler'], ['ilanlar', 'Parsel ilanları'], ['benim', 'Benim pazarım'], ['borsa', 'Ürün borsası'], ['sevkiyat', 'Sevkiyat'], ['kiralik', 'Kiralık tarla'], ['islemler', 'Son işlemler'], ['urun', 'Tüccara sat']];
   const gelen = ben?.pazar?.gelenTeklif || 0;
   const ust = `<h2 class="kart-baslik">Türkiye Pazarı</h2>
     <div class="segment" role="tablist">${sekmeler.map(([k, ad]) => `<button type="button" data-eylem="pazar-alt" data-alt="${k}" aria-selected="${alt === k}">
@@ -171,6 +192,7 @@ export async function pazarPaneli({ ben, alt, filtre, bolgeler, kurallar, envant
   else if (alt === 'sevkiyat') govde = await sevkiyatPaneli(ben, bolgeler, kurallar, sunucuSimdi);
   else if (alt === 'kiralik') govde = await kiralikPaneli(ben);
   else if (alt === 'endeks') govde = await endeksPaneli(ben);
+  else if (alt === 'gazete') govde = gazeteHTML(await api('/api/gazete'));
   else govde = await ilanListesi(filtre, bolgeler, kurallar, sunucuSimdi);
   return ust + govde;
 }

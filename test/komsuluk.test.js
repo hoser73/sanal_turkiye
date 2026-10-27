@@ -205,7 +205,6 @@ test('güvenlik: arkadaş olmayana yardım edilemez; silinen istek hemen yeniden
 test('güvenlik: tarla önerisi giriş ister ve Türkiye dışını reddeder; yarışma ve mahalle uçları', async () => {
   assert.equal((await fetch(`${taban}/api/oneri/tarla?lon=32.5&lat=37.9`)).status, 401);
   assert.deepEqual((await A.c('/api/oneri/tarla?lon=10&lat=50')).veri, { parsel: null });
-  assert.equal((await fetch(`${taban}/api/yarisma/999999`)).status, 404);
   // Ziyaretçinin mahalle tıklaması veritabanına bölge yazmaz
   const ilce = db.prepare(`SELECT p.ilce_id, r.source_idx FROM parcels p JOIN regions r ON r.id = p.ilce_id WHERE p.id = ?`).get(parselB);
   const yer = db.prepare(`SELECT id FROM yerler WHERE ilce_idx = ? AND id NOT IN (SELECT substr(code, length((SELECT code FROM regions WHERE id = ?)) + 2) FROM regions WHERE parent_id = ?) LIMIT 1`).get(ilce.source_idx, ilce.ilce_id, ilce.ilce_id);
@@ -222,6 +221,7 @@ test('güvenlik: suya düşmeyen olta da günlük hakkı tüketir', async () => 
   const eski = balik.ayar.suBul;
   balik.ayar.suBul = async () => null;
   const E = await kayit('ece');
+  db.prepare('UPDATE users SET tp = 240 WHERE id = ?').run(E.id);   // balık 3. seviyede açılır
   const g = new Date(Date.now() + 3 * 3600e3).toISOString().slice(0, 10);
   for (let i = 0; i < BALIK.gunlukAtis; i++) assert.equal((await E.c('/api/balik/at', { lon: 32, lat: 37 })).durum, 422);
   assert.equal(db.prepare(`SELECT COUNT(*) c FROM balik_atislari WHERE user_id = ? AND gun = ?`).get(E.id, g).c, BALIK.gunlukAtis);

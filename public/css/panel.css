@@ -169,10 +169,6 @@
 /* Mahalle seçici ve köy yarışması */
 .panel .mahalle-secici button { border: 1.5px solid var(--pc2); background: #fff; color: var(--ps); border-radius: 999px; padding: 6px 13px; font-weight: 700; }
 .panel .mahalle-secici button[aria-pressed="true"] { background: var(--pv); border-color: var(--pv); color: #fff; box-shadow: 0 2px 0 var(--pv-k); }
-.panel .yarisma-liste { gap: 6px; }
-.panel .yarisma-liste li { grid-template-columns: 30px 1fr auto auto; padding: 9px 12px; border: 1px solid var(--pc); border-radius: 12px; background: #fff; }
-.panel .yarisma-liste li.ben { border-color: #c4e6b6; background: var(--pv-a); }
-.panel .yarisma-liste li > span:first-child { font-size: 18px; text-align: center; }
 
 /* Çiftlik sekmesi ve diğer modüllerin parşömen kalıntıları: aynı beyaz kart diline */
 .panel .tablo td { border-bottom: 0; }

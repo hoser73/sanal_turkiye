@@ -1,10 +1,10 @@
 // Çiftlik oyunu katmanı: hayvancılık (yemle, topla), oyuncu seviyesi ve tecrübe puanı (TP), seviye ödülleri, günlük giriş ödülü,
-// sipariş panosu (köylülerin istekleri), haftalık köy yarışması ve çiftlik süsleri. Kurallar config/rules.js'de.
-// Bakiye yalnızca oyuncunun bir düğmeye basmasıyla değişir (ödül al, teslim et); yarışma ödülü hafta bitince bir kez dağıtılır.
+// sipariş panosu (köylülerin istekleri) ve çiftlik süsleri. Kurallar config/rules.js'de. Bakiye yalnızca oyuncunun bir
+// düğmeye basmasıyla değişir (ödül al, teslim et). (Mahalle köy yarışması v0.42'de kalktı: haftalık yarış hasat-yarisi.js.)
 const db = require('./db');
 const L = require('./lib/ledger');
 const { yol } = require('./lib/olaylar');
-const { URUNLER, YAPILAR, RECETELER, HAYVANLAR, YEM_FIYATI, SEVIYE, GUNLUK_ODUL, SIPARIS, YARISMA, SUSLER, SUS_MAKS, BAKIM, LIG } = require('./config/rules');
+const { URUNLER, YAPILAR, RECETELER, HAYVANLAR, YEM_FIYATI, SEVIYE, GUNLUK_ODUL, SIPARIS, SUSLER, SUS_MAKS, BAKIM } = require('./config/rules');
 const { OyunHatasi } = L;
 
 const simdi = () => Date.now();
@@ -41,15 +41,6 @@ CREATE TABLE IF NOT EXISTS siparisler (
   bitis      INTEGER
 );
 CREATE INDEX IF NOT EXISTS ix_siparis_user ON siparisler(user_id, durum);
-CREATE TABLE IF NOT EXISTS yarisma_odulleri (
-  hafta     INTEGER NOT NULL,
-  region_id INTEGER NOT NULL REFERENCES regions(id),
-  sira      INTEGER NOT NULL,
-  user_id   INTEGER NOT NULL REFERENCES users(id),
-  tp        INTEGER NOT NULL,
-  odul      REAL NOT NULL,
-  PRIMARY KEY (hafta, region_id, sira)
-);
 CREATE TABLE IF NOT EXISTS parsel_susleri (
   id        INTEGER PRIMARY KEY,
   parcel_id TEXT NOT NULL REFERENCES parcels(id),
@@ -299,44 +290,6 @@ const siparisReddet = db.transaction((userId, siparisId) => {
   return { tamam: true };
 });
 
-// ---------- Haftalık köy yarışması (mahalle)
-const HAFTA = 7 * 86400_000;
-const haftaNo = (t) => Math.floor((t - LIG.baslangic) / HAFTA);
-const haftaAraligi = (h) => [LIG.baslangic + h * HAFTA, LIG.baslangic + (h + 1) * HAFTA];
-// Sıralamaya yalnızca mahallede parseli olan oyuncular girer; başka mahallelerde komşu yardımıyla kazanılan TP sayılmaz
-const YARISMA_DISI = ['NEIGHBOR_HELPED', 'GIFT_SENT', 'DAILY_REWARD_CLAIMED', 'EVENT_REWARD_CLAIMED'];
-function siralama(regionId, h) {
-  const [a, b] = haftaAraligi(h);
-  return db.prepare(`SELECT k.user_id, u.display_name AS ad, u.is_npc AS npc, SUM(k.tp) AS tp FROM tp_kayitlari k JOIN users u ON u.id = k.user_id
-                     WHERE k.region_id = ? AND k.at >= ? AND k.at < ? AND k.eylem NOT IN (${YARISMA_DISI.map(() => '?').join(',')})
-                       AND EXISTS (SELECT 1 FROM parcels p WHERE p.owner_user_id = k.user_id AND p.region_id = k.region_id)
-                     GROUP BY k.user_id ORDER BY tp DESC, MIN(k.at) LIMIT 20`).all(regionId, a, b, ...YARISMA_DISI);
-}
-// Geçen haftanın ödülleri bir kez dağıtılır (birincil anahtar ikinci dağıtımı engeller). Demo sakinler ödül almaz; en az
-// YARISMA.minKatilimci gerçek oyuncu yarışmamışsa ödül verilmez (tek kişilik mahallede kendi kendine kazanılmasın).
-const odulDagit = db.transaction((regionId, h) => {
-  if (h < 0 || db.prepare(`SELECT 1 FROM yarisma_odulleri WHERE hafta = ? AND region_id = ?`).get(h, regionId)) return;
-  const gercek = siralama(regionId, h).filter((r) => !r.npc);
-  const katilimci = gercek.filter((r) => r.tp >= YARISMA.minTp);
-  const kazananlar = katilimci.length >= YARISMA.minKatilimci ? katilimci.slice(0, YARISMA.odul.length) : [];
-  kazananlar.forEach((r, i) => {
-    db.prepare(`INSERT INTO yarisma_odulleri (hafta, region_id, sira, user_id, tp, odul) VALUES (?, ?, ?, ?, ?, ?)`).run(h, regionId, i + 1, r.user_id, r.tp, YARISMA.odul[i]);
-    L.odul(r.user_id, YARISMA.odul[i], `Köy yarışması ${i + 1}.lik ödülü`);
-    require('./pazar').bildir(r.user_id, `🏆 Köy yarışmasında ${i + 1}. oldun: ${YARISMA.odul[i]} akçe`, 'gorevler');
-  });
-  if (!kazananlar.length) db.prepare(`INSERT INTO yarisma_odulleri (hafta, region_id, sira, user_id, tp, odul) VALUES (?, ?, 0, (SELECT MIN(id) FROM users), 0, 0)`).run(h, regionId);
-});
-function yarisma(regionId, userId = null) {
-  if (!regionId) return null;
-  if (!db.prepare(`SELECT 1 FROM regions WHERE id = ? AND type = 'MAHALLE'`).get(Number(regionId))) throw new OyunHatasi(404, 'Mahalle bulunamadı');
-  const t = simdi(), h = haftaNo(t);
-  odulDagit(regionId, h - 1);
-  const liste = siralama(regionId, h).map((r, i) => ({ sira: i + 1, ad: r.ad, demo: !!r.npc, tp: r.tp, ben: r.user_id === userId }));
-  const gecen = db.prepare(`SELECT y.sira, y.odul, y.tp, u.display_name AS ad FROM yarisma_odulleri y JOIN users u ON u.id = y.user_id
-                            WHERE y.hafta = ? AND y.region_id = ? AND y.sira > 0 ORDER BY y.sira`).all(h - 1, regionId);
-  const bolge = db.prepare(`SELECT name FROM regions WHERE id = ?`).get(regionId);
-  return { mahalle: bolge?.name, mahalleId: regionId, liste, gecenHafta: gecen, odul: YARISMA.odul, bitisMs: haftaAraligi(h)[1] - t, minTp: YARISMA.minTp, minKatilimci: YARISMA.minKatilimci };
-}
 
 // ---------- Çiftlik süsleri
 function parselSusleri(parcelId) {
@@ -379,7 +332,7 @@ const susSecenekleri = (userId) => {
 
 // Görevler sekmesi için tek özet
 function ozet(userId) {
-  return { seviye: seviyeBilgisi(userId), gunluk: gunlukDurum(userId), siparisler: siparisler(userId), yarisma: yarisma(anaBolge(userId), userId) };
+  return { seviye: seviyeBilgisi(userId), gunluk: gunlukDurum(userId), siparisler: siparisler(userId), yaris: require('./hasat-yarisi').ozet(userId) };
 }
 
 module.exports = {
@@ -387,7 +340,14 @@ module.exports = {
   gunlukDurum, gunlukAl,
   hayvanDurumu, besle, topla, parselHayvanHazir,
   siparisler, siparisTeslim, siparisReddet,
-  yarisma, haftaNo,
   parselSusleri, susKodu, susEkle, susKaldir, susSecenekleri,
   ozet,
+};
+
+// Seviye kilidi: oyuncunun seviyesi bölümün açılış seviyesinin altındaysa 403 (SEVIYE_KILIDI, config/rules.js)
+module.exports.seviyeKilidi = (userId, bolum) => {
+  const k = require('./config/rules').SEVIYE_KILIDI[bolum];
+  if (k && module.exports.oyuncuSeviyesi(userId) < k.seviye) {
+    throw new OyunHatasi(403, `${k.ad} ${k.seviye}. seviyede açılır`, 'SEVIYE');
+  }
 };

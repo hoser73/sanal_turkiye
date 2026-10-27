@@ -461,6 +461,7 @@ const hasat = db.transaction((userId, id) => {
   if (belediye.mahalleHizmetleri(p.region_id).has('SULAMA_KANALI')) bonus += BELEDIYE.etki.hasatBonus;
   bonus += require('./uretim').meslekBonusu(userId, 'CIFTCI');
   bonus += require('./kooperatif').hasatPrimi(userId);
+  bonus += require('./koleksiyon').hasatBonusu(p.owner_user_id, p.il_id);   // yöre seti tamamsa
   const miktar = durum.tazelik === 'CURUDU' ? 0
     : Math.max(1, Math.round(u.verim * verimKati(p) * (0.4 + 0.6 * sulamaOrani) * (1 + bonus) * durum.verimOrani * (e.don ? HAVA.donVerimKati : 1) * (e.afet_kati ?? 1) * (e.gubre ? 1 + CARSI.etki.gubreBonus : 1)));
   // Çift hasat engeli: yalnızca GROWING durumdaki kayıt güncellenir
