@@ -9,11 +9,12 @@ import { S } from './model3d.js';
 import { tarlaCercevesi } from './tarla-geo.js';
 import { RENK, RUZGAR, malz, levha, yuvarlakAgac, cam, cali, tas, ciftci, papatyalar, otTutamlari, ornekli, kureGeo } from './sevimli3d.js';
 import { sevimliParselModeli, sevimliKomsu } from './sevimli-parsel.js';
-import { tavsan, kirpi, ordek } from './sevimli3d-yapi.js';
+import { tavsan, kirpi, ordek, cesme, dukkan, ev, apartman, pansiyon, bayrakDiregi } from './sevimli3d-yapi.js';
 import { sevimliSonIslem, gokFonu, MOBIL } from './sevimli-efekt.js';
 import { canliKur } from './sevimli-canli.js';
 import { ses, ortamSesi } from './ses.js';
 import { paylas } from './foto.js';
+import { bulmacaAc } from './bulmaca.js';
 import { gunesKonumu, isikRengi } from './gunes.js';
 
 function tohumlu(s) {
@@ -46,6 +47,8 @@ export function ciftlikIciKur({ durum, eylemDagit, sunucuSimdi, ayrintiAc, dunya
   const komsuKartlari = new Map();   // çiftliğe katılmış komşu parsellerin kartları (sahneye çizmek için)
   let renderer = null, sahne, ust, kamera, efekt = null, canli = null, grup = null, model = null, parselG = null, kare = 0, onceki = 0, acik = false;
   let aci = -0.6, egim = 0.95, uzaklik = 70, hedefUzaklik = 70, odak = new THREE.Vector3(), kadraj = 30, sayfaHedef = null;
+  const hedefOdak = new THREE.Vector3();   // kamera odağı yumuşakça buraya kayar (meydan görünümü)
+  let meydanKonum = null, meydanOncekiUzaklik = null;
 
   function kur() {
     renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -80,20 +83,93 @@ export function ciftlikIciKur({ durum, eylemDagit, sunucuSimdi, ayrintiAc, dunya
   }
 
   // ---------- Gün ve mevsim: parselin gerçek konumuna göre güneş; gece ay ışığı ve yanan pencereler, kışın kar
+  // Gün evreleri (güneşin gerçek yüksekliği): gündüz, altın saat (gün doğumu/batımı), alacakaranlık, gece.
+  // ?saat=21 ile denemede saat zorlanabilir.
+  const EVRE = {
+    gunduz: { gok: ['#9fd3f5', '#d5ecf7', '#f6f0dc'], sis: '#dcebef', hemi: ['#e8f1ff', '#b9d98a', 1.55], isik: ['#fff3df', 1.9], yildiz: 0 },
+    altin:  { gok: ['#7fb2e6', '#f6c79a', '#ffd9a8'], sis: '#f3d2b4', hemi: ['#ffe6c8', '#b9c98a', 1.25], isik: ['#ffb877', 1.35], yildiz: 0 },
+    alaca:  { gok: ['#3a4a86', '#a678b0', '#f2a58a'], sis: '#8e7fa6', hemi: ['#b9a6d8', '#5e6a4a', 0.85], isik: ['#c79be0', 0.55], yildiz: 0.45 },
+    gece:   { gok: ['#0f1a3a', '#223467', '#3f5288'], sis: '#2c3b66', hemi: ['#7d90c8', '#26331f', 0.6], isik: ['#a9bfff', 0.42], yildiz: 1 },
+  };
+  const gunZamani = () => {
+    const z = Number(new URLSearchParams(location.search).get('saat'));
+    if (!Number.isFinite(z) || new URLSearchParams(location.search).get('saat') == null) return Date.now();
+    const d = new Date(); d.setHours(Math.floor(z), Math.round((z % 1) * 60), 0, 0); return d.getTime();
+  };
+  let evre = 'gunduz';
   function zamanAyarla() {
-    const k = durum.kart, g = gunesKonumu(k.konum.lon, k.konum.lat), i = isikRengi(g.yukseklik);
-    gece = g.yukseklik < -2 ? 1 : 0;
-    const az = (g.azimut * Math.PI) / 180, yk = (Math.max(10, g.yukseklik) * Math.PI) / 180;
-    gunes.position.set(Math.sin(az) * Math.cos(yk) * 100, Math.sin(yk) * 100, -Math.cos(az) * Math.cos(yk) * 100);
-    gunes.color.set(i.siddet > 0.6 ? '#fff3df' : i.renk);
-    gunes.intensity = 0.45 + 1.45 * i.siddet;
-    gok.color.set(i.siddet < 0.35 ? '#9fb3d9' : '#e8f1ff');
-    gok.intensity = 0.9 + 0.65 * i.siddet;
-    sahne.background = gokFonu(i.siddet < 0.25 ? 1 : 0);
+    const k = durum.kart, g = gunesKonumu(k.konum.lon, k.konum.lat, gunZamani());
+    evre = g.yukseklik > 12 ? 'gunduz' : g.yukseklik > 0 ? 'altin' : g.yukseklik > -7 ? 'alaca' : 'gece';
+    const e = EVRE[evre];
+    gece = evre === 'gece' || evre === 'alaca' ? 1 : 0;   // pencereler alacakaranlıkta yanar
+    const az = (g.azimut * Math.PI) / 180;
+    if (evre === 'gece') {
+      // Ay ışığı: güneşin karşı yönünden, yüksekten; soğuk mavi
+      const yk = (45 * Math.PI) / 180;
+      gunes.position.set(-Math.sin(az) * Math.cos(yk) * 100, Math.sin(yk) * 100, Math.cos(az) * Math.cos(yk) * 100);
+    } else {
+      const yk = (Math.max(evre === 'gunduz' ? 10 : 6, g.yukseklik) * Math.PI) / 180;
+      gunes.position.set(Math.sin(az) * Math.cos(yk) * 100, Math.sin(yk) * 100, -Math.cos(az) * Math.cos(yk) * 100);
+    }
+    gunes.color.set(e.isik[0]); gunes.intensity = e.isik[1];
+    gok.color.set(e.hemi[0]); gok.groundColor.set(e.hemi[1]); gok.intensity = e.hemi[2];
+    sahne.background?.dispose?.();   // dakikada bir yenilenir: eski gökyüzü dokusu bellekte kalmasın
+    sahne.background = gokFonu(e.gok);
     // Uzaklık sisi: tepeler ve ağaç kuşağı ufukta gökyüzüne karışır (derinlik hissi)
-    sahne.fog = new THREE.Fog(i.siddet < 0.25 ? '#5d6f9c' : '#dcebef', 190, 640);
+    sahne.fog = new THREE.Fog(e.sis, 190, 640);
+    gokcismiAyarla(e.yildiz, az);
     const ay = new Date().getMonth();
     kis = ay === 11 || ay <= 1;
+  }
+  // Yıldızlar ve ay: sis dışı, gökyüzü kubbesinde; yalnızca akşam ve gece görünür
+  let yildizlar = null, ayGorsel = null;
+  function gokcismiAyarla(yogunluk, gunesAz) {
+    if (!yildizlar) {
+      const n = MOBIL ? 260 : 520, p = new Float32Array(n * 3), r = tohumlu('yildiz');
+      for (let i = 0; i < n; i++) {
+        const a = r() * Math.PI * 2, y = 0.12 + r() * 0.88, d = Math.sqrt(1 - y * y);
+        p.set([Math.cos(a) * d * 560, y * 560, Math.sin(a) * d * 560], i * 3);
+      }
+      const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(p, 3));
+      yildizlar = new THREE.Points(geo, new THREE.PointsMaterial({ color: '#fffbe8', size: 2.2, sizeAttenuation: false, transparent: true, fog: false, depthWrite: false }));
+      const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d');
+      const hale = x.createRadialGradient(64, 64, 10, 64, 64, 64);
+      hale.addColorStop(0, 'rgba(255,248,220,1)'); hale.addColorStop(0.32, 'rgba(255,244,210,.95)'); hale.addColorStop(0.36, 'rgba(210,225,255,.35)'); hale.addColorStop(1, 'rgba(180,200,255,0)');
+      x.fillStyle = hale; x.fillRect(0, 0, 128, 128);
+      const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+      ayGorsel = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, fog: false, depthWrite: false, transparent: true }));
+      ayGorsel.scale.setScalar(70);
+      sahne.add(yildizlar, ayGorsel);
+    }
+    yildizlar.visible = yogunluk > 0; yildizlar.material.opacity = yogunluk;
+    ayGorsel.visible = yogunluk >= 1;
+    const yk = (38 * Math.PI) / 180;
+    ayGorsel.position.set(-Math.sin(gunesAz) * Math.cos(yk) * 520, Math.sin(yk) * 520, Math.cos(gunesAz) * Math.cos(yk) * 520);
+  }
+  // Köy fenerleri: patika kavşaklarında; akşam ve gece yanar (ışık kaynağı yok, parlayan cam + hale: telefonda ucuz)
+  function fenerler(r, yaricap) {
+    const g = new THREE.Group();
+    const direk = new THREE.MeshLambertMaterial({ color: '#3d342c' });
+    const cam = new THREE.MeshLambertMaterial({ color: gece ? '#ffe08a' : '#f4ecd8', emissive: gece ? '#ffc04d' : '#000000', emissiveIntensity: gece ? 1.6 : 0 });
+    let hale = null;
+    if (gece) {
+      const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d');
+      const gr = x.createRadialGradient(32, 32, 2, 32, 32, 32); gr.addColorStop(0, 'rgba(255,196,96,.75)'); gr.addColorStop(0.45, 'rgba(255,170,70,.28)'); gr.addColorStop(1, 'rgba(255,150,50,0)');
+      x.fillStyle = gr; x.fillRect(0, 0, 64, 64);
+      hale = new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+    }
+    for (const [sx, sz] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) {
+      const f = new THREE.Group();
+      const d = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, 4.2, 8), direk); d.position.y = 2.1;
+      const k = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.7, 0.62), cam); k.position.y = 4.55;
+      const s = new THREE.Mesh(new THREE.ConeGeometry(0.5, 0.4, 4).rotateY(Math.PI / 4), direk); s.position.y = 5.1;
+      f.add(d, k, s);
+      if (hale) { const h = new THREE.Sprite(hale); h.scale.setScalar(3.4); h.position.y = 4.55; f.add(h); }
+      f.position.set(sx * yaricap, 0, sz * yaricap + (r() - 0.5));
+      f.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+      g.add(f);
+    }
+    return g;
   }
   function karKur() {
     if (kar) { sahne.remove(kar); kar.geometry.dispose(); kar = null; }
@@ -331,6 +407,8 @@ export function ciftlikIciKur({ durum, eylemDagit, sunucuSimdi, ayrintiAc, dunya
     const k = durum.kart, r = tohumlu(k.id);
     zamanAyarla();
     const zemin = cayir(r); zemin.position.y = -0.05; grup.add(zemin);
+    grup.add(fenerler(r, k.tarla ? 44 : S / 2 + 1.6));
+    if (!ziyaret) { const m = meydanKur(r); if (m) grup.add(m); }   // çiftliğin dört köşesinde (gerçek tarlada tarlanın çevresinde)
     let tarla = null, olcek = 1;
     if (k.tarla && k.geometri?.type === 'Polygon') {
       const halka = k.geometri.coordinates[0].slice(0, -1);
@@ -381,7 +459,9 @@ export function ciftlikIciKur({ durum, eylemDagit, sunucuSimdi, ayrintiAc, dunya
     for (let i = 0; i < (MOBIL ? 28 : 40); i++) {
       const a = (i / 40) * Math.PI * 2 + r() * 0.1, d = 88 + r() * 25;
       const t = r() < 0.4 ? cam(r, 4) : r() < 0.85 ? yuvarlakAgac(r, 3.4) : cali(r);
-      t.position.set(Math.cos(a) * d, tepe(Math.cos(a) * d, Math.sin(a) * d), Math.sin(a) * d); grup.add(t);
+      const x = Math.cos(a) * d, z = Math.sin(a) * d;
+      if (meydanKonum && Math.abs(x - meydanKonum.x) < meydanKonum.yari + 8 && Math.abs(z - meydanKonum.z) < 18) continue;   // meydanın önü açık kalsın
+      t.position.set(x, tepe(x, z), z); grup.add(t);
     }
     // Tepelerdeki seyrek korular (sisle ufka karışır)
     for (let i = 0; i < 70 * YOGUN; i++) {
@@ -459,6 +539,8 @@ export function ciftlikIciKur({ durum, eylemDagit, sunucuSimdi, ayrintiAc, dunya
     if (k.insaatSecenekleri?.length) dugmeler.push(`<button type="button" class="ci-d" data-ci="insaat">🔨<span>İnşa et</span></button>`);
     if (k.susSecenekleri) dugmeler.push(`<button type="button" class="ci-d" data-ci="sus">🌷<span>Süsle</span></button>`);
     dugmeler.push(`<button type="button" class="ci-d" data-ci="gunluk">🎯<span>Günlük</span></button>`);
+    dugmeler.push(`<button type="button" class="ci-d" data-ci="meydan">🏛️<span>Meydan</span></button>`);
+    dugmeler.push(`<button type="button" class="ci-d" data-ci="bulmaca">🧩<span>Bulmaca</span></button>`);
     dugmeler.push(`<button type="button" class="ci-d${isci?.aktif ? ' yesil' : ''}" data-ci="isci">👷<span>İşçi</span></button>`);
     dugmeler.push(`<button type="button" class="ci-d" data-ci="ayrinti">📋<span>Kart</span></button>`);
     alt.innerHTML = dugmeler.join('');
@@ -466,7 +548,11 @@ export function ciftlikIciKur({ durum, eylemDagit, sunucuSimdi, ayrintiAc, dunya
 
   // ---------- Dokunma sayfaları
   function sayfaAc(html, hedef = null) { sayfaHedef = hedef; sayfa.innerHTML = `<div class="ci-sayfa-tutamac"></div>${html}`; sayfa.hidden = false; ipucu.hidden = true; }
-  function sayfaKapat() { sayfa.hidden = true; sayfaHedef = null; }
+  function sayfaKapat() {
+    sayfa.hidden = true; sayfaHedef = null;
+    // Meydan görünümünden çiftliğe dön
+    if (meydanOncekiUzaklik != null) { hedefOdak.set(0, 0, 0); hedefUzaklik = meydanOncekiUzaklik; meydanOncekiUzaklik = null; etkilesim(); }
+  }
   const ust2 = (ikon, ad, alt2) => `<div class="ci-sayfa-ust"><span class="ci-sayfa-ikon">${ikon}</span><div><b>${ad}</b><small>${alt2}</small></div><button type="button" class="ci-sayfa-kapat" data-ci="sayfa-kapat" aria-label="Kapat">✕</button></div>`;
   function ekinSayfasi() {
     const e = ekinDurumu();
@@ -580,6 +666,63 @@ export function ciftlikIciKur({ durum, eylemDagit, sunucuSimdi, ayrintiAc, dunya
         <div class="ci-cubuk ince"><b style="width:${Math.round((g.yapilan / g.hedef) * 100)}%"></b></div></div><span class="ci-sayi">${g.yapilan}/${g.hedef}</span></div>`).join('')}</div>
       <div class="ci-dugmeler" style="margin-top:10px"><button type="button" class="ci-b altin" data-eylem="gorev-odul" ${d.hepsi && !d.alindi ? '' : 'disabled'}>${d.alindi ? '✓ Bugünkü ödül alındı' : d.hepsi ? `🎁 Ödülü al (${akce(d.odul)})` : '🎁 Hepsini bitir, ödülü al'}</button></div>`);
   }
+  // Köy meydanı: topluluk binaları (kalıcı bonus); kurulanlar çiftliğin güneyindeki meydanda 3B görünür
+  let meydanVeri = null;
+  async function meydanSayfasi() {
+    if (!meydanVeri) sayfaAc(`${ust2('🏛️', 'Köy meydanı', 'yükleniyor…')}`);
+    // Kamera meydana kayar (sayfa ekranın altını kapladığı için meydan üst yarıda görünsün diye odak biraz öne alınır)
+    if (meydanKonum && meydanOncekiUzaklik == null) {
+      meydanOncekiUzaklik = hedefUzaklik;
+      const uz = Math.max(85, meydanKonum.yari * 3.2);
+      hedefOdak.set(meydanKonum.x + Math.sin(aci) * uz * 0.42, 0, meydanKonum.z + Math.cos(aci) * uz * 0.42);
+      hedefUzaklik = uz; etkilesim();
+    }
+    const d = await api('/api/meydan').catch(() => null);
+    if (!d) return sayfaKapat();
+    const once = meydanVeri?.kurulu; meydanVeri = d;
+    if (once != null && once !== d.kurulu) sahneKurgula();
+    const kart = (b) => {
+      const durumYazi = { HAZIR: '<span class="ci-meydan-durum hazir">✓ Kurulu</span>', INSAATTA: `<span class="ci-meydan-durum">🏗️ ${sure(b.kalanMs)}</span>`,
+        KILITLI: `<span class="ci-meydan-durum kilit">🔒 Seviye ${b.seviye}</span>`, YOK: '' }[b.durum];
+      return `<div class="ci-meydan-kart ${b.durum.toLowerCase()}">
+        <span class="ci-meydan-ikon">${b.ikon}</span>
+        <div class="ci-meydan-govde"><b>${esc(b.ad)}</b><small>${esc(b.etki)}</small>
+          ${b.durum === 'YOK' ? `<div class="ci-meydan-malzeme"><span class="${(durum.ben?.bakiye ?? 0) >= b.akce ? '' : 'eksik'}">${akce(b.akce)}</span>${b.malzeme.map((m) => `<span class="${m.eldeki >= m.adet ? '' : 'eksik'}">${m.ikon} ${m.eldeki}/${m.adet}</span>`).join('')}</div>` : ''}</div>
+        ${b.durum === 'YOK' ? `<button type="button" class="ci-b altin ci-meydan-b" data-ci="meydan-insa" data-kod="${b.kod}" ${b.eksik.length ? 'disabled' : ''}>Kur</button>` : durumYazi}
+      </div>`;
+    };
+    sayfaAc(`${ust2('🏛️', 'Köy meydanı', `${d.kurulu}/${d.toplam} bina · köy nüfusu ${sayi(d.nufus)}`)}
+      <p class="ci-not">Topluluk binaları köyünü büyütür ve kalıcı bonus verir. Malzemeleri tarlandan ve üretimden topla.</p>
+      <div class="ci-meydan-liste">${d.binalar.map(kart).join('')}</div>`);
+  }
+  // Meydandaki binaların 3B modelleri (çiftliğin güneyinde, çayırda bir sıra)
+  const MEYDAN_MODEL = {
+    CESME: () => { const m = cesme(); m.scale.setScalar(1.6); return m; },
+    KAHVEHANE: () => dukkan({ tente: '#b8432f', gece }),
+    PAZAR_YERI: () => dukkan({ tente: '#2e86de', restoran: true, gece }),
+    OKUL: () => { const g = new THREE.Group(); const a = apartman({ catiRenk: '#d9574a', gece }); a.scale.set(1.3, 0.75, 1); const b = bayrakDiregi(); b.position.set(4.2, 0, 2.6); g.add(a, b); return g; },
+    SAGLIK_OCAGI: () => ev({ catiRenk: '#c9d1d9', duvar: '#ffffff', gece }),
+    KUTUPHANE: () => pansiyon({ catiRenk: '#8e5a3a', gece }),
+    PTT: () => dukkan({ tente: '#f2c230', gece }),
+  };
+  function meydanKur(r) {
+    const kurulu = (meydanVeri?.binalar || []).filter((b) => b.durum !== 'KILITLI' && b.durum !== 'YOK');
+    if (!kurulu.length) { meydanKonum = null; return null; }
+    const g = new THREE.Group();
+    const zemin = levha(kurulu.length * 13 + 8, 16, '#e8d9b5', { kalinlik: 0.2, kose: 3 }); g.add(zemin);
+    kurulu.forEach((b, i) => {
+      const m = MEYDAN_MODEL[b.kod]?.();
+      if (!m) return;
+      m.position.set((i - (kurulu.length - 1) / 2) * 13, 0.2, 0);
+      if (b.durum === 'INSAATTA') m.scale.multiplyScalar(0.6);   // inşaattaki bina küçük ve iskeleli görünür
+      m.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+      g.add(m);
+    });
+    g.position.set(0, 0, 2.5 * S + 14 + (r() - 0.5) * 2);
+    meydanKonum = g.position.clone(); meydanKonum.yari = (kurulu.length * 13 + 8) / 2;
+    return g;
+  }
+
   // İşçi: tutulduysa bitişi; tutma seçenekleri
   async function isciSayfasi() {
     isci = await api('/api/isci').catch(() => isci);
@@ -684,6 +827,14 @@ export function ciftlikIciKur({ durum, eylemDagit, sunucuSimdi, ayrintiAc, dunya
       if (c === 'ek-hedef') return ekSayfasi([e.target.closest('[data-parsel]').dataset.parsel]);
       if (c === 'yeniden-ek') return;
       if (c === 'gunluk') return gunlukSayfasi();
+      if (c === 'meydan') return meydanSayfasi();
+      if (c === 'bulmaca') return bulmacaAc({ yenile: yenileDis });
+      if (c === 'meydan-insa') {
+        const b = e.target.closest('[data-kod]'); b.disabled = true;
+        try { const r = await api('/api/meydan/insa', { kod: b.dataset.kod }); tostDis?.(`🏗️ ${r.ad} inşaatı başladı`); await yenileDis?.(); }
+        catch (err) { tostDis?.(err.message, 'hata'); }
+        return meydanSayfasi();
+      }
       if (c === 'isci') return isciSayfasi();
       if (c === 'tarlaya-gec') { const id = e.target.closest('[data-parsel]').dataset.parsel; kapat(); return tarlayaGec?.(id); }
       const b = e.target.closest('[data-eylem]');
@@ -740,11 +891,12 @@ export function ciftlikIciKur({ durum, eylemDagit, sunucuSimdi, ayrintiAc, dunya
   function dongu(t) {
     kare = requestAnimationFrame(dongu);
     if (document.hidden) return;
-    const bosta = t - sonEtkilesim > 6000 && Math.abs(hedefUzaklik - uzaklik) < 0.05;
+    const bosta = t - sonEtkilesim > 6000 && Math.abs(hedefUzaklik - uzaklik) < 0.05 && odak.distanceToSquared(hedefOdak) < 0.01;
     const aralik = MOBIL ? (bosta ? 66 : 33) : (bosta ? 33 : 0);
     if (aralik && t - onceki < aralik - 4) return;
     const dt = Math.min(0.1, (t - onceki) / 1000 || 0.016); onceki = t;
     uzaklik += (hedefUzaklik - uzaklik) * Math.min(1, dt * 4);
+    odak.lerp(hedefOdak, Math.min(1, dt * 3));
     kamera.position.set(odak.x + Math.sin(aci) * Math.cos(egim) * uzaklik, Math.sin(egim) * uzaklik, odak.z + Math.cos(aci) * Math.cos(egim) * uzaklik);
     kamera.lookAt(odak);
     RUZGAR.uZaman.value = t / 1000;
@@ -764,6 +916,14 @@ export function ciftlikIciKur({ durum, eylemDagit, sunucuSimdi, ayrintiAc, dunya
     if (efekt) efekt.ciz(); else renderer.render(sahne, kamera);
   }
 
+  // Çiftlik açıkken gün ilerler: dakikada bir güneş/ay güncellenir; evre değişince (akşam oldu) sahne yeniden kurulur
+  setInterval(() => {
+    if (!acik || !durum.kart || !renderer) return;
+    const onceki = evre;
+    zamanAyarla();
+    if (evre !== onceki) sahneKurgula();
+  }, 60_000);
+
   function yenile() {
     if (!acik || !durum.kart) return;
     etkilesim();
@@ -780,7 +940,8 @@ export function ciftlikIciKur({ durum, eylemDagit, sunucuSimdi, ayrintiAc, dunya
     sayfaKapat(); ipucu.hidden = false;
     boyutla(); sahneKurgula(); hudCiz();
     if (!ziyaret) { komsuKartlari.clear(); komsuKartlariniYukle();   // her açılışta taze (komşu tarlanın ekini değişmiş olabilir)
-      api('/api/isci').then((d) => { const ilk = !isci; isci = d; if (ilk && d?.aktif) sahneKurgula(); hudCiz(); }).catch(() => {}); }
+      api('/api/isci').then((d) => { const ilk = !isci; isci = d; if (ilk && d?.aktif) sahneKurgula(); hudCiz(); }).catch(() => {});
+      api('/api/meydan').then((d) => { const degisti = d.kurulu + d.binalar.filter((b) => b.durum === 'INSAATTA').length !== (meydanVeri ? meydanVeri.kurulu + meydanVeri.binalar.filter((b) => b.durum === 'INSAATTA').length : 0); meydanVeri = d; if (degisti) sahneKurgula(); }).catch(() => {}); }
     if (!history.state?.ciftlik) history.pushState({ ...(history.state || {}), ciftlik: true }, '');
     etkilesim(); cancelAnimationFrame(kare); kare = requestAnimationFrame(dongu);
     ses('tik'); ortamSesi(true);

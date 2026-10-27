@@ -153,10 +153,11 @@ const gunlukOdulAl = db.transaction((userId) => {
   if (!d.hepsi) throw new OyunHatasi(409, 'Önce bugünkü üç görevi bitir');
   if (d.alindi) throw new OyunHatasi(409, 'Bugünkü ödülü zaten aldın', 'ALINDI');
   db.prepare(`INSERT INTO gunluk_gorev_odulleri (user_id, gun, odul) VALUES (?, ?, ?)`).run(userId, d.gun, d.odul);
-  L.odul(userId, d.odul, 'Günlük görev ödülü');
+  const odul = Math.round(d.odul * require('./koy-meydani').oran(userId, 'KUTUPHANE'));   // halk kütüphanesi
+  L.odul(userId, odul, 'Günlük görev ödülü');
   require('./ciftlik').tpEkle(userId, d.tp, 'DAILY_QUESTS');
-  L.denetim({ aktor: userId, eylem: 'DAILY_QUESTS_REWARDED', varlik: `USER:${userId}`, sonra: { gun: d.gun, odul: d.odul } });
-  return { tamam: true, odul: d.odul, tp: d.tp };
+  L.denetim({ aktor: userId, eylem: 'DAILY_QUESTS_REWARDED', varlik: `USER:${userId}`, sonra: { gun: d.gun, odul } });
+  return { tamam: true, odul, tp: d.tp };
 });
 
 function rotalar(app, { h, auth }) {

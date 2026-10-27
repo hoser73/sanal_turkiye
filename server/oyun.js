@@ -253,7 +253,7 @@ function parselKarti(id, userId, komsuImar = {}, { hafif = false } = {}) {
     susSecenekleri: benim ? require('./ciftlik').susSecenekleri(userId) : null,
     bakim: { toplam: L.yuvarla(yapilar.reduce((a, s) => a + bakimMaliyeti(s, t), 0)), esik: BAKIM.etkisizEsik, yipranma: BAKIM.yipranmaGunluk },
     ekin: ekin && { ...ekinDurumu(ekin, yapilar, t),
-      sulamaMaliyeti: L.yuvarla(sulamaBirimi(yapilar, hizmetler, p.plaka) * verimKati(p)) },
+      sulamaMaliyeti: L.yuvarla(sulamaBirimi(yapilar, hizmetler, p.plaka) * verimKati(p) * (benim ? require('./koy-meydani').oran(userId, 'CESME') : 1)) },
     tarimMi: p.zoning_type === 'TARIM',
     uretim: require('./uretim').parselUretimi(id, userId),
     ...require('./kira').parselKira(id, userId),
@@ -434,7 +434,7 @@ const sula = db.transaction((userId, id) => {
     throw new OyunHatasi(429, 'Toprak hâlâ nemli; biraz sonra tekrar sula');
   }
   const kat = verimKati(p);
-  const birim = sulamaBirimi(yapilar, belediye.mahalleHizmetleri(p.region_id), p.plaka);
+  const birim = sulamaBirimi(yapilar, belediye.mahalleHizmetleri(p.region_id), p.plaka) * require('./koy-meydani').oran(userId, 'CESME');   // köy çeşmesi
   const tx = L.yeniTx();
   L.harca(userId, L.yuvarla(birim * kat), `Sulama/enerji (${id})`, tx);
   L.denetim({ aktor: userId, eylem: 'CROP_WATERED', varlik: id, bolge: p.region_id });
@@ -491,7 +491,7 @@ const bakimYap = db.transaction((userId, id) => {
   const tx = L.yeniTx();
   // Nalburdan alınan bakım kiti varsa bakım ücretsiz
   const kit = require('./carsi').stoktanKullan(userId, 'BAKIM_KITI', `Bakım kiti (${id})`, tx);
-  const tutar = kit ? 0 : Math.max(1, L.yuvarla(yapilar.reduce((a, s) => a + bakimMaliyeti(s, t), 0)));
+  const tutar = kit ? 0 : Math.max(1, L.yuvarla(yapilar.reduce((a, s) => a + bakimMaliyeti(s, t), 0) * require('./koy-meydani').oran(userId, 'SAGLIK_OCAGI')));
   if (!kit) {
     L.harca(userId, tutar, `Yapı bakımı (${id})`, tx);
     belediye.belediyePayi(p.ilce_id, tutar, 'ruhsatPayi', 'bakım ruhsat payı', tx);
@@ -535,7 +535,7 @@ const npcSat = db.transaction((userId, urun, miktar) => {
   const ort = (birimFiyat(urun, satilan) + birimFiyat(urun, satilan + adet)) / 2;
   const pazarYeri = belediye.pazarBonusu(userId);   // belediyenin semt pazarı olan mahallede parseli varsa
   const koopPrimi = require('./kooperatif').satisPrimi(userId);
-  const tutar = Math.floor(ort * adet * (pazarYeri ? 1 + BELEDIYE.etki.pazarBonus : 1) * (1 + koopPrimi));   // akçe tam sayı tutulur
+  const tutar = Math.floor(ort * adet * (pazarYeri ? 1 + BELEDIYE.etki.pazarBonus : 1) * (1 + koopPrimi) * require('./koy-meydani').oran(userId, 'PAZAR_YERI'));   // akçe tam sayı tutulur
   const tx = L.yeniTx();
   L.envanterDegis(userId, urun, -adet, 'NPC pazar satışı', tx);
   if (tutar > 0) L.aktar({ kaynak: 'SYS:NPC', hedef: L.hesap(userId), tutar, sebep: `${adet} ${URUNLER[urun].ad} satışı`, tx });

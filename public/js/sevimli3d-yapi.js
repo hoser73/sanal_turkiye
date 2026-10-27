@@ -2,7 +2,7 @@
 // tabanının ortasında, ön yüzü +z yönünde kurulur. Yapı kurucuları { g, baca? } değil doğrudan Group döndürür;
 // bacalı yapılarda bacanın tepesi g.userData.baca'dadır (duman için).
 import * as THREE from '/vendor/three/three.module.js';
-import { RENK, malz, golgeli, yuvarlakKutu, parca, ornekli, yaprakGeo, kureGeo, yuvarlakAgac, cit, kasaYigini } from './sevimli3d.js';
+import { RENK, malz, golgeli, yuvarlakKutu, parca, ornekli, yaprakGeo, kureGeo, yuvarlakAgac, cit, kasaYigini, RUZGAR } from './sevimli3d.js';
 
 const kutuP = (g, y, d, renk, x, yy, z, r = 0.1) => parca(yuvarlakKutu(g, y, d, r), renk, x, yy, z);
 // Üçgen çatı: gen (x), der (z) boyunca, tepe yüksekliği h
@@ -356,17 +356,50 @@ export function odunYigini() {
   for (let k = 0; k < 3; k++) for (let i = 0; i < 4 - k; i++) g.add(parca(new THREE.CylinderGeometry(0.22, 0.22, 1.4, 10).rotateX(Math.PI / 2), i % 2 ? '#b07a45' : '#c98f55', -0.66 + i * 0.44 + k * 0.22, 0.22 + k * 0.38, 0));
   return golgeli(g);
 }
-export function bayrakDiregi() {
-  const g = new THREE.Group();
-  g.add(parca(new THREE.CylinderGeometry(0.06, 0.08, 5, 10), '#d5d9de', 0, 2.5, 0), parca(new THREE.SphereGeometry(0.12, 10, 8), '#f2c94c', 0, 5.05, 0));
-  const c = document.createElement('canvas'); c.width = 96; c.height = 64; const x = c.getContext('2d');
+// Türk bayrağı rüzgârda dalgalanır: kumaş gönderden uca doğru ilerleyen dalgalarla kıvrılır (gönder tarafı sabit, uç en
+// serbest), hafif çırpınma ve sarkma. Yer değiştirme gölgelendiricide (RUZGAR.uZaman, ekinlerle aynı saat); normal de dalgaya
+// göre eğilir ki ışık kıvrımlarda değişsin; gölge de aynı dalgayla düşer. Doku ve malzeme bütün bayraklarda ortaktır.
+const BAYRAK_DALGA = `
+  float bu = clamp((position.x + 0.9) / 1.8, 0.0, 1.0);                 // 0: gönder, 1: uç
+  float bf = bu * 6.2 - uZaman * 5.5;
+  float bz = (sin(bf) * 0.17 + sin(bu * 11.0 - uZaman * 8.3) * 0.035) * bu;
+  float bdz = (cos(bf) * 6.2 * 0.17 + cos(bu * 11.0 - uZaman * 8.3) * 11.0 * 0.035) * bu + sin(bf) * 0.17;   // dz/du
+`;
+function bayrakSaati(sh) { sh.uniforms.uZaman = RUZGAR.uZaman; return sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float uZaman;'); }
+let bayrakMalz = null, bayrakDerinlik = null;
+function bayrakMalzemeleri() {
+  if (bayrakMalz) return [bayrakMalz, bayrakDerinlik];
+  const c = document.createElement('canvas'); c.width = 192; c.height = 128; const x = c.getContext('2d');
+  x.scale(2, 2);
   x.fillStyle = '#e30a17'; x.fillRect(0, 0, 96, 64); x.fillStyle = '#fff'; x.beginPath(); x.arc(34, 32, 16, 0, 7); x.fill();
   x.fillStyle = '#e30a17'; x.beginPath(); x.arc(38, 32, 12.8, 0, 7); x.fill(); x.fillStyle = '#fff'; x.beginPath();
   for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + (i * Math.PI) / 5, rr = i % 2 ? 2.6 : 6.4; x.lineTo(58 + Math.cos(a) * rr, 32 + Math.sin(a) * rr); } x.fill();
-  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
-  const bez = new THREE.Mesh(new THREE.PlaneGeometry(1.8, 1.2, 8, 2), new THREE.MeshLambertMaterial({ map: t, side: THREE.DoubleSide }));
-  const p = bez.geometry.attributes.position; for (let i = 0; i < p.count; i++) p.setZ(i, Math.sin((p.getX(i) + 0.9) * 3) * 0.1 * (p.getX(i) + 0.9));
-  bez.geometry.computeVertexNormals(); bez.position.set(0.95, 4.3, 0); g.add(bez);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+  bayrakMalz = new THREE.MeshLambertMaterial({ map: t, side: THREE.DoubleSide });
+  bayrakMalz.onBeforeCompile = (sh) => {
+    sh.vertexShader = bayrakSaati(sh)
+      .replace('#include <beginnormal_vertex>', `${BAYRAK_DALGA}
+        vec3 objectNormal = normalize(vec3(-bdz / 1.8, 0.0, 1.0));`)
+      .replace('#include <begin_vertex>', `vec3 transformed = vec3(position);
+        transformed.z += bz;
+        transformed.y += (sin(bu * 4.0 - uZaman * 4.2) * 0.03 - 0.06 * bu * bu) * bu;   // çırpınma ve uçta hafif sarkma
+        transformed.x -= abs(bz) * 0.12;`);   // kıvrılan kumaş biraz kısalır
+  };
+  bayrakDerinlik = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
+  bayrakDerinlik.onBeforeCompile = (sh) => {
+    sh.vertexShader = bayrakSaati(sh).replace('#include <begin_vertex>', `${BAYRAK_DALGA}
+      vec3 transformed = vec3(position); transformed.z += bz;`);
+  };
+  return [bayrakMalz, bayrakDerinlik];
+}
+export function bayrakDiregi() {
+  const g = new THREE.Group();
+  g.add(parca(new THREE.CylinderGeometry(0.06, 0.08, 5, 10), '#d5d9de', 0, 2.5, 0), parca(new THREE.SphereGeometry(0.12, 10, 8), '#f2c94c', 0, 5.05, 0));
+  const [m, d] = bayrakMalzemeleri();
+  const bez = new THREE.Mesh(new THREE.PlaneGeometry(1.8, 1.2, 24, 6), m);
+  bez.customDepthMaterial = d;
+  bez.frustumCulled = false;   // dalga sınır kutusunun dışına taşabilir
+  bez.position.set(0.95, 4.3, 0); g.add(bez);
   return golgeli(g);
 }
 export function kardanAdam() {

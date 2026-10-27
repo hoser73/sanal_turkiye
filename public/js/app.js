@@ -4,6 +4,7 @@ import { sihirbazKur } from './sihirbaz.js';
 emojiYedeginiKur();   // cihaz emoji çizemiyorsa (ör. iOS Simülatörü) emojiler görsele döner
 import { api, esc, sayi, akce, sure, zamanOnce, tost, ApiHatasi, tamlayan, sayiBulunma } from './yardimci.js';
 import { endeksGrafigi, degisimCipi, kisaTarih } from './grafik.js';
+import { yolBolumu } from './yol-ui.js';
 import { haritaKur } from './harita.js';
 import { kaynaklariAyarla } from './stil.js';
 import { GRAFIK, varsayilanGrafik } from './dunya3d.js';
@@ -569,6 +570,11 @@ async function panelCiz() {
   catch (e) { govde = `<div class="bos-durum"><div class="buyuk-ikon">⚠️</div><h3>Yüklenemedi</h3><p>${esc(e.message)}</p><button type="button" class="dugme ince" data-eylem="panel-yenile">Tekrar dene</button></div>`; }
   if (no !== panelCizimNo) return;
   kap.innerHTML = ust + govde;
+  // Dar ekranda sekme çubuğu kayar: seçili sekme görünür alana gelsin
+  for (const b of kap.querySelectorAll('.segment [aria-selected="true"], .alt-sekmeler [aria-selected="true"]')) {
+    const s = b.parentElement;
+    if (s.scrollWidth > s.clientWidth) s.scrollLeft = b.offsetLeft - s.offsetLeft - (s.clientWidth - b.offsetWidth) / 2;
+  }
 }
 
 // ---------- Çarşı: banka, nalbur, market, zirai bayi (her türden tek işletme; sponsor markası sunucudan)
@@ -955,11 +961,13 @@ async function gorevlerPaneli() {
     <button type="button" data-eylem="ciftlik-alt" data-alt="ciftlik" aria-selected="${alt === 'ciftlik'}">🌾 Çiftlik</button>
     <button type="button" data-eylem="ciftlik-alt" data-alt="komsular" aria-selected="${alt === 'komsular'}">🤝 Komşular</button>
     <button type="button" data-eylem="ciftlik-alt" data-alt="yoresel" aria-selected="${alt === 'yoresel'}">📔 Yöresel</button>
-    <button type="button" data-eylem="ciftlik-alt" data-alt="etkinlik" aria-selected="${alt === 'etkinlik'}">${etkinlik ? etkinlik.ikon : '📅'} Etkinlik</button></div>`;
+    <button type="button" data-eylem="ciftlik-alt" data-alt="etkinlik" aria-selected="${alt === 'etkinlik'}">${etkinlik ? etkinlik.ikon : '📅'} Etkinlik</button>
+    <button type="button" data-eylem="ciftlik-alt" data-alt="yol" aria-selected="${alt === 'yol'}">🛤️ Yol${durum.ben?.yol?.alinabilir ? ` <span class="rozet">${durum.ben.yol.alinabilir}</span>` : ''}</button></div>`;
   try {
     if (alt === 'komsular') return segment + (acikMi('komsuluk') ? komsularBolumu(await api('/api/komsuluk')) : kilitliBolum('komsuluk'));
     if (alt === 'yoresel') return segment + yoreselBolumu(await api('/api/yoresel'));
     if (alt === 'etkinlik') { durum.etkinlik = await api('/api/etkinlik'); return segment + etkinlikBolumu(durum.etkinlik, { simdi: sunucuSimdi }); }
+    if (alt === 'yol') return segment + yolBolumu(await api('/api/yol'), { simdi: sunucuSimdi });
   } catch (e) { return `${segment}<p class="kucuk">${esc(e.message)}</p>`; }
   let ciftlik = '';
   try { ciftlik = ciftlikBolumu(await api('/api/ciftlik'), { simdi: sunucuSimdi }); } catch { /* bağlantı yoksa yalnızca görevler */ }
@@ -1300,6 +1308,9 @@ async function eylemDagit(b, e = null) {
       return panelCiz();
     case 'etkinlik-ac':
       return ciftlikAlt('etkinlik');
+    case 'yol-al':
+      b.disabled = true;
+      return eylem('/api/yol/al', b.dataset.kademe ? { kademe: Number(b.dataset.kademe) } : {}, (r) => `🎁 Sezon yolu: ${[r.akce ? `+${akce(r.akce)}` : '', ...r.esya.map(([, n]) => `${n} eşya`), ...r.kozmetik].filter(Boolean).join(' · ')}`);
     case 'arkadas-istek':
       b.disabled = true;
       return eylem('/api/arkadas/istek', { parselId: id }, (r) => (r.kabul ? `🤝 ${r.ad} ile artık komşusunuz` : `🤝 ${r.ad} adlı oyuncuya komşuluk isteği gönderildi`));

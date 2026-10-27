@@ -315,6 +315,55 @@ for (const [kod, u] of Object.entries(CARSI.sarf)) URUNLER[kod] = { ad: u.ad, ik
 for (const [kod, b] of Object.entries(BALIK.turler)) URUNLER[kod] = { ad: b.ad, ikon: b.ikon, tabanFiyat: b.tabanFiyat, nadir: b.nadir, mamul: true, balik: true };
 for (const [kod, y] of Object.entries(YORESEL)) URUNLER[kod] = { ad: y.ad, ikon: y.ikon, mamul: true, yoresel: y.il, tabanFiyat: YORESEL_KURAL.tabanFiyat };
 
+// ---------- Köy meydanı (koy-meydani.js): oyuncunun kendi köy meydanına kurduğu topluluk binaları. Her bina bir kez
+// kurulur, oyuncu seviyesiyle açılır, akçe ve çiftlik ürünüyle yapılır; bitince kalıcı bonus verir (oran: çarpan, ek: adet).
+const KOY_MEYDANI = {
+  CESME:        { ad: 'Köy çeşmesi', ikon: '⛲', seviye: 2, akce: 150, malzeme: { BUGDAY: 20 }, sureMs: dk(10), etki: 'Sulama %20 daha ucuz', oran: 0.8 },
+  KAHVEHANE:    { ad: 'Kahvehane', ikon: '☕', seviye: 3, akce: 300, malzeme: { BUGDAY: 30, DOMATES: 20 }, sureMs: dk(20), etki: 'Sipariş ödülleri %10 fazla', oran: 1.1 },
+  PAZAR_YERI:   { ad: 'Köy pazarı', ikon: '🧺', seviye: 4, akce: 450, malzeme: { DOMATES: 30, ELMA: 20 }, sureMs: dk(30), etki: 'Tüccara satış %5 fazla getirir', oran: 1.05 },
+  OKUL:         { ad: 'Köy okulu', ikon: '🏫', seviye: 5, akce: 650, malzeme: { ELMA: 30, UN: 10 }, sureMs: dk(45), etki: 'Tecrübe puanı (TP) %10 fazla', oran: 1.1 },
+  SAGLIK_OCAGI: { ad: 'Sağlık ocağı', ikon: '🏥', seviye: 6, akce: 850, malzeme: { UN: 20, YUMURTA: 20 }, sureMs: dk(60), etki: 'Yapı bakımı %25 daha ucuz', oran: 0.75 },
+  KUTUPHANE:    { ad: 'Halk kütüphanesi', ikon: '📚', seviye: 7, akce: 1050, malzeme: { EKMEK: 15, SUT: 20 }, sureMs: dk(90), etki: 'Günlük görev ödülü %20 fazla', oran: 1.2 },
+  PTT:          { ad: 'Postane', ikon: '📮', seviye: 8, akce: 1300, malzeme: { EKMEK: 20, PEYNIR: 10 }, sureMs: dk(120), etki: 'Sipariş panosuna +1 müşteri', ek: 1 },
+};
+
+// ---------- Motif bulmacası (bulmaca.js): Türk motifli taşlarla 3'lü eşleştirme. Bölümler sırayla açılır; bölüm
+// tanımı (tahta, hamle, hedefler, ot kaplı kareler) bölüm numarasından türetilir. Oyun istemcide oynanır; sunucu en kısa
+// süreyi (taban + kullanılan hamle × hamleMs) ve hamle sınırını denetler. Günde en çok gunlukOdul bölüm ödül verir.
+const BULMACA = {
+  gunlukOdul: 8, minSureMs: 12_000, hamleMs: 450, maksSureMs: 45 * 60_000,
+  satir: 8, sutun: 7,
+  taslar: { NAR: 'Nar', LALE: 'Lale', CINI: 'Çini', BUGDAY: 'Başak', NAZAR: 'Nazar', FINDIK: 'Fındık' },
+  // Bölüm ödülü: her 10. bölüm kalıp seti (inşaatı hızlandırır), her 5. gübre, kalanlar akçe; yıldız başına +2 akçe
+  odul(n) {
+    if (n % 10 === 0) return { akce: 30 + n, esya: ['KALIP_SETI', 1] };
+    if (n % 5 === 0) return { akce: 15 + Math.floor(n / 2), esya: ['GUBRE', 2] };
+    return { akce: Math.min(40, 8 + Math.floor(n / 2)) };
+  },
+  yildizAkce: 2,
+};
+
+// ---------- Sezon yolu (mevsim-yolu.js): her mevsim ücretsiz, 30 kademeli ödül yolu. Oyun eylemleri "yol puanı" verir;
+// aynı eylem türünden günde en çok gunlukTavan kayıt sayılır. n. kademenin bedeli taban + artis × n puandır.
+const MEVSIM_YOLU = {
+  kademe: 30, taban: 40, artis: 6, gunlukTavan: 15,
+  puanlar: { DAILY_QUESTS_REWARDED: 20, ORDER_DELIVERED: 10, STRUCTURE_COMPLETED: 6, GI_PRODUCED: 5, CROP_HARVESTED: 4,
+    PRODUCTION_COLLECTED: 4, ANIMAL_PRODUCE_COLLECTED: 4, NEIGHBOR_HELPED: 4, FISH_CAUGHT: 2, TRADE_SETTLED: 2, DECORATION_PLACED: 2,
+    CROP_PLANTED: 1, PARCEL_VISITED: 1, PUZZLE_WON: 3 },
+  eylemAdi: { DAILY_QUESTS_REWARDED: 'Günlük görevleri bitir', ORDER_DELIVERED: 'Sipariş teslim et', STRUCTURE_COMPLETED: 'Yapı tamamla',
+    GI_PRODUCED: 'Yöresel ürün üret', CROP_HARVESTED: 'Hasat et', PRODUCTION_COLLECTED: 'Üretim topla', ANIMAL_PRODUCE_COLLECTED: 'Hayvan ürünü topla',
+    NEIGHBOR_HELPED: 'Komşuya yardım et', FISH_CAUGHT: 'Balık tut', TRADE_SETTLED: 'Tüccara sat', DECORATION_PLACED: 'Süs koy',
+    CROP_PLANTED: 'Ek', PARCEL_VISITED: 'Komşu ziyaret et', PUZZLE_WON: 'Motif bulmacası bölümü geç' },
+  // Kademe ödülü: her 5. kademe büyük (eşya/kozmetik), 3. ve 8. sıradakiler eşya, kalanlar akçe
+  odul(n) {
+    const ozel = { 5: { esya: ['KALIP_SETI', 2], akce: 40 }, 10: { kozmetik: 'BAYRAK_YOLCU', akce: 60 }, 15: { esya: ['BAKIM_KITI', 3], akce: 100 },
+      20: { kozmetik: 'CATI_BAKIR', akce: 120 }, 25: { esya: ['TARLA_ORTUSU', 5], akce: 150 }, 30: { kozmetik: 'UNVAN_YOLCU', akce: 300 } };
+    if (ozel[n]) return ozel[n];
+    if (n % 5 === 3) return { esya: ['YEM', 20], akce: 10 };
+    return { akce: 10 + 2 * n };
+  },
+};
+
 // ---------- Mevsimlik etkinlikler (her yıl aynı günler, AA-GG; bitiş dahil). Görev ilerlemesi denetim kaydından sayılır.
 const ETKINLIKLER = {
   CUMHURIYET: { ad: 'Cumhuriyet Bayramı', ikon: '🇹🇷', bas: '10-20', bit: '11-02', renk: '#c8102e',
@@ -353,6 +402,17 @@ const ETKINLIKLER = {
 const HATIRLATMA = { aralikMs: 60_000, sessiz: [23, 8], siparisUyariMs: 3600_000 };
 
 const KOOPERATIF = { kurulusBedeli: 100, maxUye: 12, minAktifUye: 3, satisPrimi: 0.06, adMin: 3, adMax: 40 };
+// Kooperatif hasat yarışı (hasat-yarisi.js): haftalık takım yarışı. Üyelerin işleri takım puanına eklenir (aynı işten
+// günde en çok gunlukTavan kayıt). Takım sandıkları hafta sonunda en az minKatki puan veren üyelere dağıtılır; Türkiye
+// sıralamasında ilk üç (en az minAktifUye üyeli) kooperatifin ortak kasasına bonus girer.
+const HASAT_YARISI = {
+  puanlar: { ORDER_DELIVERED: 12, DAILY_QUESTS_REWARDED: 15, GI_PRODUCED: 8, CROP_HARVESTED: 5, PRODUCTION_COLLECTED: 5,
+    ANIMAL_PRODUCE_COLLECTED: 5, NEIGHBOR_HELPED: 3 },
+  gunlukTavan: 15,
+  sandiklar: [{ esik: 300, odul: 30, ad: 'Bakır sandık' }, { esik: 800, odul: 60, ad: 'Gümüş sandık' }, { esik: 1500, odul: 120, ad: 'Altın sandık' }],
+  minKatki: 30,
+  kasaBonusu: [500, 300, 150],
+};
 
 
 const TARIM = {
@@ -635,6 +695,10 @@ const KOZMETIK = {
   UNVAN_TOPRAK:   { tur: 'unvan', ad: 'Toprak Ana / Baba', fiyat: 120 },
   UNVAN_GEZGIN:   { tur: 'unvan', ad: 'Gezgin', rozet: 'ALBUM_' },
   UNVAN_SAMPIYON: { tur: 'unvan', ad: 'İl Şampiyonu', rozet: 'SEZON_' },
+  // Sezon yolu ödülleri (satılmaz; yol kademesinde verilir)
+  BAYRAK_YOLCU:   { tur: 'bayrak', ad: 'Yolcu flaması', renk: '#7a4fd0', yol: true },
+  CATI_BAKIR:     { tur: 'cati', ad: 'Bakır çatı', renk: '#b0603a', yol: true },
+  UNVAN_YOLCU:    { tur: 'unvan', ad: 'Mevsim Yolcusu', yol: true },
 };
 
 // §8.7 iller arası lojistik: ürün kendi ilinden başka bir ilin tüccarına sevk edilir. Kara her ile, deniz yalnızca limanlar arası.
@@ -688,4 +752,4 @@ const NUFUS = {
   baslangicBakiye: 500,
 };
 
-module.exports = { PIYASA, CARSI, KOMSULUK, YORESEL, YORESEL_KURAL, BALIK, ETKINLIKLER, HATIRLATMA, HAYVANLAR, YEM_FIYATI, SEVIYE, GUNLUK_ODUL, SIPARIS, YARISMA, SUSLER, SUS_MAKS, NUFUS, LOJISTIK, KIRA, ORTAKLIK, AFET, REFERANDUM, KOZMETIK, RECETELER, MESLEKLER, MESLEK, KOOPERATIF, LIG, MEVSIMLER, HAVA, BOLGE, BOZULMA, BAKIM, BORSA, GOREVDEN_ALMA, MODERASYON, YASAL, ROLLER, BIRIM, OYUN_HIZI, IMAR, IMAR_KAYNAK_NOTU, IL_CEKICILIK, YERLESIM_CEKICILIK, YAPILAR, URUNLER, TARIM, NPC_PAZAR, PAZAR, SECIM, SECIM_HIZI, BELEDIYE, ITIBAR, HESAP, GOREVLER };
+module.exports = { BULMACA, KOY_MEYDANI, HASAT_YARISI, MEVSIM_YOLU, PIYASA, CARSI, KOMSULUK, YORESEL, YORESEL_KURAL, BALIK, ETKINLIKLER, HATIRLATMA, HAYVANLAR, YEM_FIYATI, SEVIYE, GUNLUK_ODUL, SIPARIS, YARISMA, SUSLER, SUS_MAKS, NUFUS, LOJISTIK, KIRA, ORTAKLIK, AFET, REFERANDUM, KOZMETIK, RECETELER, MESLEKLER, MESLEK, KOOPERATIF, LIG, MEVSIMLER, HAVA, BOLGE, BOZULMA, BAKIM, BORSA, GOREVDEN_ALMA, MODERASYON, YASAL, ROLLER, BIRIM, OYUN_HIZI, IMAR, IMAR_KAYNAK_NOTU, IL_CEKICILIK, YERLESIM_CEKICILIK, YAPILAR, URUNLER, TARIM, NPC_PAZAR, PAZAR, SECIM, SECIM_HIZI, BELEDIYE, ITIBAR, HESAP, GOREVLER };

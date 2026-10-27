@@ -82,6 +82,7 @@ function anaBolge(userId) {
 }
 function tpEkle(userId, tp, eylem, bolge = null) {
   if (!userId || !(tp > 0)) return;
+  tp = Math.round(tp * require('./koy-meydani').oran(userId, 'OKUL'));   // köy okulu
   const once = oyuncuSeviyesi(userId);
   db.prepare(`INSERT INTO tp_kayitlari (user_id, tp, eylem, region_id, at) VALUES (?, ?, ?, ?, ?)`).run(userId, tp, eylem, bolge ?? anaBolge(userId), simdi());
   db.prepare(`UPDATE users SET tp = tp + ? WHERE id = ?`).run(tp, userId);
@@ -252,13 +253,14 @@ function siparisBakim(userId, t = simdi()) {
   let acik = db.prepare(`SELECT COUNT(*) c FROM siparisler WHERE user_id = ? AND durum = 'ACIK'`).get(userId).c;
   if (u.siparis_sonraki == null) {
     // İlk ziyaret: pano dolu başlar
-    for (; acik < SIPARIS.acikMaks - 1; acik++) siparisUret(userId, t);
+    for (; acik < SIPARIS.acikMaks + require('./koy-meydani').ek(userId, 'PTT') - 1; acik++) siparisUret(userId, t);
     db.prepare(`UPDATE users SET siparis_sonraki = ? WHERE id = ?`).run(t + SIPARIS.yenilemeMs, userId);
     return;
   }
   let sonraki = u.siparis_sonraki;
-  while (acik < SIPARIS.acikMaks && sonraki <= t) { siparisUret(userId, sonraki); acik++; sonraki += SIPARIS.yenilemeMs; }
-  if (acik >= SIPARIS.acikMaks && sonraki <= t) sonraki = t + SIPARIS.yenilemeMs;
+  const maks = SIPARIS.acikMaks + require('./koy-meydani').ek(userId, 'PTT');   // postane +1 müşteri
+  while (acik < maks && sonraki <= t) { siparisUret(userId, sonraki); acik++; sonraki += SIPARIS.yenilemeMs; }
+  if (acik >= maks && sonraki <= t) sonraki = t + SIPARIS.yenilemeMs;
   if (sonraki !== u.siparis_sonraki) db.prepare(`UPDATE users SET siparis_sonraki = ? WHERE id = ?`).run(sonraki, userId);
 }
 function siparisler(userId) {
@@ -270,7 +272,8 @@ function siparisler(userId) {
     return { id: s.id, musteri: s.musteri, kalemler, odul: s.odul, tp: s.tp, son: s.son, kalanMs: s.son - t, hazir: kalemler.every((k) => k.eldeki >= k.adet) };
   });
   const u = db.prepare(`SELECT siparis_sonraki FROM users WHERE id = ?`).get(userId);
-  return { liste, sonrakiMs: liste.length < SIPARIS.acikMaks ? Math.max(0, (u.siparis_sonraki || t) - t) : null, maks: SIPARIS.acikMaks };
+  const maks = SIPARIS.acikMaks + require('./koy-meydani').ek(userId, 'PTT');
+  return { liste, sonrakiMs: liste.length < maks ? Math.max(0, (u.siparis_sonraki || t) - t) : null, maks };
 }
 const siparisTeslim = db.transaction((userId, siparisId) => {
   require('./ekonomi').envanterBozulmasi(userId);
@@ -279,11 +282,12 @@ const siparisTeslim = db.transaction((userId, siparisId) => {
   if (s.durum !== 'ACIK' || s.son <= simdi()) throw new OyunHatasi(409, 'Sipariş artık açık değil');
   const tx = L.yeniTx();
   for (const [kod, adet] of Object.entries(JSON.parse(s.kalemler))) L.envanterDegis(userId, kod, -adet, `Sipariş teslimi: ${s.musteri}`, tx);
-  L.odul(userId, s.odul, `Sipariş ödemesi: ${s.musteri}`, tx);
+  const odul = Math.round(s.odul * require('./koy-meydani').oran(userId, 'KAHVEHANE'));   // kahvehane
+  L.odul(userId, odul, `Sipariş ödemesi: ${s.musteri}`, tx);
   db.prepare(`UPDATE siparisler SET durum = 'TESLIM', bitis = ? WHERE id = ?`).run(simdi(), s.id);
-  L.denetim({ aktor: userId, eylem: 'ORDER_DELIVERED', varlik: String(s.id), sonra: { musteri: s.musteri, odul: s.odul } });
+  L.denetim({ aktor: userId, eylem: 'ORDER_DELIVERED', varlik: String(s.id), sonra: { musteri: s.musteri, odul } });
   tpEkle(userId, s.tp, 'ORDER_DELIVERED');
-  return { tamam: true, odul: s.odul, tp: s.tp, musteri: s.musteri };
+  return { tamam: true, odul, tp: s.tp, musteri: s.musteri };
 });
 const siparisReddet = db.transaction((userId, siparisId) => {
   const s = db.prepare(`SELECT * FROM siparisler WHERE id = ? AND user_id = ? AND durum = 'ACIK'`).get(Number(siparisId), userId);

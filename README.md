@@ -35,6 +35,16 @@ Ortam değişkenleri (v0.6 eklemeleri): `TABAN_URL` (e-posta bağlantıları; ü
 
 > Not: v0.1–0.2'nin Meram ızgarası ulusal ızgarayla uyumsuz olduğundan eski `data/sanalturkiye.db` dosyası kullanılmaz (silinmedi).
 
+## v0.40 — köy meydanı, sezon yolu, hasat yarışı, motif bulmacası, gece-gündüz
+
+Tür özellikleri (kasaba büyütme, takım yarışı, ödül yolu, eşleştirme bulmacası) kendi Türkiye temamızla uyarlandı.
+
+- **Köy meydanı** (`koy-meydani.js`, Çiftlik → 🏛️ Meydan): çeşme, kahvehane, köy pazarı, okul, sağlık ocağı, halk kütüphanesi ve postane. Her bina oyuncu seviyesiyle açılır, akçe ve çiftlik ürünüyle kurulur, inşaat süresi dolunca kalıcı bonus verir (ucuz sulama, sipariş ve görev ödülü, tüccar satışı, TP, bakım indirimi, sipariş panosuna +1 müşteri). Kurulan binalar çiftliğin güneyindeki meydanda 3B görünür; meydan açılınca kamera oraya kayar.
+- **Sezon yolu** (`mevsim-yolu.js`, Çiftlik → 🛤️ Yol): her mevsim ücretsiz 30 kademe. Oyun işleri yol puanı verir (aynı işten günde en çok 15); kademelerde akçe, yem, kalıp seti, bakım kiti, tarla örtüsü ve yalnızca yolda kazanılan bayrak, bakır çatı ve unvan.
+- **Kooperatif hasat yarışı** (`hasat-yarisi.js`): haftalık takım yarışı; üyelerin işleri takım puanına eklenir, bakır/gümüş/altın sandıklar en az 30 puan veren üyelere dağıtılır, Türkiye'de ilk üç kooperatifin kasasına bonus.
+- **Motif bulmacası** (`bulmaca.js`, Çiftlik → 🧩 Bulmaca): nar, lale, çini, başak, nazar ve fındık taşlarıyla 3'lü eşleştirme. Dörtlü eşleşme şerit, L/T biçimi bohça, beşli rozet bırakır; 4. bölümden sonra otlu kareler temizlenir. Bölümler sırayla açılır; sunucu en kısa süreyi ve hamle sınırını denetler, günde 8 bölüm ödül verir (akçe, her 5. bölümde gübre, her 10. bölümde kalıp seti) ve sezon yoluna puan yazar.
+- **Çiftlikte gece-gündüz:** Türkiye saatine göre gündüz, altın saat, alacakaranlık ve gece; gökyüzü, ışık, sis, yıldızlar ve ay değişir, gece fenerler yanar (`?saat=21` ile denenebilir). Tarladaki Türk bayrağı dalgalanır.
+
 ## v0.39 — yayın öncesi uçtan uca denetim
 
 Yeni bir oyuncuyla kayıttan ilk yapıya kadar telefon boyutunda oynandı; sunucu ve istemci kodu üç ayrı incelemeyle tarandı.

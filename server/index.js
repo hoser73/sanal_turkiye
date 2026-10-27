@@ -109,7 +109,7 @@ const BAKIM_ISLERI = [
   ['belediye', () => belediye.belediyeBakim()], ['görevden alma', () => moderasyon.gorevdenAlmaBakim()], ['borsa', () => ekonomi.borsaBakim()],
   ['sezon', () => dunya.sezonBakim()], ['hava', () => dunya.havaBakim()], ['banka', () => require('./carsi').bankaBakim()],
   ['lojistik', () => lojistik.lojistikBakim()], ['kira', () => kira.kiraBakim()], ['referandum', () => referandum.referandumBakim()],
-  ['endeks', () => piyasa.endeksBakim()], ['hazine', () => piyasa.hazineBakim()],
+  ['endeks', () => piyasa.endeksBakim()], ['hazine', () => piyasa.hazineBakim()], ['hasat yarışı', () => require('./hasat-yarisi').yarisBakim()],
 ];
 let sonBakim = 0;
 function bakim() {
@@ -162,7 +162,7 @@ dunya.rotalar(app, { h, auth });
 kooperatif.rotalar(app, { h, auth });
 simge.rotalar(app, { h, auth });
 // Komşuluk, yöresel ürünler, etkinlikler, balık tutma, hatırlatmalar
-for (const m of ['./komsuluk', './yoresel', './etkinlik', './balik', './hatirlatma', './iklim', './carsi', './giris-yollari', './tanitim', './baslangic', './gelisim', './sihirbaz']) require(m).rotalar(app, { h, auth, hazir });
+for (const m of ['./komsuluk', './yoresel', './etkinlik', './balik', './hatirlatma', './iklim', './carsi', './giris-yollari', './tanitim', './baslangic', './gelisim', './sihirbaz', './mevsim-yolu', './hasat-yarisi', './koy-meydani', './bulmaca']) require(m).rotalar(app, { h, auth, hazir });
 require('./db').indeksleriKur();   // tüm modüllerin tabloları kurulduktan sonra
 yz.rotalar(app, { h, auth });
 kozmetik.rotalar(app, { h, auth });
@@ -287,7 +287,7 @@ app.post('/api/talep/:id/kapat', auth.dogrulanmisGerekli, h((req) => belediye.ta
 
 // ---- Oyuncu eylemleri
 // Misafir için 200 + null: istemci oturum durumunu hata üretmeden öğrenir
-app.get('/api/ben', h((req) => (req.kullanici ? { ...oyun.oyuncuOzeti(uid(req)), pazar: pazar.pazarOzeti(uid(req)), hesap: auth.hesapDurumu(uid(req)) }
+app.get('/api/ben', h((req) => (req.kullanici ? { ...oyun.oyuncuOzeti(uid(req)), pazar: pazar.pazarOzeti(uid(req)), hesap: auth.hesapDurumu(uid(req)), yol: require('./mevsim-yolu').ozet(uid(req)) }
   : req.ikinciAdimBekleyen ? { ikinciAdimBekleniyor: true } : null)));
 app.get('/api/cuzdan', auth.girisGerekli, h((req) => oyun.cuzdanHareketleri(uid(req))));
 app.post('/api/parsel/:id/edin', auth.girisGerekli, hazir((req) => oyun.parselEdin(uid(req), parselId(req))));

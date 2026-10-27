@@ -25,12 +25,12 @@ function haritaKodu(userId) {
 function katalog(userId) {
   const s = secili(userId);
   return Object.entries(KOZMETIK).map(([kod, k]) => ({ kod, ...k, sahip: kullanilabilir(userId, kod, k), secili: s[k.tur]?.kod === kod,
-    kilit: k.rozet ? `${k.rozet === 'SEZON_' ? 'İl ligi sezon rozeti' : 'Albüm bölge rozeti'} gerekir` : null }));
+    kilit: k.yol ? 'Sezon yolu ödülü' : k.rozet ? `${k.rozet === 'SEZON_' ? 'İl ligi sezon rozeti' : 'Albüm bölge rozeti'} gerekir` : null }));
 }
 const al = db.transaction((userId, kod) => {
   const k = bul(kod);
   if (!k) throw new OyunHatasi(404, 'Kozmetik bulunamadı');
-  if (!k.fiyat) throw new OyunHatasi(409, 'Bu kozmetik satın alınamaz; rozetle açılır');
+  if (!k.fiyat) throw new OyunHatasi(409, k.yol ? 'Bu kozmetik sezon yolunda kazanılır' : 'Bu kozmetik satın alınamaz; rozetle açılır');
   if (sahip(userId, kod)) throw new OyunHatasi(409, 'Zaten sende');
   L.harca(userId, k.fiyat, `Kozmetik: ${k.ad}`);
   db.prepare(`INSERT INTO kozmetikler (user_id, kod, created_at) VALUES (?, ?, ?)`).run(userId, kod, Date.now());

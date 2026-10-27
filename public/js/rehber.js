@@ -36,6 +36,7 @@ function ipucuBul(b) {
   const bos = portfoy.find((p) => p.imarAd === 'Tarım' && !p.ekin);
   if (b?.gunlukOdul) return { onemli: true, kod: `gunluk:${new Date().toDateString()}`, ikon: '🎁', baslik: 'Günlük ödülün hazır', metin: 'Bugünkü hediyen <b>Çiftlik</b> sekmesinde seni bekliyor. Her gün gelirsen ödül büyür!', dugme: 'Ödülü al', hedef: '#gorevler-cift', is: 'ciftlik' };
   if (b?.seviye?.odulBekleyen) return { onemli: true, kod: `seviye:${b.seviye.seviye}`, ikon: '⭐', baslik: 'Seviye ödülü', metin: `Seviye ${b.seviye.seviye} oldun, aferin! Ödülün <b>Çiftlik</b> sekmesinde.`, dugme: 'Ödülü al', hedef: '#gorevler-cift', is: 'ciftlik' };
+  if (b?.yol?.alinabilir) return { onemli: true, kod: `yol:${b.yol.ulasilan}`, ikon: '🛤️', baslik: 'Sezon yolu ödülün hazır', metin: `Sezon yolunda <b>${b.yol.alinabilir}</b> kademe ödülü seni bekliyor.`, dugme: 'Ödülü al', hedef: '[data-eylem="yol-al"]', is: 'yol' };
   if (bos) return { kod: `bos:${bos.id}`, ikon: '🌱', baslik: 'Tarla boş kalmasın', metin: `${esc(bos.mahalle)} tarlan boş duruyor. Bir şey ek, toprak çalışsın.`, dugme: 'Tarlama git', hedef: '[data-eylem="ek"]', is: 'parseleGit', parsel: bos.id };
   return null;
 }
@@ -190,6 +191,7 @@ export function rehberKur({ durum, harita, parselSec, sekmeSec, ciftlikAlt, tarl
     async baslangic() { await tarlaAl?.(); },
     arazilerim() { sekmeSec('arazilerim'); },
     komsular() { ciftlikAlt('komsular'); },
+    yol() { ciftlikAlt('yol'); },
     // Ziyaret görevi: oyuncunun tarlasının çevresinde başka bir oyuncuya ait parseli haritada aç
     async komsuBul() {
       for (const p of durum.ben?.portfoy || []) {

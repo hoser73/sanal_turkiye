@@ -59,10 +59,12 @@ export async function sevimliSonIslem(renderer, sahne, kamera, ust = null) {
 }
 
 // Gökyüzü fonu: üstte açık mavi, ufka doğru krem (maket kartının arkası)
+// gece: 0/1 (eski kullanım) ya da üç renkli dizi [tepe, orta, ufuk] (çiftlikte gün evreleri)
 export function gokFonu(gece = 0) {
   const c = document.createElement('canvas'); c.width = 4; c.height = 256;
   const x = c.getContext('2d'), g = x.createLinearGradient(0, 0, 0, 256);
-  if (gece) { g.addColorStop(0, '#2b3b66'); g.addColorStop(1, '#5d6f9c'); } else { g.addColorStop(0, '#9fd3f5'); g.addColorStop(0.6, '#d5ecf7'); g.addColorStop(1, '#f6f0dc'); }
+  if (Array.isArray(gece)) { g.addColorStop(0, gece[0]); g.addColorStop(0.6, gece[1]); g.addColorStop(1, gece[2]); }
+  else if (gece) { g.addColorStop(0, '#2b3b66'); g.addColorStop(1, '#5d6f9c'); } else { g.addColorStop(0, '#9fd3f5'); g.addColorStop(0.6, '#d5ecf7'); g.addColorStop(1, '#f6f0dc'); }
   x.fillStyle = g; x.fillRect(0, 0, 4, 256);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
   return t;
