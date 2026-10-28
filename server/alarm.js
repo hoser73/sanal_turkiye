@@ -9,7 +9,8 @@ db.exec(`CREATE TABLE IF NOT EXISTS fiyat_alarmlari (
   id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), bolge_id INTEGER NOT NULL REFERENCES regions(id),
   yon TEXT NOT NULL, hedef REAL NOT NULL, created_at INTEGER NOT NULL, tetiklendi_at INTEGER
 );
-CREATE INDEX IF NOT EXISTS ix_alarm_acik ON fiyat_alarmlari(tetiklendi_at, user_id)`);
+CREATE INDEX IF NOT EXISTS ix_alarm_acik ON fiyat_alarmlari(tetiklendi_at, user_id);
+CREATE INDEX IF NOT EXISTS ix_alarm_bolge ON fiyat_alarmlari(bolge_id, tetiklendi_at)`);
 const endeks = (bolgeId) => require('./piyasa').endeksSerisi('MAHALLE', bolgeId, 1).endeks;
 
 const kur = db.transaction((userId, govde = {}) => {
@@ -40,11 +41,16 @@ let sonBakim = 0;
 function alarmBakim(t = Date.now()) {
   if (t - sonBakim < 60_000) return;
   sonBakim = t;
-  for (const a of db.prepare('SELECT a.*, r.name AS mahalle FROM fiyat_alarmlari a JOIN regions r ON r.id = a.bolge_id WHERE a.tetiklendi_at IS NULL LIMIT 500').all()) {
-    const e = endeks(a.bolge_id);
-    if (e == null || (a.yon === 'YUKARI' ? e < a.hedef : e > a.hedef)) continue;
-    db.prepare('UPDATE fiyat_alarmlari SET tetiklendi_at = ? WHERE id = ?').run(t, a.id);
-    require('./pazar').bildir(a.user_id, `🔔 ${a.mahalle} endeksi ${Math.round(e * 10) / 10} oldu (hedefin ${a.hedef}).`, 'pazar:endeks');
+  // Açık alarmı olan her mahallenin endeksi bir kez okunur; hedefe ulaşan alarmların hepsi (sınırsız) seçilir
+  const ulasan = db.prepare(`SELECT a.*, r.name AS mahalle FROM fiyat_alarmlari a JOIN regions r ON r.id = a.bolge_id
+    WHERE a.bolge_id = ? AND a.tetiklendi_at IS NULL AND ((a.yon = 'YUKARI' AND a.hedef <= ?) OR (a.yon = 'ASAGI' AND a.hedef >= ?))`);
+  for (const { bolge_id: bolge } of db.prepare('SELECT DISTINCT bolge_id FROM fiyat_alarmlari WHERE tetiklendi_at IS NULL').all()) {
+    const e = endeks(bolge);
+    if (e == null) continue;
+    for (const a of ulasan.all(bolge, e, e)) {
+      if (db.prepare('UPDATE fiyat_alarmlari SET tetiklendi_at = ? WHERE id = ? AND tetiklendi_at IS NULL').run(t, a.id).changes !== 1) continue;
+      require('./pazar').bildir(a.user_id, `🔔 ${a.mahalle} endeksi ${Math.round(e * 10) / 10} oldu (hedefin ${a.hedef}).`, 'pazar:endeks');
+    }
   }
 }
 

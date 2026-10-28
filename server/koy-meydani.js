@@ -3,6 +3,7 @@
 // inşaat süresi dolunca kalıcı bonusu başlar (oran: ilgili tutara çarpan, ek: adet). Bonuslar oyunun ilgili yerlerinde
 // oran(userId, kod) / ek(userId, kod) ile okunur.
 const db = require('./db');
+const { metin } = require('./lib/girdi');
 const L = require('./lib/ledger');
 const { OyunHatasi } = L;
 const { KOY_MEYDANI: M, URUNLER } = require('./config/rules');
@@ -52,7 +53,7 @@ const insaEt = db.transaction((userId, kod) => {
 
 function rotalar(app, { h, auth }) {
   app.get('/api/meydan', auth.girisGerekli, h((req) => liste(req.kullanici.id)));
-  app.post('/api/meydan/insa', auth.dogrulanmisGerekli, h((req) => insaEt(req.kullanici.id, String(req.body?.kod || ''))));
+  app.post('/api/meydan/insa', auth.dogrulanmisGerekli, h((req) => insaEt(req.kullanici.id, metin(req.body?.kod))));
 }
 
 module.exports = { rotalar, liste, insaEt, aktif, oran, ek };

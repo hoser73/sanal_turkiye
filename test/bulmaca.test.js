@@ -49,6 +49,7 @@ test('kazanınca ilerler ve ödül alır; hızlı ya da fazla hamleli bitiş red
 
   let o = (await A('/api/bulmaca/basla', {})).veri;
   assert.equal(o.bolum.seviye, 1);
+  assert.deepEqual(o.enKisa, { tabanMs: B.minSureMs, hamleMs: B.hamleMs }, 'istemci HIZLI yanıtında ne kadar bekleyeceğini bilir');
   assert.equal((await A('/api/bulmaca/bitir', { oyunId: o.oyunId, kazandi: true, hamle: 5 })).durum, 409, 'çok hızlı');
   eskit(o.oyunId);
   assert.equal((await A('/api/bulmaca/bitir', { oyunId: o.oyunId, kazandi: true, hamle: o.bolum.hamle + 1 })).durum, 400, 'hamle sınırı');
@@ -64,7 +65,8 @@ test('kazanınca ilerler ve ödül alır; hızlı ya da fazla hamleli bitiş red
   // Kaybetmek: ilerleme yok, ödül yok
   o = (await A('/api/bulmaca/basla', {})).veri;
   const once2 = L.bakiye(id);
-  assert.equal((await A('/api/bulmaca/bitir', { oyunId: o.oyunId, kazandi: false })).veri.kazandi, false);
+  eskit(o.oyunId);
+  assert.equal((await A('/api/bulmaca/bitir', { oyunId: o.oyunId, kazandi: 'false', hamle: 5 })).veri.kazandi, false, 'yalnızca true kazanç sayılır');
   assert.equal(L.bakiye(id), once2);
   assert.equal((await A('/api/bulmaca')).veri.seviye, 2);
 

@@ -94,7 +94,7 @@ const URUNLER = {
   KAYISI: { ad: 'Kayısı', ikon: '🍑', tohum: 45, sure: 6, sulama: 2, verim: 45, tabanFiyat: 2.5, bolgeler: BOLGE.KAYISI, bolgeAd: 'Malatya ve çevresi', donHassas: true },
   UZUM:   { ad: 'Üzüm',   ikon: '🍇', tohum: 40, sure: 5, sulama: 2, verim: 55, tabanFiyat: 1.9, bolgeler: BOLGE.UZUM, bolgeAd: 'bağ illeri' },
   // §5.7 işlenmiş ürünler (mamul): ekilmez, tesislerde reçeteyle üretilir
-  UN:          { ad: 'Un',             ikon: '🌾', mamul: true, tabanFiyat: 2.2 },
+  UN:          { ad: 'Un',             ikon: '🥣', mamul: true, tabanFiyat: 2.2 },
   EKMEK:       { ad: 'Ekmek',          ikon: '🍞', mamul: true, tabanFiyat: 1.6 },
   SALCA:       { ad: 'Domates salçası', ikon: '🥫', mamul: true, tabanFiyat: 4.5 },
   ZEYTINYAGI:  { ad: 'Zeytinyağı',     ikon: '🫗', mamul: true, tabanFiyat: 8.5 },
@@ -198,7 +198,8 @@ const SUS_MAKS = 8;
 const KOMSULUK = {
   maxArkadas: 60,
   yardimGunluk: 10, parselYardimGunluk: 3, yardimOdul: 3, yardimKisaltma: 0.1,   // olgunlaşma süresinin %10'u
-  hediyeGunlukAlim: 20,
+  hediyeGunlukAlim: 8,
+  hediyeArkadaslikMs: 24 * 3600_000,   // hediye en az bu kadar süredir arkadaş olana gider (yeni yan hesaplar değer basmasın)
   hediyeler: [{ urun: 'YEM', adet: 6 }, { urun: 'YEM', adet: 4 }, { urun: 'YUMURTA', adet: 3 }, { akce: 8 }, { akce: 5 }, { urun: 'UN', adet: 2 }],
   gonderimGunlukAdet: 30,
   // Kötüye kullanım sınırları: değer aktaran işlemler (hediye, ürün gönderme) için en düşük seviye; istek sınırları
@@ -295,7 +296,7 @@ const CARSI = {
     ZIRAI:  { tur: 'Zirai bayi ve veteriner', ad: 'Bereket Zirai Bayi', ikon: '🌱', renk: '#5f7d1f', renk2: '#f1f6e4', slogan: 'Bol hasat, sağlıklı sürü' },
   },
   urunler: {
-    KALIP_SETI:   { dukkan: 'NALBUR', ad: 'Kalıp ve iskele seti', ikon: '🧱', fiyat: 40, etki: 'Bir sonraki inşaat %30 kısa sürer (inşaatta kendiliğinden kullanılır)' },
+    KALIP_SETI:   { dukkan: 'NALBUR', ad: 'Kalıp ve iskele seti', ikon: '🧱', fiyat: 40, etki: 'Bir sonraki inşaat %30 kısa sürer (3 dakikadan uzun inşaatta kendiliğinden kullanılır)' },
     BAKIM_KITI:   { dukkan: 'NALBUR', ad: 'Bakım kiti', ikon: '🧰', fiyat: 25, etki: 'Bir parseldeki yapıların bakımı ücretsiz (bakımda kendiliğinden kullanılır)' },
     TARLA_ORTUSU: { dukkan: 'NALBUR', ad: 'Tarla örtüsü', ikon: '⛺', fiyat: 10, etki: 'Örtü sermek ücretsiz (örtü serince kendiliğinden kullanılır)' },
     KARBON_KAMIS: { dukkan: 'NALBUR', ad: 'Karbon kamış', ikon: '🎣', fiyat: 120, kalici: true, etki: 'Balık mücadelesinde makara %20 hızlı sarar (kalıcı)' },

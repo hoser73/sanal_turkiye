@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const QRCode = require('qrcode');
 const db = require('./db');
+const { metin } = require('./lib/girdi');
 const { HESAP, YASAL, ROLLER } = require('./config/rules');
 const L = require('./lib/ledger');
 const totp = require('./lib/totp');
@@ -36,8 +37,32 @@ function tarayiciOzeti(ua = '') {
 const ipOzeti = (ip) => ozet(`st-ip:${ip || ''}`).slice(0, 16);
 
 // Sonradan eklenen kullanıcı sütunları (sorgular hazırlanmadan önce): benzersiz ad anahtarı, avatar, passkey ve telefon
-for (const [k, t] of [['ad_anahtar', 'TEXT'], ['avatar', 'TEXT'], ['webauthn_kimlik', 'TEXT'], ['telefon_sifreli', 'TEXT'], ['telefon_ozet', 'TEXT'], ['telefon_dogrulandi_at', 'TEXT']]) {
+// tekrar_hesap: silinmiş bir hesabın e-postası/telefonuyla açılan hesap (başlangıç hibeleri verilmez);
+// ikiadim_hata/ikiadim_kilit: oturumdan bağımsız hatalı 2FA sayacı ve süreli kilit
+for (const [k, t] of [['ad_anahtar', 'TEXT'], ['avatar', 'TEXT'], ['webauthn_kimlik', 'TEXT'], ['telefon_sifreli', 'TEXT'], ['telefon_ozet', 'TEXT'], ['telefon_dogrulandi_at', 'TEXT'],
+  ['tekrar_hesap', 'INTEGER'], ['ikiadim_hata', 'INTEGER'], ['ikiadim_kilit', 'INTEGER']]) {
   if (!db.prepare(`PRAGMA table_info(users)`).all().some((c) => c.name === k)) db.exec(`ALTER TABLE users ADD COLUMN ${k} ${t}`);
+}
+// Silinen hesapların e-posta (küçük harf) ve telefon özetleri (tuzlu sha256; düz veri saklanmaz): aynı kimlikle yeniden
+// kayıt olan oyuncu normal oynar ama hoş geldin hibesi, başlangıç tarlası hediyesi ve sihirbaz ödülleri tekrar verilmez
+db.exec(`CREATE TABLE IF NOT EXISTS silinen_kimlikler (ozet TEXT PRIMARY KEY, created_at INTEGER NOT NULL)`);
+const SILINEN_TUZ = () => process.env.SILINEN_KIMLIK_TUZU || 'st-silinen-kimlik-v1';
+const silinenOzeti = (tur, deger) => ozet(`${SILINEN_TUZ()}:${tur}:${String(deger).trim().toLowerCase()}`);
+// telefonOzet: users.telefon_ozet (normalize numaranın özeti)
+function silinenKimlikKaydet({ email, telefonOzet } = {}) {
+  const ekle = db.prepare(`INSERT OR IGNORE INTO silinen_kimlikler (ozet, created_at) VALUES (?, ?)`);
+  if (email) ekle.run(silinenOzeti('EPOSTA', email), Date.now());
+  if (telefonOzet) ekle.run(silinenOzeti('TELEFON', telefonOzet), Date.now());
+}
+function silinenKimlikMi({ email, telefonOzet } = {}) {
+  const bul = (o) => !!db.prepare(`SELECT 1 FROM silinen_kimlikler WHERE ozet = ?`).get(o);
+  return (!!email && bul(silinenOzeti('EPOSTA', email))) || (!!telefonOzet && bul(silinenOzeti('TELEFON', telefonOzet)));
+}
+const tekrarHesapMi = (userId) => !!db.prepare(`SELECT tekrar_hesap FROM users WHERE id = ?`).get(userId)?.tekrar_hesap;
+function tekrarIsaretle(userId) {
+  if (db.prepare(`UPDATE users SET tekrar_hesap = 1 WHERE id = ? AND COALESCE(tekrar_hesap, 0) = 0`).run(userId).changes) {
+    L.denetim({ aktor: userId, eylem: 'REPEAT_IDENTITY', herkese: false });
+  }
 }
 const q = {
   oturumBul: db.prepare(`
@@ -78,7 +103,10 @@ function oturumSatiri(req) {
 function cereztenKullanici(cerezBasligi = '') {
   const m = /(?:^|;\s*)st_oturum=([^;]+)/.exec(cerezBasligi);
   if (!m) return null;
-  const s = oturumSatiri({ cookies: { [CEREZ]: decodeURIComponent(m[1]) } });
+  // Bozuk yüzde kodlaması (ör. "%") URIError fırlatır; Express dışında yakalanmayan istisna süreci kapatırdı
+  let token;
+  try { token = decodeURIComponent(m[1]); } catch { return null; }
+  const s = oturumSatiri({ cookies: { [CEREZ]: token } });
   return s && s.ikinci_adim && !s.silindi_at && s.status === 'ACTIVE' ? { id: s.id, display_name: s.display_name } : null;
 }
 
@@ -178,14 +206,15 @@ function hesapOlustur({ email, hash = null, ad, dy, avatar = null, pazarlamaOnay
   return db.transaction(() => {
     if (db.prepare('SELECT 1 FROM users WHERE email = ?').get(email)) throw new OyunHatasi(409, 'Bu e-posta ile kayıtlı hesap var; giriş yap', 'EPOSTA_KAYITLI');
     if (db.prepare(`SELECT 1 FROM users WHERE ad_anahtar = ?`).get(adAnahtari(ad))) throw new OyunHatasi(409, 'Bu oyuncu adı alınmış', 'AD_ALINMIS');
-    const id = db.prepare(`INSERT INTO users (email, password_hash, display_name, ad_anahtar, avatar, dogum_yili, ayarlar, email_dogrulandi_at)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ${dogrulandi || otomatikDogrula() ? "datetime('now')" : 'NULL'})`)
-      .run(email, hash, ad, adAnahtari(ad), avatar, dy, JSON.stringify(ayarlar)).lastInsertRowid;
+    const tekrar = silinenKimlikMi({ email });
+    const id = db.prepare(`INSERT INTO users (email, password_hash, display_name, ad_anahtar, avatar, dogum_yili, ayarlar, tekrar_hesap, email_dogrulandi_at)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ${dogrulandi || otomatikDogrula() ? "datetime('now')" : 'NULL'})`)
+      .run(email, hash, ad, adAnahtari(ad), avatar, dy, JSON.stringify(ayarlar), tekrar ? 1 : 0).lastInsertRowid;
     q.onayEkle.run(id, 'KOSULLAR', YASAL.KOSULLAR.surum, 1);
     q.onayEkle.run(id, 'KVKK', YASAL.KVKK.surum, 1);
     q.onayEkle.run(id, 'PAZARLAMA', YASAL.PAZARLAMA.surum, pazarlamaOnay === true ? 1 : 0);
-    L.odul(id, HESAP.baslangicBakiye, 'Hoş geldin hibesi');
-    L.denetim({ aktor: id, eylem: 'USER_REGISTERED', herkese: false, sonra: { genc, yol } });
+    if (!tekrar) L.odul(id, HESAP.baslangicBakiye, 'Hoş geldin hibesi');
+    L.denetim({ aktor: id, eylem: 'USER_REGISTERED', herkese: false, sonra: { genc, yol, ...(tekrar ? { tekrar: true } : {}) } });
     return id;
   })();
 }
@@ -226,7 +255,7 @@ function ikinciAdim(req, res) {
   const s = req.ikinciAdimBekleyen;
   if (!s) throw new OyunHatasi(401, 'Önce e-posta ve parolanla giriş yap');
   const u = q.kullanici.get(s.id);
-  if (!kodDogrula(u, req.body?.kod)) {
+  if (!kodDogrulaSinirli(u, req.body?.kod)) {
     const d = db.prepare(`UPDATE sessions SET deneme = deneme + 1 WHERE token_hash = ? RETURNING deneme`).get(s.token_hash).deneme;
     if (d >= HESAP.ikinciAdimDeneme) {
       db.prepare(`DELETE FROM sessions WHERE token_hash = ?`).run(s.token_hash);
@@ -260,6 +289,28 @@ function kodDogrula(u, kod) {
   return true;
 }
 
+// Hesap başına hatalı 2FA sınırı (yarım oturum sayacından bağımsız; yeni girişle sıfırlanmaz): kilitliyken doğru kod da
+// kabul edilmez. Başarılı doğrulama sayacı sıfırlar.
+const IKI_ADIM_HATA_SINIRI = 10, IKI_ADIM_KILIT_MS = 15 * 60_000;
+function kodDogrulaSinirli(u, kod) {
+  const t = Date.now();
+  if (u?.ikiadim_kilit && u.ikiadim_kilit > t) {
+    throw new OyunHatasi(429, `Çok fazla hatalı kod denendi; ${Math.ceil((u.ikiadim_kilit - t) / 60_000)} dakika sonra tekrar dene`, 'IKI_ADIM_BEKLE');
+  }
+  if (kodDogrula(u, kod)) {
+    if (u.ikiadim_hata) db.prepare(`UPDATE users SET ikiadim_hata = 0, ikiadim_kilit = NULL WHERE id = ?`).run(u.id);
+    return true;
+  }
+  if (u?.totp_aktif) {
+    const h = db.prepare(`UPDATE users SET ikiadim_hata = COALESCE(ikiadim_hata, 0) + 1 WHERE id = ? RETURNING ikiadim_hata`).get(u.id).ikiadim_hata;
+    if (h >= IKI_ADIM_HATA_SINIRI) {
+      db.prepare(`UPDATE users SET ikiadim_hata = 0, ikiadim_kilit = ? WHERE id = ?`).run(t + IKI_ADIM_KILIT_MS, u.id);
+      L.denetim({ aktor: u.id, eylem: 'TOTP_LOCKED', herkese: false });
+    }
+  }
+  return false;
+}
+
 // Kritik işlemler (parola değiştirme, 2FA kapatma, hesap silme): parola + (açıksa) 2FA kodu
 // Hassas hesap işlemleri için oturum son 15 dakikada açılmış olmalı (çalınmış eski bir oturum çerezi kalıcı erişime
 // dönüşmesin: passkey ekleme, Google/Apple bağlama, 2FA kurma; parolasız hesapta parolanın yerini tutar)
@@ -275,10 +326,10 @@ function tazeOturumGerekli(req, _res, next) {
 // Parolayla yeniden kimlik. Parolası olmayan (Google, Apple, passkey) hesapta taze oturum yeterlidir.
 function yenidenKimlik(userId, { sifre, kod } = {}, { taze = false } = {}) {
   const u = q.kullanici.get(userId);
-  if (!u.password_hash && taze) { if (u.totp_aktif && !kodDogrula(u, kod)) throw new OyunHatasi(401, 'İki adımlı doğrulama kodu hatalı'); return u; }
+  if (!u.password_hash && taze) { if (u.totp_aktif && !kodDogrulaSinirli(u, kod)) throw new OyunHatasi(401, 'İki adımlı doğrulama kodu hatalı'); return u; }
   if (!u.password_hash) throw new OyunHatasi(403, 'Güvenliğin için çıkış yapıp yeniden giriş yap, sonra tekrar dene', 'YENIDEN_GIRIS');
   if (!metinMi(sifre, 1, 128) || !bcrypt.compareSync(sifre, u.password_hash || DUMMY_HASH)) throw new OyunHatasi(401, 'Parola hatalı');
-  if (u.totp_aktif && !kodDogrula(u, kod)) throw new OyunHatasi(401, 'İki adımlı doğrulama kodu hatalı');
+  if (u.totp_aktif && !kodDogrulaSinirli(u, kod)) throw new OyunHatasi(401, 'İki adımlı doğrulama kodu hatalı');
   return u;
 }
 
@@ -365,7 +416,7 @@ function ikiAdimEtkinlestir(req) {
   const u = q.kullanici.get(req.kullanici.id);
   if (u.totp_aktif) throw new OyunHatasi(409, 'İki adımlı doğrulama zaten açık');
   if (!u.totp_sir) throw new OyunHatasi(400, 'Önce kurulumu başlat');
-  const adim = totp.eslesenAdim(coz(u.totp_sir), String(req.body?.kod || ''));
+  const adim = totp.eslesenAdim(coz(u.totp_sir), metin(req.body?.kod));
   if (adim < 0) throw new OyunHatasi(400, 'Kod hatalı; uygulamadaki güncel kodu gir');
   // 10 tek kullanımlık kurtarma kodu: yalnızca bu yanıtta düz metin gösterilir
   const kodlar = Array.from({ length: 10 }, () => totp.base32Kodla(crypto.randomBytes(5)).slice(0, 8).replace(/(.{4})/, '$1-'));
@@ -426,7 +477,7 @@ function eskiOturumlariTemizle() {
 
 module.exports = {
   CEREZ, kimlik, cereztenKullanici, girisGerekli, dogrulanmisGerekli, rolGerekli, kayit, giris, ikinciAdim, cikis, yenidenKimlik, kodDogrula, tazeOturumMu, tazeOturumGerekli,
-  oturumAc, hesapOlustur, profilDenetle, adUygun, adAnahtari, epostaDenetle, dogrulamaPostasi, TABAN_URL, AVATAR_RE,
+  oturumAc, hesapOlustur, profilDenetle, silinenKimlikKaydet, silinenKimlikMi, tekrarHesapMi, tekrarIsaretle, adUygun, adAnahtari, epostaDenetle, dogrulamaPostasi, TABAN_URL, AVATAR_RE,
   epostaDogrula, dogrulamaYenidenGonder, sifreUnuttum, sifreSifirla, sifreDegistir, ikiAdimKur, ikiAdimEtkinlestir, ikiAdimKapat,
   oturumlar, oturumKapat, digerOturumlariKapat, hesapDurumu, eskiOturumlariTemizle, gencMi, yas,
 };

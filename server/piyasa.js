@@ -2,7 +2,8 @@
 // oyun göstergeleridir, gerçek bir yatırım değerlemesi değildir.
 //  • Arsa değeri = birincil tahsis bedeli × mahalle çarpanı. Çarpan üç sinyalden çıkar: talep (mahallede sahipli
 //    parsel ve son 30 günde edinilenler), gelişme (mahalledeki yapı yatırımının arsa bedeline oranı) ve gerçek satışlar
-//    (son 30 günde işaretsiz satışların fiyatı / satış anındaki tahmini değer; yeterli işlem varsa ağırlığı artar).
+//    (son 30 günde işaretsiz satışların fiyatı / satış anındaki tahmini değer; yalnızca en az 3 farklı satıcı ve
+//    3 farklı alıcı varsa devreye girer: birkaç hesabın kendi arasındaki işlemleri endeksi oynatamaz).
 //  • Endeks = 100 × çarpan (100 = tahsis bedeli seviyesi). Her gün bölge başına bir kare saklanır (deger_endeksi);
 //    ilçe, il ve Türkiye endeksi mahallelerin arsa bedeliyle ağırlıklı ortalamasıdır. İlk kurulumda geçmiş günler
 //    sahiplik, yapı ve satış kayıtlarından yeniden hesaplanır (uydurma veri yok).
@@ -90,12 +91,12 @@ function carpanHesapla(b) {
   const gelisim = b.arsa > 0 ? Math.min(P.gelisimUst, (b.yapi / b.arsa) * P.gelisimKat) : 0;
   const model = 1 + talep + gelisim;
   let carpan = model, islemCarpani = null;
-  if (b.islemler.length) {
+  const farkli = (k) => new Set(b.islemler.map((x) => x[k])).size;
+  if (farkli('seller_id') >= PAZAR.guvenilirlikEsigi && farkli('buyer_id') >= PAZAR.guvenilirlikEsigi) {
     // Satış, o anki değerin kaç katına olduysa arsa çarpanı da o yöne çekilir (medyan: tek uç işlem endeksi oynatamaz)
     const oranlar = b.islemler.map((x) => (x.carpan_ani || 1) * (x.price / x.deger_ani)).sort((a, c) => a - c);
     islemCarpani = oranlar[Math.floor((oranlar.length - 1) / 2)];
-    const w = P.islemAgirlik * Math.min(1, b.islemler.length / PAZAR.guvenilirlikEsigi);
-    carpan = model * (1 - w) + islemCarpani * w;
+    carpan = model * (1 - P.islemAgirlik) + islemCarpani * P.islemAgirlik;
   }
   return { carpan: yuvarla(sinirla(carpan, P.min, P.maks)), talep: yuvarla(talep), gelisim: yuvarla(gelisim),
     islemCarpani: islemCarpani == null ? null : yuvarla(islemCarpani), islemSayisi: b.islemler.length, sahipli: b.sahipli };
@@ -264,14 +265,21 @@ function hazineTeklifi(userId, p, t = Date.now()) {
   const deger = oyun().tahminiDeger(p, yapilar, t, c.carpan);
   const teklif = Math.max(1, Math.floor(deger.toplam * P.hazine.oran));
   const sonuc = { teklif, oran: P.hazine.oran, deger: deger.toplam, carpan: c.carpan, uygun: false, sebep: null, acilis: null };
-  const acilis = sqlMs(o.start_at) + (o.reason === 'BASLANGIC' ? P.hazine.hediyeTutmaMs : P.hazine.minTutmaMs);
+  // Başlangıç hediyesi parsel, kimin elinde olursa olsun hediye edildiği andan 30 gün sonra Hazine'ye satılabilir
+  // (hediyeyi ikinci hesaba devredip oradan Hazine'ye satmak olmasın)
+  const hediye = hazirla(`SELECT MAX(start_at) AS s FROM parcel_ownership WHERE parcel_id = ? AND reason = 'BASLANGIC'`).get(p.id).s;
+  const hediyeAcilis = hediye ? sqlMs(hediye) + P.hazine.hediyeTutmaMs : 0;
+  const acilis = Math.max(sqlMs(o.start_at) + P.hazine.minTutmaMs, hediyeAcilis);
   const gunBasi = sqlZamani(gunSonu(gunAnahtari(t)) - GUN + 1);
   if (p.status !== 'ACTIVE') sonuc.sebep = 'Parsel dondurulmuş';
   else if (hazirla(`SELECT 1 FROM listings WHERE parcel_id = ? AND status = 'ACTIVE'`).get(p.id)) sonuc.sebep = 'Parsel ilanda; önce ilanı kaldır';
   else if (require('./kira').acikKira(p.id)) sonuc.sebep = 'Parsel kirada ya da kira teklifinde';
   else if (hazirla(`SELECT 1 FROM crops WHERE parcel_id = ? AND status = 'GROWING'`).get(p.id)) sonuc.sebep = 'Tarlada ekin var; önce hasat et';
   else if (yapilar.some((s) => s.status === 'BUILDING')) sonuc.sebep = 'İnşaat sürüyor; bitince satabilirsin';
-  else if (t < acilis) { sonuc.sebep = o.reason === 'BASLANGIC' ? 'Hediye arsa 30 gün dolmadan Hazine\'ye satılamaz' : 'Parsel en az 3 gündür senin olmalı'; sonuc.acilis = acilis; }
+  else if (hazirla(`SELECT 1 FROM uretimler WHERE parcel_id = ? AND durum = 'URETIMDE'`).get(p.id)) sonuc.sebep = 'Tesiste süren üretim var; önce süren üretimi topla';
+  else if (hazirla(`SELECT 1 FROM hayvan_bakim b JOIN structures s ON s.id = b.structure_id WHERE s.parcel_id = ? AND b.durum = 'BESLENDI'`).get(p.id)) {
+    sonuc.sebep = 'Hayvanların ürünü hazırlanıyor; önce topla';
+  } else if (t < acilis) { sonuc.sebep = acilis === hediyeAcilis ? 'Başlangıç hediyesi arsa, hediye edildikten 30 gün sonra Hazine\'ye satılabilir' : 'Parsel en az 3 gündür senin olmalı'; sonuc.acilis = acilis; }
   else if (deger.toplam > PAZAR.maxFiyat) sonuc.sebep = 'Değeri pazar üst sınırını aşıyor; pazarda ilanla sat';
   else if (hazirla(`SELECT COUNT(*) AS c FROM audit_events WHERE actor_id = ? AND action = 'TREASURY_PURCHASE' AND created_at >= ?`).get(userId, gunBasi).c >= P.hazine.gunlukSatis) {
     sonuc.sebep = `Hazine'ye günde en çok ${P.hazine.gunlukSatis} parsel satabilirsin`;

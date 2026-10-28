@@ -80,6 +80,11 @@ test('üretim: değirmende buğday una dönüşür; tek parti, süre, enerji; za
   const r2 = (await c(`/api/parsel/${h}/uretim`, { recete: 'UN' })).veri;
   const u = db.prepare(`SELECT * FROM uretimler WHERE id = ?`).get(r2.id);
   assert.equal(u.bitis - u.baslangic, Math.round(RECETELER.UN.sureMs * (1 - MESLEKLER.ZANAATKAR.bonus)));
+  // Parsel el değiştirdiyse (ör. Hazine'ye satış) süren üretimi eski sahip toplayamaz
+  const yeni = await oyuncu('yenisahip');
+  db.prepare(`UPDATE parcels SET owner_user_id = ? WHERE id = ?`).run(yeni.id, h);
+  db.prepare(`UPDATE uretimler SET bitis = ? WHERE id = ?`).run(Date.now() - 1, r2.id);
+  assert.equal((await c(`/api/uretim/${r2.id}/topla`, {})).veri.kod, 'DEVREDILDI');
 });
 
 test('tüccar mesleği borsa ücretini düşürür', async () => {
@@ -133,14 +138,19 @@ test('simge parsel edinilemez; kart toplanır, ödül ve bölge rozeti verilir',
   assert.equal(kart.simge.ad, 'Ani Harabeleri');
   assert.equal(kart.simge.toplandi, false);
   const bakiye0 = (await c('/api/ben')).veri.bakiye;
-  for (const kod of ['ANI', 'ISHAKPASA']) assert.equal((await c(`/api/simge/${kod}/topla`, {})).durum, 200);
+  // Kart yalnızca simgenin parsel kartı açıldıktan sonra toplanır
+  assert.equal((await c('/api/simge/ISHAKPASA/topla', {})).veri.kod, 'GORULMEDI');
+  const gez = (kod) => c(`/api/parsel/${simge.SIMGELER.find((s) => s.kod === kod).parsel}`);
+  for (const kod of ['ANI', 'ISHAKPASA']) { await gez(kod); assert.equal((await c(`/api/simge/${kod}/topla`, {})).durum, 200); }
   assert.equal((await c('/api/simge/ANI/topla', {})).durum, 409);
+  await gez('AKDAMAR');
   const son = (await c('/api/simge/AKDAMAR/topla', {})).veri;
   assert.deepEqual(son.rozetler, ['Doğu Anadolu gezgini']);
   assert.equal((await c('/api/ben')).veri.bakiye, bakiye0 + 30);
   const album = (await c('/api/album')).veri;
   assert.equal(album.toplanan, 3);
   assert.equal(album.bolgeler.find((b) => b.ad === 'Doğu Anadolu').toplanan, 3);
+  for (const kod of ['NEMRUT', 'GOBEKLITEPE', 'ZEUGMA', 'MARDIN']) await gez(kod);
   for (const kod of ['NEMRUT', 'GOBEKLITEPE', 'ZEUGMA']) await c(`/api/simge/${kod}/topla`, {});
   assert.equal((await c('/api/simge/MARDIN/topla', {})).durum, 429, 'günlük sınır');
   assert.equal((await c('/api/simgeler')).veri.features.length, simge.SIMGELER.length);

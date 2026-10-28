@@ -1,7 +1,8 @@
 // Hasat yarışı: oyunun tek haftalık yarışı (haftalar LIG.baslangic'tan 7'şer gün). Oyuncunun işleri (olay yolu) iki
 // yere puan yazar: kooperatifinin takım puanına ve ilinin puanına (memleketi; seçmediyse ilk tarlasının ili). Aynı işten
-// günde en çok HASAT_YARISI.gunlukTavan kayıt sayılır. Hafta bitince bir kez sonuçlanır: ulaşılan takım sandıkları en az
-// minKatki puan veren üyelere akçe olarak dağıtılır, Türkiye'de ilk üç aktif kooperatifin kasasına (KOOP:<id>) bonus girer;
+// günde en çok HASAT_YARISI.gunlukTavan kayıt sayılır. Hafta bitince bir kez sonuçlanır: aktif (en az minAktifUye üyeli)
+// kooperatifin ulaşılan takım sandıkları en az minKatki puan veren üyelere akçe olarak dağıtılır (hafta içinde kooperatif
+// değiştiren oyuncu yalnızca en çok katkı verdiği kooperatiften pay alır), Türkiye'de ilk üç aktif kooperatifin kasasına (KOOP:<id>) bonus girer;
 // il sıralamasında (il puanı = toplam ÷ √oyuncu, kalabalık il kazanmasın) ilk üç ilin yeterli katkı veren oyuncularına
 // ilOdulu verilir. (v0.41'e kadar ayrı bir 28 günlük il ligi vardı; bu yarışa katıldı.) Demo hesaplar puan almaz.
 const db = require('./db');
@@ -86,10 +87,19 @@ const aktifTakimlar = (h) => q.takimlar.all(h).filter((x) => x.uye >= KOOPERATIF
 const sonuclandir = db.transaction((h) => {
   if (h < 0 || db.prepare('SELECT 1 FROM koop_yaris_hafta WHERE hafta = ?').get(h)) return false;
   db.prepare('INSERT INTO koop_yaris_hafta (hafta, sonuclandi_at) VALUES (?, ?)').run(h, Date.now());
-  const sirali = aktifTakimlar(h);
-  const sira = new Map(sirali.map((x, i) => [x.koop_id, i + 1]));
-  for (const tk of q.takimlar.all(h)) {
-    const s = sandikSayisi(tk.puan), no = sira.get(tk.koop_id) ?? null;
+  const takimlar = q.takimlar.all(h);
+  const sira = new Map(takimlar.filter((x) => x.uye >= KOOPERATIF.minAktifUye).map((x, i) => [x.koop_id, i + 1]));
+  // Sandık payı haftada oyuncu başına bir kez: birden çok kooperatifte katkısı varsa en çok katkı verdiğinden
+  const payKoop = new Map();
+  for (const tk of takimlar) {
+    if (!sira.has(tk.koop_id) || !sandikSayisi(tk.puan)) continue;
+    for (const k of q.katkilar.all(h, tk.koop_id)) {
+      const o = payKoop.get(k.user_id);
+      if (k.puan >= Y.minKatki && (!o || k.puan > o.puan)) payKoop.set(k.user_id, { koop: tk.koop_id, puan: k.puan });
+    }
+  }
+  for (const tk of takimlar) {
+    const no = sira.get(tk.koop_id) ?? null, s = no ? sandikSayisi(tk.puan) : 0;
     const bonus = no && no <= Y.kasaBonusu.length ? Y.kasaBonusu[no - 1] : 0;
     db.prepare('INSERT INTO koop_yaris_sonuc (hafta, koop_id, sira, puan, sandik, bonus) VALUES (?, ?, ?, ?, ?, ?)').run(h, tk.koop_id, no, tk.puan, s, bonus);
     const tx = L.yeniTx();
@@ -97,7 +107,7 @@ const sonuclandir = db.transaction((h) => {
     const odul = Y.sandiklar.slice(0, s).reduce((a, x) => a + x.odul, 0);
     for (const k of q.katkilar.all(h, tk.koop_id)) {
       const bildir = (m) => require('./pazar').bildir(k.user_id, m, 'arazilerim');
-      if (odul && k.puan >= Y.minKatki) {
+      if (odul && payKoop.get(k.user_id)?.koop === tk.koop_id) {
         L.odul(k.user_id, odul, `Hasat yarışı: ${s} sandık`, tx);
         bildir(`🏁 Hasat yarışı bitti: ${tk.ad} ${s} sandık açtı${no ? `, Türkiye ${no}.` : ''}. Payın +${odul} akçe`);
       } else if (no && no <= 3) bildir(`🏁 Hasat yarışında ${tk.ad} Türkiye ${no}. oldu!`);

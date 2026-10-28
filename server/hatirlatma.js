@@ -3,7 +3,7 @@
 // sabah toplu gelir. Oyuncu Hesabım → Oyun ayarları'ndan kapatabilir. Bildirim canlı bağlantıya ve web push'a gider.
 // Ayrıca öğretici rehber için yakındaki boş tarla önerisi.
 const db = require('./db');
-const { HATIRLATMA, URUNLER, YAPILAR } = require('./config/rules');
+const { HATIRLATMA, URUNLER, YAPILAR, HAYVANLAR } = require('./config/rules');
 
 db.exec(`CREATE TABLE IF NOT EXISTS hatirlatmalar (
   anahtar TEXT PRIMARY KEY,
@@ -35,7 +35,8 @@ function bakim(t = Date.now()) {
   // Hayvan ürünü hazır
   for (const h of db.prepare(`SELECT b.structure_id, b.user_id, b.hazir_at, s.type, s.parcel_id FROM hayvan_bakim b JOIN structures s ON s.id = b.structure_id
                               WHERE b.durum = 'BESLENDI' AND b.hazir_at <= ? AND b.hazir_at > ?`).all(t, t - 2 * 86400_000)) {
-    ekle(h.user_id, `hayvan:${h.structure_id}:${h.hazir_at}`, `🥚 ${YAPILAR[h.type]?.ad || 'Barınak'}: ürünler toplanmayı bekliyor`, `parsel:${h.parcel_id}`);
+    const urun = URUNLER[HAYVANLAR[h.type]?.urun];
+    ekle(h.user_id, `hayvan:${h.structure_id}:${h.hazir_at}`, `${urun?.ikon || '🧺'} ${YAPILAR[h.type]?.ad || 'Barınak'}: ${urun ? urun.ad.toLocaleLowerCase('tr-TR') : 'ürünler'} toplanmayı bekliyor`, `parsel:${h.parcel_id}`);
   }
   // Sipariş bitmek üzere (teslim edilebilir durumda olmasa da)
   for (const s of db.prepare(`SELECT id, user_id, musteri, son FROM siparisler WHERE durum = 'ACIK' AND son > ? AND son <= ?`).all(t, t + HATIRLATMA.siparisUyariMs)) {

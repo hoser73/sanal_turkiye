@@ -62,10 +62,10 @@ export function parselPazarBolumu(k, { ben, sunucuSimdi, kurallar }) {
 
   const parcalar = [`<h3 class="bolum">🏷️ Satışta</h3><div class="kutu ilan-kutu">`];
   parcalar.push(metrikler(ilan, piyasa, k.gelismislikSkoru, k.mahalle));
-  parcalar.push(`<p class="kucuk">Satıcı <b>${esc(ilan.satici.ad)}</b>${ilan.satici.npc ? ' (demo komşu)' : ''} ·
+  parcalar.push(`<p class="kucuk">Satıcı <b>${esc(ilan.satici.ad)}</b>${ilan.satici.hazine ? ' (oyunun Hazinesi)' : ilan.satici.npc ? ' (demo komşu)' : ''} ·
     Alıcı koşulu: ${esc(ilan.kosul.ad)} · Bitişe <span data-bitis="${ilan.bitis}">${sure(ilan.bitis - sunucuSimdi())}</span></p>`);
   parcalar.push(`<details class="acilir" open><summary>Devir kapsamı</summary>${devirKapsami(ilan.guncelVarliklar)}
-    <p class="kucuk">Parsel; üzerindeki yapılar ve ekinle birlikte devredilir. İşlem masrafı (%${Math.round(ilan.ucretOrani * 100)}) satıcıdan kesilir.</p></details>`);
+    <p class="kucuk">Parsel; üzerindeki yapılar, ekin ve tesislerde süren üretimle birlikte devredilir. İşlem masrafı (%${Math.round(ilan.ucretOrani * 100)}) satıcıdan kesilir.</p></details>`);
 
   if (ilan.satici.ben) {
     parcalar.push(saticiBolumu(ilan));
@@ -86,6 +86,15 @@ function aliciBolumu(ilan, ben) {
   const mevcut = ilan.benimTeklifim;
   const kullanilabilir = ben.bakiye + (mevcut?.tutar || 0);
   const yetmez = ben.bakiye < ilan.fiyat - (mevcut?.tutar || 0);
+  // Hazine pazarlık yapmaz: teklif formu yok, yalnızca ilan fiyatından alınır
+  if (ilan.satici.hazine) {
+    return `<div class="alici-eylem">
+    <button class="dugme altin genis" data-eylem="hemen-al" data-ilan="${ilan.id}" data-fiyat="${ilan.fiyat}" ${yetmez ? 'disabled' : ''}>
+      Hemen al · ${akce(ilan.fiyat)}</button>
+    ${yetmez ? '<p class="sebep">Bakiye yetersiz</p>' : ''}
+    <p class="kucuk">Hazine pazarlık yapmaz; parseli bugünkü tahmini değeri olan ilan fiyatından satar.</p>
+  </div>`;
+  }
   return `<div class="alici-eylem">
     ${mevcut ? `<div class="satir aktif-teklif"><span>🔒 Aktif teklifin <b>${akce(mevcut.tutar)}</b></span>
       <button class="bag" data-eylem="teklif-geri" data-ilan="${ilan.id}">Geri çek</button></div>` : ''}
@@ -126,10 +135,11 @@ function saticiBolumu(ilan) {
 
 function ilanAcFormu(k, piyasa, kurallar) {
   const pz = kurallar.pazar;
+  const indirim = k.pazar?.ucretIndirimi || 0;   // Tüccar mesleği
   return `<h3 class="bolum">Pazar</h3><div class="kutu">
     ${metrikler(null, piyasa, k.gelismislikSkoru, k.mahalle)}
     <details class="acilir"><summary><b>İlana çıkar</b></summary>
-    <form class="ilan-form" style="margin-top:10px">
+    <form class="ilan-form" style="margin-top:10px" data-indirim="${indirim}">
       <label class="alan">İstenen fiyat (₳)
         <input name="fiyat" type="number" inputmode="numeric" min="1" max="${pz.maxFiyat}" required placeholder="ör. 250">
       </label>
@@ -141,7 +151,7 @@ function ilanAcFormu(k, piyasa, kurallar) {
           <select name="kosul">${Object.entries(pz.aliciKosullari).map(([kod, ad]) => `<option value="${kod}">${esc(ad)}</option>`).join('')}</select>
         </label>
       </div>
-      <p class="kucuk" data-net>İşlem masrafı %${Math.round(pz.ucretOrani * 100)} (en az ${akce(pz.minUcret)}) satıştan kesilir.</p>
+      <p class="kucuk" data-net>İşlem masrafı %${Math.round(pz.ucretOrani * 100)} (en az ${akce(pz.minUcret)}) satıştan kesilir${indirim ? `; Tüccar olarak masrafın %${Math.round(indirim * 100)} indirimli` : ''}.</p>
       <button class="dugme birincil genis" type="submit">İlanı yayınla</button>
       <p class="kucuk">İlandayken parselini kullanmaya devam edebilirsin. Satılırsa yapılar ve ekin alıcıya geçer.</p>
     </form></details>
@@ -152,7 +162,8 @@ export function netOnizleme(form, kurallar) {
   const fiyat = Number(form.fiyat.value);
   const el = form.querySelector('[data-net]');
   if (!el || !Number.isInteger(fiyat) || fiyat < 1) return;
-  const ucret = Math.max(kurallar.pazar.minUcret, Math.floor(fiyat * kurallar.pazar.ucretOrani));
+  const indirim = Number(form.dataset.indirim) || 0;   // sunucudaki ucretHesapla ile aynı formül
+  const ucret = Math.max(kurallar.pazar.minUcret, Math.floor(fiyat * kurallar.pazar.ucretOrani * (1 - indirim)));
   el.textContent = `Satılırsa eline geçecek: ${akce(Math.max(0, fiyat - ucret))} (işlem masrafı ${akce(ucret)})`;
 }
 
@@ -203,7 +214,7 @@ export async function pazarPaneli({ ben, alt, filtre, bolgeler, kurallar, envant
   const sekmeler = [['gazete', '📰 Bugün'], ['ihale', '🔨 İhale'], ['endeks', '📈 Endeksler'], ['ilanlar', 'Parsel ilanları'], ['benim', 'Benim pazarım'], ['borsa', 'Ürün borsası'], ['sevkiyat', 'Sevkiyat'], ['kiralik', 'Kiralık tarla'], ['islemler', 'Son işlemler'], ['urun', 'Tüccara sat']];
   const gelen = ben?.pazar?.gelenTeklif || 0;
   const ust = `<h2 class="kart-baslik">Türkiye Pazarı</h2>
-    <div class="segment" role="tablist">${sekmeler.map(([k, ad]) => `<button type="button" data-eylem="pazar-alt" data-alt="${k}" aria-selected="${alt === k}">
+    <div class="segment" role="tablist" aria-label="Pazar bölümleri">${sekmeler.map(([k, ad]) => `<button type="button" role="tab" data-eylem="pazar-alt" data-alt="${k}" aria-selected="${alt === k}">
       ${ad}${k === 'benim' && gelen ? ` <span class="rozet">${gelen}</span>` : ''}</button>`).join('')}</div>`;
   let govde;
   if (alt === 'benim') govde = ben ? await benimPazarim(sunucuSimdi) : '<p class="kucuk">Giriş yaptığında ilanların ve tekliflerin burada görünür.</p>';
@@ -248,8 +259,8 @@ async function endeksPaneli(ben) {
       <li><b>100</b> = taban arsa bedeli seviyesi. Endeks 130 ise arsa taban bedelin 1,3 katı değerinde; boş arsanın tahsis fiyatı da bu endeksle belirlenir.</li>
       <li><b>Talep:</b> mahallede ne kadar çok parsel sahiplenilirse (özellikle son 30 günde) endeks o kadar yükselir.</li>
       <li><b>Gelişme:</b> mahalledeki evler, seralar, villalar arsa değerini de artırır.</li>
-      <li><b>Gerçek satışlar:</b> son 30 günde en az 3 satış olan mahallede endeks satış fiyatlarına çekilir; tek bir uç işlem endeksi oynatamaz, şüpheli işlemler sayılmaz.</li>
-      <li><b>Hazine:</b> 3 gündür sahip olduğun her parseli Hazine değerinin %85'ine hemen satın alır (günde bir parsel). Teklifte senin kendi parsellerin ve yatırımların endekse sayılmaz.</li>
+      <li><b>Gerçek satışlar:</b> son 30 günde en az 3 farklı satıcı ve 3 farklı alıcı arasında satış olan mahallede endeks, satış fiyatlarının ortancasına çekilir. Daha az kişi arasındaki satışlar, değerin yarısının altında ya da iki katının üstündeki fiyatlar ve şüpheli işlemler (parselin 30 gün içinde eski bir sahibine dönmesi, aynı iki hesap arasında tekrarlı işlem) sayılmaz.</li>
+      <li><b>Hazine:</b> en az 3 gündür sahip olduğun parseli tahmini değerinin %85'ine hemen satın alır (günde bir parsel). Başlangıç hediyesi arsa, kimin elinde olursa olsun hediye edildikten 30 gün sonra satılabilir. İlanda, kirada ya da kira teklifinde olan, tarlasında ekin bulunan, inşaatı ya da üretimi süren parsel satılamaz. Teklifte senin kendi parsellerin, yapıların ve işlemlerin endekse sayılmaz.</li>
     </ul></details><p class="kucuk">${esc(o.not)}</p>`);
   return parca.join('');
 }
@@ -258,7 +269,8 @@ async function ilanListesi(filtre, bolgeler, kurallar, sunucuSimdi) {
   const qs = new URLSearchParams(Object.entries(filtre).filter(([, v]) => v));
   const ilanlar = await api(`/api/ilanlar?${qs}`);
   const iller = bolgeler.filter((b) => b.type === 'IL').sort((a, b) => a.name.localeCompare(b.name, 'tr'));
-  const secim = (ad, secenekler, deger) => `<select data-filtre="${ad}" aria-label="${ad}">${secenekler.map(([v, t]) => `<option value="${esc(v)}" ${String(deger || '') === String(v) ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>`;
+  const etiket = { il: 'İl', imar: 'İmar türü', sirala: 'Sırala' };
+  const secim = (ad, secenekler, deger) => `<select data-filtre="${ad}" aria-label="${etiket[ad]}">${secenekler.map(([v, t]) => `<option value="${esc(v)}" ${String(deger || '') === String(v) ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>`;
   const filtreler = `<div class="filtreler">
     ${secim('il', [['', 'Tüm Türkiye'], ...iller.map((m) => [m.id, m.name])], filtre.il)}
     ${secim('imar', [['', 'Tüm imar türleri'], ...Object.entries(kurallar.imar).filter(([, v]) => v.satilik).map(([k, v]) => [k, v.ad])], filtre.imar)}
@@ -270,7 +282,7 @@ async function ilanListesi(filtre, bolgeler, kurallar, sunucuSimdi) {
       <span class="ikon">${IMAR_IKON[i.imar] || '📍'}</span>
       <span class="govde"><b>${esc(i.mahalle)} · ${sayi(i.alan)} m²</b>
         <span class="kucuk">${esc(i.ilce)}, ${esc(i.il)}</span>
-        <span class="kucuk">${esc(kurallar.imar[i.imar].ad)}${i.yapiSayisi ? ` · ${i.yapiSayisi} yapı` : ''} · ${esc(i.satici.ad)}${i.satici.npc ? ' (demo)' : ''}${i.satici.ben ? ' (sen)' : ''}</span>
+        <span class="kucuk">${esc(kurallar.imar[i.imar].ad)}${i.yapiSayisi ? ` · ${i.yapiSayisi} yapı` : ''} · ${esc(i.satici.ad)}${i.satici.hazine ? ' (Hazine)' : i.satici.npc ? ' (demo)' : ''}${i.satici.ben ? ' (sen)' : ''}</span>
         <span class="kucuk">⏳ <span data-bitis="${i.bitis}">${sure(i.bitis - sunucuSimdi())}</span></span></span>
       <span class="sag"><b>${akce(i.fiyat)}</b><span class="kucuk">${akce(i.m2Fiyat)}/m²</span>
         <span class="kucuk">${i.enYuksekTeklif != null ? `en yüksek ${akce(i.enYuksekTeklif)}` : 'teklif yok'}</span></span>

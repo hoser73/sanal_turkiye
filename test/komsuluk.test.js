@@ -58,6 +58,8 @@ test('tarla yardımı: sulama sayılır, günde bir kez, kendi tarlana olmaz; sa
 test('hediye: seviye 3 ister; arkadaşa günde bir; alıcı açar; arkadaş olmayana gönderilemez', async () => {
   assert.equal((await A.c('/api/hediye/gonder', { kullaniciId: B.id })).durum, 403, 'seviye 1 gönderemez');
   db.prepare(`UPDATE users SET tp = 130 WHERE id = ?`).run(A.id);   // seviye 3
+  assert.equal((await A.c('/api/hediye/gonder', { kullaniciId: B.id })).veri.kod, 'YENI_ARKADAS', 'en az 24 saatlik arkadaşa gider');
+  db.prepare(`UPDATE arkadasliklar SET kabul_at = kabul_at - ? WHERE isteyen = ? AND hedef = ?`).run(86400_000, A.id, B.id);
   assert.equal((await A.c('/api/hediye/gonder', { kullaniciId: B.id })).durum, 200);
   assert.equal((await A.c('/api/hediye/gonder', { kullaniciId: B.id })).durum, 409);
   const C = await kayit('cem');
@@ -235,7 +237,7 @@ test('güvenlik: balık günlük atış hakkı (su seçmeden atılan da sayılı
 test('NPC pazarı: ortak limit dolsa da her oyuncunun günlük kişisel tabanı kadar alım yapılır', async () => {
   const { NPC_PAZAR } = require('../server/config/rules');
   const F = await kayit('fatma');
-  const bugun = new Date().toISOString().slice(0, 10);   // oyun.js günü (UTC)
+  const bugun = require('../server/oyun').bugun();   // oyun.js günü (Türkiye saati)
   db.prepare(`INSERT INTO npc_demand (day, item_id, sold) VALUES (?, 'BUGDAY', ?) ON CONFLICT(day, item_id) DO UPDATE SET sold = excluded.sold`).run(bugun, NPC_PAZAR.gunlukTalep);
   L.envanterDegis(F.id, 'BUGDAY', 60, 'test');
   const r = await F.c('/api/pazar/sat', { urun: 'BUGDAY', miktar: 60 });
@@ -255,4 +257,33 @@ test('hediye: günlük açma sınırı açılış gününe göre sayılır (biri
   let acilan = 0;
   for (const id of ids) if ((await G.c(`/api/hediye/${id}/al`, {})).durum === 200) acilan++;
   assert.equal(acilan, KOMSULUK.hediyeGunlukAlim);
+});
+
+test('arkadaş sınırı iki tarafta da; silinmiş arkadaşa hediye ve ürün gitmez', async () => {
+  const H = await kayit('hakan'), I = await kayit('irem');
+  // H dolu: kendi isteğini kabul edemez, I de ona istek gönderemez
+  const yeni = db.prepare(`INSERT INTO users (display_name) VALUES (?)`);
+  const dolgu = Array.from({ length: KOMSULUK.maxArkadas }, (_, i) => Number(yeni.run(`dolgu${i}`).lastInsertRowid));
+  const ekle = db.prepare(`INSERT INTO arkadasliklar (isteyen, hedef, durum, at, kabul_at) VALUES (?, ?, 'KABUL', ?, ?)`);
+  for (const id of dolgu) ekle.run(H.id, id, Date.now(), Date.now());
+  assert.equal((await I.c('/api/arkadas/istek', { kullaniciId: H.id })).veri.kod, 'ARKADAS_SINIRI', 'hedefin sınırı');
+  db.prepare(`INSERT INTO arkadasliklar (isteyen, hedef, at) VALUES (?, ?, ?)`).run(I.id, H.id, Date.now());
+  assert.equal((await H.c(`/api/arkadas/${I.id}/kabul`, {})).veri.kod, 'ARKADAS_SINIRI', 'kabul edenin sınırı');
+  db.prepare(`UPDATE arkadasliklar SET isteyen = ?, hedef = ? WHERE isteyen = ? AND hedef = ?`).run(H.id, I.id, I.id, H.id);
+  assert.equal((await I.c(`/api/arkadas/${H.id}/kabul`, {})).veri.kod, 'ARKADAS_SINIRI', 'isteyenin sınırı');
+  // Silinmiş hesap: arkadaşlık satırı kalsa da hediye ve ürün gitmez, sınırı doldurmaz
+  db.prepare(`DELETE FROM arkadasliklar WHERE isteyen = ? AND hedef = ?`).run(H.id, I.id);
+  db.prepare(`UPDATE users SET tp = 130 WHERE id = ?`).run(I.id);
+  ekle.run(I.id, H.id, Date.now() - 2 * 86400_000, Date.now() - 2 * 86400_000);
+  db.prepare(`UPDATE users SET status = 'DELETED' WHERE id = ?`).run(H.id);
+  assert.equal((await I.c('/api/hediye/gonder', { kullaniciId: H.id })).durum, 403);
+  L.envanterDegis(I.id, 'ELMA', 5, 'test');
+  assert.equal((await I.c('/api/urun/gonder', { kullaniciId: H.id, urun: 'ELMA', adet: 5 })).durum, 403);
+  assert.equal((await I.c('/api/komsuluk')).veri.arkadaslar.length, 0);
+});
+
+test('etkinlik ödülü: görev sayı olmalı (null 0. görev sayılmaz)', async () => {
+  const E = require('../server/etkinlik');
+  if (!E.durum(B.id).aktif) return;
+  for (const gorev of [null, '0', true]) assert.equal((await B.c('/api/etkinlik/odul', { gorev })).durum, 400, JSON.stringify(gorev));
 });

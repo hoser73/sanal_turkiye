@@ -112,7 +112,7 @@ const basla = db.transaction((userId) => {
   const t = Date.now(), n = seviyesi(userId);
   q.birak.run(t, userId);
   const id = Number(q.ekle.run(userId, n, t).lastInsertRowid);
-  return { oyunId: id, bolum: bolum(n), odul: odulYazisi(n) };
+  return { oyunId: id, bolum: bolum(n), odul: odulYazisi(n), enKisa: { tabanMs: B.minSureMs, hamleMs: B.hamleMs } };
 });
 
 const bitir = db.transaction((userId, govde = {}) => {
@@ -121,7 +121,7 @@ const bitir = db.transaction((userId, govde = {}) => {
   if (!o) throw new OyunHatasi(404, 'Oyun bulunamadı');
   if (o.durum !== 'OYNUYOR') throw new OyunHatasi(409, 'Bu oyun zaten bitti', 'BITTI');
   const b = bolum(o.seviye), gecen = t - o.basla_at;
-  if (!govde.kazandi) {
+  if (govde.kazandi !== true) {
     q.bitir.run('KAYBETTI', t, null, null, o.id);
     return { kazandi: false, seviye: o.seviye };
   }

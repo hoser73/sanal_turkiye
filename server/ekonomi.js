@@ -72,6 +72,7 @@ function eslestir(a, s, m, p, t) {
   L.aktar({ kaynak: L.hesap(s.user_id), hedef: 'SYS:SINK', tutar: ucret, sebep: 'Borsa işlem ücreti', tx });
   const fark = kurus((a.fiyat - p) * m);   // alıcı limitinin altında doldu: farkı iade
   if (fark > 0) L.aktar({ kaynak: emanet(a.id), hedef: L.hesap(a.user_id), tutar: fark, sebep: 'Borsa fiyat farkı iadesi', tx });
+  envanterBozulmasi(a.user_id);   // alıcının birikmiş bozulması önce işlenir: bugün alınan ürün geçmiş günlerden bozulmaz
   L.envanterDegis(a.user_id, a.urun, m, `Borsa alışı #${a.id}`, tx);
   q.islemEkle.run(a.urun, a.id, s.id, a.user_id, s.user_id, p, m, ucret, t);
   L.denetim({ aktor: null, eylem: 'COMMODITY_TRADE', varlik: a.urun, sonra: { fiyat: p, miktar: m }, herkese: true });
@@ -118,27 +119,39 @@ const emirVer = db.transaction((userId, govde = {}) => {
   return { tamam: true, id, dolan: miktar - emir.kalan, kalan: emir.kalan, islemler: doldu };
 });
 
+// Kapanan emrin kalanını iade eder. Satış emrindeki ürün emirde beklerken de depodaki gibi bozulur (açık kaldığı oyun günleri).
 function emirKapat(e, durum, t) {
-  if (db.prepare(`UPDATE urun_emirleri SET durum = ?, closed_at = ? WHERE id = ? AND durum = 'ACIK'`).run(durum, t, e.id).changes !== 1) return false;
+  if (db.prepare(`UPDATE urun_emirleri SET durum = ?, closed_at = ? WHERE id = ? AND durum = 'ACIK'`).run(durum, t, e.id).changes !== 1) return null;
+  const sonuc = { iade: e.kalan, bozulan: 0 };
   if (e.kalan > 0) {
     if (e.yon === 'AL') {
       const kalanTutar = L.hesapBakiye(emanet(e.id));
       if (kalanTutar > 0) L.aktar({ kaynak: emanet(e.id), hedef: L.hesap(e.user_id), tutar: kalanTutar, sebep: `Borsa alış emri #${e.id} iadesi` });
-    } else L.envanterDegis(e.user_id, e.urun, e.kalan, `Borsa satış emri #${e.id} iadesi`);
+      sonuc.iade = kalanTutar;
+    } else {
+      const { oranlar } = envanterBozulmasi(e.user_id);   // depodakiler önce işlenir; iade edilen ürün ikinci kez bozulmaz
+      const gun = Math.min(BOZULMA.maxGun, Math.floor(t / BOZULMA.gunMs) - Math.floor(e.created_at / BOZULMA.gunMs));
+      const oran = oranlar[e.urun];
+      sonuc.bozulan = gun > 0 && oran ? Math.floor(e.kalan * (1 - (1 - oran) ** gun)) : 0;
+      sonuc.iade = e.kalan - sonuc.bozulan;
+      if (sonuc.iade > 0) L.envanterDegis(e.user_id, e.urun, sonuc.iade, `Borsa satış emri #${e.id} iadesi${sonuc.bozulan ? ` (${sonuc.bozulan} bozuldu)` : ''}`);
+    }
   }
-  return true;
+  return sonuc;
 }
+const iadeMetni = (e, s) => (e.yon === 'AL' ? `kalan ₳${s.iade} iade edildi`
+  : `kalan ${s.iade} ${URUNLER[e.urun].ad} iade edildi${s.bozulan ? ` (${s.bozulan} adedi emirde beklerken bozuldu)` : ''}`);
 const emirIptal = db.transaction((userId, emirId) => {
   const e = q.emir.get(Number(emirId));
   if (!e || e.user_id !== userId) throw new OyunHatasi(404, 'Emir bulunamadı');
   if (e.durum !== 'ACIK') throw new OyunHatasi(409, 'Emir zaten kapalı');
-  emirKapat(e, 'IPTAL', simdi());
-  return { tamam: true };
+  const s = emirKapat(e, 'IPTAL', simdi());
+  return { tamam: true, ...s, mesaj: `Emir iptal edildi; ${iadeMetni(e, s)}.` };
 });
 function borsaBakim() {
   const t = simdi();
   for (const e of db.prepare(`SELECT * FROM urun_emirleri WHERE durum = 'ACIK' AND expires_at <= ? LIMIT 200`).all(t)) {
-    db.transaction(() => { if (emirKapat(e, 'SURESI_DOLDU', t)) bildir(e.user_id, `Borsa emrinin süresi doldu; kalan ${e.kalan} ${URUNLER[e.urun].ad} iade edildi.`, 'pazar:borsa'); })();
+    db.transaction(() => { const s = emirKapat(e, 'SURESI_DOLDU', t); if (s) bildir(e.user_id, `Borsa emrinin süresi doldu; ${iadeMetni(e, s)}.`, 'pazar:borsa'); })();
   }
 }
 
@@ -154,7 +167,7 @@ let borsaOnbellek = { t: 0, v: null };
 function borsaUrunleri(t) {
   if (process.env.ONBELLEK !== 'kapali' && borsaOnbellek.v && t - borsaOnbellek.t < 5000) return borsaOnbellek.v;
   const oyun = require('./oyun');
-  const satilanSorgu = db.prepare(`SELECT sold FROM npc_demand WHERE day = ? AND item_id = ?`), gun = new Date().toISOString().slice(0, 10);
+  const satilanSorgu = db.prepare(`SELECT sold FROM npc_demand WHERE day = ? AND item_id = ?`), gun = oyun.bugun(t);   // Türkiye günü (tüccar talebiyle aynı anahtar)
   const v = Object.entries(URUNLER).map(([kod, u]) => ({ kod, ad: u.ad, ikon: u.ikon, taban: u.tabanFiyat, bant: fiyatBandi(kod),
     npcFiyat: kurus(oyun.birimFiyat(kod, satilanSorgu.get(gun, kod)?.sold || 0)), ...defter(kod, t) }));
   borsaOnbellek = { t, v };

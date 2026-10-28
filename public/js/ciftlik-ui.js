@@ -9,7 +9,8 @@ export function hayvanSatiri(y, { ben, yem = 0, asi = 0, simdi }) {
   const durum = h.durum === 'HAZIR' ? `<b class="yesil-metin">${h.urunIkon} ${h.miktar} ${esc(h.urunAd)} hazır</b>`
     : h.durum === 'BESLENDI' ? `⏳ ${esc(h.urunAd)} hazırlanıyor · <span data-bitis="${h.hazir}">${sure(h.hazir - simdi())}</span>`
       : `${h.ikon} ${h.sayi} ${esc(h.hayvan.toLocaleLowerCase('tr-TR'))} aç · ${h.yem} yem ister`;
-  const dugme = !ben ? '' : h.durum === 'HAZIR'
+  // Bakımsız barınakta sunucu toplama ve yemlemeyi reddeder: düğme yerine bakım uyarısı
+  const dugme = !ben ? '' : y.etkisiz ? '<span class="kucuk kirmizi-metin">önce bakım yap</span>' : h.durum === 'HAZIR'
     ? `<button class="dugme altin ince" data-eylem="hayvan-topla" data-id="${y.id}" data-ikon="${h.urunIkon}">${h.urunIkon} Topla</button>`
     : h.durum === 'AC' ? `<button class="dugme ince" data-eylem="hayvan-besle" data-id="${y.id}" title="${yem >= h.yem ? 'Envanterdeki yem kullanılır' : 'Eksik yem satın alınır'}">🌽 Yemle${yem < h.yem ? ` (${akce((h.yem - Math.min(yem, h.yem)) * 1.2)})` : ''}</button>` : '';
   // Zirai bayiden aşı: 7 gün her toplamada +1 ürün

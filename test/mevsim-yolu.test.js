@@ -47,6 +47,7 @@ test('puan: eylemlerden; günlük tavan; ödül bir kez alınır; akçe, eşya v
   assert.equal(d.ulasilan, 10);
   assert.equal(d.alinabilir, 10);
   assert.equal((await A('/api/yol/al', { kademe: 11 })).durum, 409, 'ulaşılmamış kademe alınamaz');
+  for (const kademe of [true, [1], '1']) assert.equal((await A('/api/yol/al', { kademe })).durum, 400, JSON.stringify(kademe));
   const once = L.bakiye(id);
   const r = await A('/api/yol/al', { kademe: 1 });
   assert.equal(r.durum, 200);

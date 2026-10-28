@@ -8,6 +8,7 @@
 // tamamlanınca hesap e-posta kaydıyla aynı yoldan oluşturulur (auth.hesapOlustur).
 const crypto = require('crypto');
 const db = require('./db');
+const { metin } = require('./lib/girdi');
 const L = require('./lib/ledger');
 const auth = require('./auth');
 const sms = require('./sms');
@@ -375,7 +376,7 @@ function telefonDogrula(req) {
   const userId = req.kullanici.id, t = simdi();
   const r = db.prepare(`SELECT * FROM telefon_kodlari WHERE user_id = ? AND expires_at > ? ORDER BY created_at DESC LIMIT 1`).get(userId, t);
   if (!r) throw new OyunHatasi(400, 'Kodun süresi doldu; yeni kod iste');
-  const kod = String(req.body?.kod ?? '').replace(/\s/g, '');
+  const kod = metin(req.body?.kod).replace(/\s/g, '');
   const dogru = /^\d{6}$/.test(kod) && crypto.timingSafeEqual(Buffer.from(ozet(`${r.tuz}:${kod}`)), Buffer.from(r.kod_ozet));
   if (!dogru) {
     const d = db.prepare(`UPDATE telefon_kodlari SET deneme = deneme + 1 WHERE id = ? RETURNING deneme`).get(r.id).deneme;
@@ -386,6 +387,8 @@ function telefonDogrula(req) {
     db.transaction(() => {
       db.prepare(`UPDATE users SET telefon_sifreli = ?, telefon_ozet = ?, telefon_dogrulandi_at = datetime('now') WHERE id = ?`).run(r.telefon_sifreli, r.telefon_ozet, userId);
       db.prepare(`DELETE FROM telefon_kodlari WHERE user_id = ?`).run(userId);
+      // Silinmiş bir hesabın numarası: bundan sonraki başlangıç hediyeleri ve sihirbaz ödülleri verilmez
+      if (auth.silinenKimlikMi({ telefonOzet: r.telefon_ozet })) auth.tekrarIsaretle(userId);
     })();
   } catch (e) {
     if (/UNIQUE/.test(e.message)) throw new OyunHatasi(409, 'Bu numara başka bir hesapta kayıtlı');
@@ -425,7 +428,7 @@ function hesapSilindi(userId) {
 function rotalar(app, { h }) {
   const hAsync = (fn) => async (req, res, next) => { try { await fn(req, res); } catch (e) { next(e); } };
   app.get('/api/giris/yollar', h(() => acikYollar()));
-  app.get('/api/oyuncu-adi/uygun', h((req) => auth.adUygun(String(req.query.ad ?? ''))));
+  app.get('/api/oyuncu-adi/uygun', h((req) => auth.adUygun(metin(req.query.ad))));
   app.get('/api/kayit/taslak', h((req) => taslakBilgisi(req)));
   app.post('/api/kayit/tamamla', (req, res, next) => { try { kayitTamamla(req, res); } catch (e) { next(e); } });
   app.get('/api/oauth/:saglayici/basla', (req, res, next) => { try { oauthBasla(req, res); } catch (e) { next(e); } });

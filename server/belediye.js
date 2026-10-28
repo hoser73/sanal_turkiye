@@ -8,7 +8,7 @@
 // Çıkar çatışması (§3.4, Senaryo C): hedef mahallede parseli olan üye oy kullanamaz; başkanın çıkarı varsa ya da proje
 //         büyükse nitelikli çoğunluk (2/3) gerekir.
 const db = require('./db');
-const { BELEDIYE, SECIM } = require('./config/rules');
+const { BELEDIYE, SECIM, REFERANDUM } = require('./config/rules');
 const L = require('./lib/ledger');
 const secim = require('./secim');
 const { OyunHatasi } = L;
@@ -19,6 +19,7 @@ const emanet = (projeId) => `PROJE:${projeId}`;
 const bul = (tablo, kod) => (typeof kod === 'string' && Object.hasOwn(tablo, kod) ? tablo[kod] : null);
 const bildir = (userId, metin, link) => require('./pazar').bildir(userId, metin, link);
 const OYLAR = ['EVET', 'HAYIR', 'CEKIMSER'];
+const NITELIKLI_MIN_UYE = 2;   // nitelikli çoğunluk kararı tek kişiyle alınamaz
 
 const q = {
   ilce: db.prepare(`SELECT r.*, rl.name AS il, rl.id AS il_id FROM regions r JOIN regions rl ON rl.id = r.parent_id WHERE r.id = ? AND r.type = 'ILCE'`),
@@ -137,6 +138,12 @@ const projeTeklif = db.transaction((userId, ilceId, govde) => {
   const sebepler = [];
   if (cikarliMi(userId, hedef.id)) sebepler.push('başkanın hedef mahallede parseli var');
   if (tur.maliyet >= BELEDIYE.buyukProjeEsigi) sebepler.push('büyük proje');
+  if (sebepler.length) {
+    const uygun = uyeler(ilce.id).filter((u) => !cikarliMi(u.user_id, hedef.id)).length;
+    if (uygun < NITELIKLI_MIN_UYE) {
+      throw new OyunHatasi(409, `Bu proje nitelikli çoğunluk (2/3) gerektiriyor (${sebepler.join(', ')}). Bunun için hedef mahallede parseli olmayan en az ${NITELIKLI_MIN_UYE} meclis üyesi gerekir; şu an ${uygun}.`, 'NITELIKLI_UYE_YOK');
+    }
+  }
   const t = simdi();
   const id = db.prepare(`INSERT INTO projeler (region_id, hedef_region_id, tur, maliyet, gerekce, talep_id, teklif_eden_id, durum, nitelikli, nitelikli_sebep, oylama_bitis, created_at)
                          VALUES (?, ?, ?, ?, ?, ?, ?, 'MECLISTE', ?, ?, ?, ?)`)
@@ -183,6 +190,7 @@ function kararVer(p, t) {
   const baskanOyu = baskan && oylar.find((o) => o.user_id === baskan.user_id)?.oy;
   let kabul = false, sebep;
   if (!uygun.length) sebep = 'Karar yeter sayısı yok: tüm üyelerin hedef mahallede çıkarı var';
+  else if (p.nitelikli && uygun.length < NITELIKLI_MIN_UYE) sebep = `Nitelikli çoğunluk için oy kullanabilecek en az ${NITELIKLI_MIN_UYE} üye gerekir (${uygun.length})`;
   else if (oylar.length < yeter) sebep = `Toplantı yeter sayısı sağlanamadı (${oylar.length}/${yeter})`;
   else if (p.nitelikli) {
     kabul = evet > 0 && evet >= Math.ceil(BELEDIYE.nitelikliOran * (evet + hayir));
@@ -209,6 +217,12 @@ function kararVer(p, t) {
   } else {
     const u = db.prepare(`UPDATE projeler SET durum = 'REDDEDILDI', karar_json = ? WHERE id = ? AND durum = 'MECLISTE'`).run(JSON.stringify(karar), p.id);
     if (u.changes !== 1) return;
+    // Reddedilen teklifin muhtar talebi yeniden açılır (aynı hizmet için başka açık talep yoksa)
+    const tl = p.talep_id && db.prepare(`SELECT * FROM talepler WHERE id = ? AND durum = 'TEKLIFE_DONUSTU'`).get(p.talep_id);
+    if (tl && !db.prepare(`SELECT 1 FROM talepler WHERE mahalle_id = ? AND tur = ? AND durum = 'ACIK'`).get(tl.mahalle_id, tl.tur)) {
+      db.prepare(`UPDATE talepler SET durum = 'ACIK', proje_id = NULL WHERE id = ?`).run(tl.id);
+      bildir(tl.user_id, `Meclis ${tur.ad} teklifini reddetti; talebin yeniden açıldı`, `belediye:${p.region_id}`);
+    } else if (tl) db.prepare(`UPDATE talepler SET durum = 'KAPANDI' WHERE id = ?`).run(tl.id);
     L.denetim({ anahtar: `PROJECT_REJECTED:${p.id}`, eylem: 'PROJECT_REJECTED', varlik: `PROJE:${p.id}`, bolge: p.hedef_region_id, herkese: true,
       sonra: { tur: p.tur, ad: tur.ad, sebep } });
   }
@@ -313,6 +327,7 @@ function belediyeBilgisi(ilceId, userId) {
     yeniSecim: !aktifSecim && !baskan && sakin.length < tur.minSecmen
       ? `Belediye seçimi için ilçede en az ${tur.minSecmen} oyuncu sakin gerekir (şu an ${sakin.length}). O zamana dek geçici yönetim sürer.` : null,
     dilekceler: require('./moderasyon').dilekceler(ilce.id, userId),
+    dilekceKurallari: require('./moderasyon').dilekceKurallari,
     referandumlar: require('./referandum').ilceReferandumlari(ilce.id, userId),
     kasa: kasaRaporu(ilce.id),
     projeler: projeListesi(ilce.id, userId),
@@ -323,7 +338,8 @@ function belediyeBilgisi(ilceId, userId) {
     mahalleler,
     pano,
     projeTurleri: Object.fromEntries(Object.entries(BELEDIYE.projeler).map(([k, v]) => [k, { ...v }])),
-    kurallar: { meclisOylamaMs: BELEDIYE.meclisOylamaMs, buyukProjeEsigi: BELEDIYE.buyukProjeEsigi, gelir: BELEDIYE.gelir },
+    kurallar: { meclisOylamaMs: BELEDIYE.meclisOylamaMs, buyukProjeEsigi: BELEDIYE.buyukProjeEsigi, gelir: BELEDIYE.gelir, nitelikliMinUye: NITELIKLI_MIN_UYE,
+      referandum: { sureMs: REFERANDUM.sureMs, imzaOrani: REFERANDUM.imzaOrani, nisapOrani: REFERANDUM.nisapOrani } },
   };
 }
 

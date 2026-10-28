@@ -60,15 +60,23 @@ const gun = (t = Date.now()) => new Date(t + 3 * 3600_000).toISOString().slice(0
 // Hediyenin açıldığı gün (günlük açma sınırı gönderim gününe değil açılış gününe göre sayılır)
 if (!db.prepare(`PRAGMA table_info(hediyeler)`).all().some((k) => k.name === 'alindi_gun')) db.exec(`ALTER TABLE hediyeler ADD COLUMN alindi_gun TEXT`);
 const DEMO_HEDIYE_GUNLUK = 3;   // demo sakin komşulardan günde en çok bu kadar hediye gelir
+const HEDIYE_ARKADASLIK_MS = KOMSULUK.hediyeArkadaslikMs;
 const kullanici = (id) => db.prepare(`SELECT id, display_name AS ad, is_npc AS npc, status FROM users WHERE id = ?`).get(id);
 const bildir = (...a) => require('./pazar').bildir(...a);
 function iliski(a, b) {
   return db.prepare(`SELECT * FROM arkadasliklar WHERE (isteyen = ? AND hedef = ?) OR (isteyen = ? AND hedef = ?)`).get(a, b, b, a) || null;
 }
-const arkadasMi = (a, b) => iliski(a, b)?.durum === 'KABUL';
+// Silinmiş hesapla arkadaşlık sayılmaz (satırı kalır ama hediye, ürün ve yardım gitmez; arkadaş sınırını da doldurmaz)
+const silinmis = (id) => kullanici(id)?.status === 'DELETED';
+const arkadasMi = (a, b) => iliski(a, b)?.durum === 'KABUL' && !silinmis(a) && !silinmis(b);
 function arkadasIdleri(userId) {
-  return db.prepare(`SELECT CASE WHEN isteyen = ? THEN hedef ELSE isteyen END AS id FROM arkadasliklar
-                     WHERE (isteyen = ? OR hedef = ?) AND durum = 'KABUL'`).all(userId, userId, userId).map((r) => r.id);
+  return db.prepare(`SELECT x.id FROM (SELECT CASE WHEN isteyen = ? THEN hedef ELSE isteyen END AS id FROM arkadasliklar
+                     WHERE (isteyen = ? OR hedef = ?) AND durum = 'KABUL') x JOIN users u ON u.id = x.id
+                     WHERE u.status IS NOT 'DELETED'`).all(userId, userId, userId).map((r) => r.id);
+}
+function arkadasSiniri(userId, ben) {
+  if (arkadasIdleri(userId).length < KOMSULUK.maxArkadas) return;
+  throw new OyunHatasi(409, ben ? `En çok ${KOMSULUK.maxArkadas} arkadaşın olabilir` : `${kullanici(userId).ad} arkadaş sınırına (${KOMSULUK.maxArkadas}) ulaşmış`, 'ARKADAS_SINIRI');
 }
 
 // ---------- Arkadaşlık
@@ -81,10 +89,11 @@ const istekGonder = db.transaction((userId, { parselId, kullaniciId } = {}) => {
   if (k.id === require('./piyasa').hazineId(false)) throw new OyunHatasi(409, 'Hazine ile komşu olunmaz');
   const var_ = iliski(userId, k.id);
   if (var_?.durum === 'KABUL') throw new OyunHatasi(409, 'Zaten arkadaşsınız');
-  if (arkadasIdleri(userId).length >= KOMSULUK.maxArkadas) throw new OyunHatasi(409, `En çok ${KOMSULUK.maxArkadas} arkadaş`);
+  arkadasSiniri(userId, true);
   // Karşı taraf zaten istek göndermişse kabul sayılır
   if (var_ && var_.isteyen === k.id) return istekKabul(userId, k.id);
   if (var_) throw new OyunHatasi(409, 'İsteğin zaten bekliyor');
+  if (!k.npc) arkadasSiniri(k.id);
   const t = Date.now();
   if (db.prepare(`SELECT COUNT(*) c FROM arkadas_istek_gecmisi WHERE isteyen = ? AND at > ?`).get(userId, t - 86400_000).c >= KOMSULUK.istekGunluk) {
     throw new OyunHatasi(429, `Günde en çok ${KOMSULUK.istekGunluk} komşuluk isteği gönderebilirsin`);
@@ -104,6 +113,8 @@ const istekGonder = db.transaction((userId, { parselId, kullaniciId } = {}) => {
 function istekKabul(userId, digerId) {
   const r = db.prepare(`SELECT * FROM arkadasliklar WHERE isteyen = ? AND hedef = ? AND durum = 'ISTEK'`).get(Number(digerId), userId);
   if (!r) throw new OyunHatasi(404, 'Bekleyen istek yok');
+  arkadasSiniri(userId, true);
+  arkadasSiniri(r.isteyen);
   db.prepare(`UPDATE arkadasliklar SET durum = 'KABUL', kabul_at = ? WHERE isteyen = ? AND hedef = ?`).run(Date.now(), r.isteyen, userId);
   bildir(r.isteyen, `🤝 ${kullanici(userId).ad} komşuluk isteğini kabul etti`, 'komsuluk');
   return { tamam: true, kabul: true, ad: kullanici(r.isteyen).ad };
@@ -162,6 +173,8 @@ const hediyeGonder = db.transaction((userId, aliciId) => {
   const a = Number(aliciId);
   if (!arkadasMi(userId, a)) throw new OyunHatasi(403, 'Yalnızca arkadaşlarına hediye gönderebilirsin');
   gondericiSeviyesi(userId, 'Hediye göndermek');
+  const r = iliski(userId, a), yas = Date.now() - (r.kabul_at ?? r.at);
+  if (yas < HEDIYE_ARKADASLIK_MS) throw new OyunHatasi(409, `Yeni komşuna ${Math.ceil((HEDIYE_ARKADASLIK_MS - yas) / 3600_000)} saat sonra hediye gönderebilirsin`, 'YENI_ARKADAS');
   const g = gun();
   if (db.prepare(`SELECT 1 FROM hediyeler WHERE gonderen = ? AND alici = ? AND gun = ?`).get(userId, a, g)) throw new OyunHatasi(409, 'Bu arkadaşına bugün hediye gönderdin');
   db.prepare(`INSERT INTO hediyeler (gonderen, alici, gun, icerik, at) VALUES (?, ?, ?, ?, ?)`).run(userId, a, g, JSON.stringify(hediyeSec()), Date.now());
@@ -264,4 +277,4 @@ function rotalar(app, { h, auth }) {
   app.post('/api/urun/gonder', auth.dogrulanmisGerekli, h((req) => urunGonder(req.kullanici.id, req.body || {})));
 }
 
-module.exports = { rotalar, ozet, istekGonder, yardimEt, hediyeGonder, hediyeAl, urunGonder, parselIliskisi, arkadasMi };
+module.exports = { rotalar, ozet, istekGonder, yardimEt, hediyeGonder, hediyeAl, urunGonder, parselIliskisi, arkadasMi, gondericiSeviyesi };

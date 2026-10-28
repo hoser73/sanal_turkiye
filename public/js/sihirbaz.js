@@ -167,7 +167,7 @@ export function sihirbazKur({ durum, tost, ses, benYenile, haritaYenile, ciftlig
             <b class="shz-adano">Ada ${a.adaParsel?.ada ?? '–'} · Parsel ${a.adaParsel?.parsel ?? '–'}</b>
             <span>${esc(a.mahalle)}, ${esc(a.ilce)}</span>
             <small>🌾 Tarım arazisi · ${donum(a.alan)}</small>
-            ${a.hediye ? `<em>🎁 Hediye · değeri ${akce(a.hediye)}</em>` : ''}
+            ${a.hediye ? `<em>🎁 Hediye · değeri ${akce(a.hediye)}</em>` : a.bedel ? `<em>Tahsis bedeli ${akce(a.bedel)}</em>` : ''}
           </div><i class="shz-tik" aria-hidden="true">✓</i></button>`).join('')}</div>
       <div class="shz-alt"><button type="button" class="shz-b ana" data-shz="al" disabled>Bu arsa benim olsun</button></div>`;
   }
@@ -294,7 +294,7 @@ export function sihirbazKur({ durum, tost, ses, benYenile, haritaYenile, ciftlig
     for (const a of d.adimlar) if (a.tamam && !a.alindi && a.kod !== 'GUNLUK') await odul(a.kod, { sessiz: true });
     const yapilan = new Set(d.adimlar.filter((a) => a.tamam).map((a) => a.kod));
     if (!yapilan.has('ARSA')) return;
-    tur = { adim: 0, ekinTip: kart().ekin?.tip || 'BUGDAY', yapiBas: (kart().yapilar || []).length, odullenen: new Set(), kilit: null, zaman: 0 };
+    tur = { adim: 0, ekinTip: kart().ekin?.tip || 'BUGDAY', yapiBas: (kart().yapilar || []).length, odullenen: new Set(), kilit: null, zaman: 0, yapilan };
     // Kalınan yer: ilk yapılmamış adım (bekleme adımı ekim/hasat arasındadır)
     const sira = TUR.findIndex((a) => (a.kod === 'BEKLE' ? yapilan.has('EKIM') && !yapilan.has('HASAT') && kart().ekin && sunucuSimdi() < kart().ekin.hazir : !yapilan.has(a.kod)));
     tur.adim = sira < 0 ? TUR.length - 1 : sira;
@@ -355,6 +355,8 @@ export function sihirbazKur({ durum, tost, ses, benYenile, haritaYenile, ciftlig
   function ileri() {
     if (!tur) return;
     tur.adim += 1;
+    // Önceden yapılmış adımlar atlanır (ör. satış başarısız olunca sıradaki adım zaten kurulmuş bir yapıysa takılmasın)
+    while (tur.adim < TUR.length - 1 && tur.yapilan.has(TUR[tur.adim].kod)) tur.adim += 1;
     if (tur.adim >= TUR.length) { turBitir(true); return; }
     if (TUR[tur.adim].kod === 'YAPI') tur.yapiBas = (kart().yapilar || []).length;
     turKare();
@@ -378,7 +380,12 @@ export function sihirbazKur({ durum, tost, ses, benYenile, haritaYenile, ciftlig
     if (a.kod === 'EKIM' && kart().ekin) tur.ekinTip = kart().ekin.tip;
     if (a.bitti()) {
       if (a.kod === 'BEKLE') benYenile({ sessiz: true }).then(() => durum.ciftlikIci?.yenile());   // hasat düğmesi görünsün
-      if (a.kod === 'GUNLUK') { odul('GUNLUK', { sessiz: true }).then(() => turBitir(true)); clearInterval(tur.zaman); return; }
+      if (a.kod === 'GUNLUK') {
+        clearInterval(tur.zaman);
+        // Son adım ödülü alınamasa da (ör. tüccara satış yapılamadı) sihirbaz sunucuda kapanır; yoksa her girişte yeniden açılırdı
+        odul('GUNLUK', { sessiz: true }).then(async (r) => { if (!r?.bitti) await api('/api/sihirbaz/bitir', {}).catch(() => {}); turBitir(true); });
+        return;
+      }
       if (a.kod !== 'BEKLE') odul(a.kod);
       ses?.('tik');
       ileri();

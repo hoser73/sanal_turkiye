@@ -172,6 +172,55 @@ test('demo komşu (NPC): düşük teklifi reddeder, %90 ve üstünü kabul eder'
   assert.equal(sahip(npcIlan.parcel_id), kullaniciId('deniz@test.local'));
 });
 
+async function yeniOyuncular(adlar) {
+  const liste = [];
+  for (const ad of adlar) {
+    const c = istemci();
+    assert.equal((await c('/api/kayit', { email: `${ad.toLowerCase()}@test.local`, sifre: 'parola123', dogumYili: 1990, kosullarOnay: true, kvkkOnay: true, ad })).durum, 201);
+    c.id = kullaniciId(`${ad.toLowerCase()}@test.local`);
+    liste.push(c);
+  }
+  return liste;
+}
+
+test('A→B→C→A döngüsü işaretlenir; süren üretim yapıyla birlikte alıcıya geçer', async () => {
+  const [E, F, G] = await yeniOyuncular(['Ece', 'Fuat', 'Gul']);
+  const p = bosTarla();
+  assert.equal((await E(`/api/parsel/${p}/edin`, {})).durum, 200);
+  assert.equal((await E(`/api/parsel/${p}/insaat`, { tip: 'TEL_CIT' })).durum, 200);
+  const yapi = db.prepare('SELECT id FROM structures WHERE parcel_id = ?').get(p).id;
+  db.prepare(`INSERT INTO uretimler (user_id, parcel_id, structure_id, recete, parti, cikti, baslangic, bitis) VALUES (?, ?, ?, 'UN', 1, 1, ?, ?)`)
+    .run(E.id, p, yapi, Date.now(), Date.now() + 1e7);
+  const sat = async (satici, alici) => {
+    const i = (await satici(`/api/parsel/${p}/ilan`, { fiyat: 100, gun: 1 })).veri.ilanId;
+    const r = await alici(`/api/ilan/${i}/hemen-al`, {});
+    assert.equal(r.durum, 200, JSON.stringify(r.veri));
+    return r.veri.isaretler;
+  };
+  assert.ok(!(await sat(E, F)).includes('GERI_DONUS'));
+  assert.equal(db.prepare(`SELECT user_id FROM uretimler WHERE parcel_id = ? AND durum = 'URETIMDE'`).get(p).user_id, F.id);
+  assert.ok(!(await sat(F, G)).includes('GERI_DONUS'));
+  assert.ok((await sat(G, E)).includes('GERI_DONUS'), 'parsel 30 gün içinde eski sahibine döndü');
+});
+
+test('Hazine ilanı: teklif kabul edilmez, tutar kilitlenmez; satıcı Hazine olarak işaretli (demo komşu değil)', async () => {
+  const [H, I] = await yeniOyuncular(['Hilal', 'Irmak']);
+  const p = bosTarla();
+  assert.equal((await H(`/api/parsel/${p}/edin`, {})).durum, 200);
+  db.prepare(`UPDATE parcel_ownership SET start_at = datetime(start_at, '-4 days') WHERE parcel_id = ? AND end_at IS NULL`).run(p);
+  assert.equal((await H(`/api/parsel/${p}/hazineye-sat`, {})).durum, 200);
+  const kart = (await I(`/api/parsel/${p}`)).veri.pazar.ilan;
+  assert.equal(kart.satici.hazine, true);
+  assert.equal(kart.satici.npc, false);
+  const once = await bakiye(I);
+  const r = await I(`/api/ilan/${kart.id}/teklif`, { tutar: Math.max(1, Math.ceil(kart.fiyat * 0.95) - 1) });
+  assert.equal(r.durum, 409);
+  assert.match(r.veri.hata, /Hazine pazarlık yapmaz/);
+  assert.equal(await bakiye(I), once, 'tutar emanete alınmadı');
+  assert.equal(db.prepare(`SELECT COUNT(*) c FROM bids WHERE listing_id = ?`).get(kart.id).c, 0);
+  assert.equal((await I('/api/ilanlar?sirala=yeni')).veri.find((x) => x.id === kart.id).satici.hazine, true);
+});
+
 test('defter: işlem grupları dengeli, emanetler teklif durumlarıyla tutarlı', () => {
   assert.equal(db.prepare(`SELECT COUNT(*) c FROM (SELECT tx_group FROM wallet_ledger GROUP BY tx_group HAVING ABS(SUM(debit) - SUM(credit)) > 0.001)`).get().c, 0);
   assert.equal(db.prepare(`SELECT COUNT(*) c FROM (SELECT user_id FROM wallet_ledger WHERE user_id IS NOT NULL GROUP BY user_id HAVING SUM(credit) - SUM(debit) < 0)`).get().c, 0);

@@ -61,7 +61,7 @@ kolonEkle('users', 'gunluk_seri', 'INTEGER NOT NULL DEFAULT 0');
 kolonEkle('users', 'siparis_sonraki', 'INTEGER');
 
 // ---------- Seviye ve TP
-// Seviye n için toplam TP = katsayı × n × (n − 1)  ⇒  n = ⌊(1 + √(1 + 4·TP/katsayı)) / 2⌋
+// Seviye n için gereken toplam TP = katsayı × n × (n − 1) × max(1, n / dikleşme); seviye bu eşiklere göre sayılarak bulunur
 const seviyeEsigi = (n) => Math.round(SEVIYE.katsayi * n * (n - 1) * Math.max(1, n / SEVIYE.dikles));
 function seviyeHesap(tp) {
   let n = 1;
@@ -347,7 +347,7 @@ function ozet(userId) {
 module.exports = {
   seviyeHesap, seviyeEsigi, oyuncuSeviyesi, seviyeBilgisi, seviyeOdulAl, seviyeKontrol, tpEkle,
   gunlukDurum, gunlukAl,
-  hayvanDurumu, besle, topla, parselHayvanHazir,
+  hayvanDurumu, seviyeliMiktar, besle, topla, parselHayvanHazir,
   siparisler, siparisOzeti, siparisTeslim, siparisReddet,
   parselSusleri, susKodu, susEkle, susKaldir, susSecenekleri,
   ozet,

@@ -1,11 +1,16 @@
-// Görevden alma (geri çağırma) dilekçesi: sakinler imza toplar; eşik aşılınca makam boşalır ve ara seçim açılır.
+// Görevden alma (geri çağırma) dilekçesi: sakinler imza toplar; eşik aşılınca makam boşalır. Muhtarlık ve başkanlık için yeni
+// seçim açılır (başkanlıkta yalnızca başkanlık için ara seçim; meclis görevde kalır); boşalan meclis koltuğu dönem sonuna dek boş kalır.
 import { esc, sure } from './yardimci.js';
 
 const MAKAM_AD = { MUHTAR: 'Muhtar', BASKAN: 'Belediye başkanı', MECLIS: 'Meclis üyesi' };
+const yuzde = (x) => `%${Math.round(x * 100)}`;
+const sureMetni = (ms) => (ms >= 864e5 && ms % 864e5 === 0 ? `${ms / 864e5} gün` : sure(ms));
+const SONRASI = { MUHTAR: 'yeni muhtarlık seçimi açılır', BASKAN: 'başkanlık için ara seçim açılır, meclis görevde kalır', MECLIS: 'koltuk dönem sonuna dek boş kalır' };
 const DURUM_AD = { ACIK: 'imza topluyor', BASARILI: 'eşik aşıldı · makam boşaldı', BASARISIZ: 'eşik aşılamadı', DUSTU: 'düştü' };
 
 // hedefler: [{ makam, ad, userId }] — görevdeki ve başlatılabilecek makamlar
-export function dilekceBolumu({ dilekceler = [], bolgeId, hedefler = [], sakin, girisli, sunucuSimdi }) {
+export function dilekceBolumu({ dilekceler = [], bolgeId, hedefler = [], sakin, girisli, sunucuSimdi, kurallar }) {
+  const k = kurallar || { imzaOrani: 0.4, minImza: 2, sureMs: 5 * 864e5, korumaOrani: 0.2, minHesapYasiMs: 864e5 };
   if (!dilekceler.length && !(girisli && sakin && hedefler.length)) return '';
   const p = ['<h3 class="bolum">Görevden alma dilekçeleri</h3>'];
   for (const d of dilekceler) {
@@ -28,7 +33,7 @@ export function dilekceBolumu({ dilekceler = [], bolgeId, hedefler = [], sakin, 
         <label>Kimin için<select name="hedef">${baslatilabilir.map((h) => `<option value="${h.makam}:${h.userId}">${esc(MAKAM_AD[h.makam])} · ${esc(h.ad)}</option>`).join('')}</select></label>
         <label>Gerekçe (en az 20 karakter, herkese açık)<textarea name="gerekce" rows="3" minlength="20" maxlength="600" required placeholder="Somut olarak neyin yapılmadığını yaz: vaatler, kasa, duyurular…"></textarea></label>
         <button class="dugme ince">Başlat ve ilk imzayı at</button>
-        <p class="kucuk">Bölgedeki sakinlerin %40'ı (en az 2) 5 gün içinde imzalarsa makam boşalır, ara seçim takvimi açılır. Görevin ilk %20'sinde başlatılamaz. İmzalar gizlidir; yalnızca sayı görünür.</p>
+        <p class="kucuk">İmza eşiği, dilekçe açılırken kütüğe giren sakinlerin ${yuzde(k.imzaOrani)} kadarı (en az ${k.minImza}); kütüğe bölgede parseli olan ve hesabı en az ${esc(sureMetni(k.minHesapYasiMs))} önce açılmış sakinler girer. Eşik ${esc(sureMetni(k.sureMs))} içinde aşılırsa makam boşalır: ${[...new Set(baslatilabilir.map((h) => h.makam))].map((m) => SONRASI[m]).join('; ')}. Görev süresinin ilk ${yuzde(k.korumaOrani)} kadarında başlatılamaz. İmzalar gizlidir; yalnızca sayı görünür.</p>
       </form></details>`);
   }
   return p.join('');

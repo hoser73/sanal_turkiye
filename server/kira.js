@@ -12,13 +12,25 @@ const adi = (id) => db.prepare(`SELECT display_name FROM users WHERE id = ?`).ge
 
 const aktifKira = (parcelId, t = simdi()) => db.prepare(`SELECT * FROM kiralar WHERE parcel_id = ? AND durum = 'AKTIF' AND bitis > ?`).get(parcelId, t) || null;
 const acikKira = (parcelId) => db.prepare(`SELECT * FROM kiralar WHERE parcel_id = ? AND durum IN ('TEKLIF', 'AKTIF')`).get(parcelId) || null;
+const ekinVar = (parcelId) => !!db.prepare(`SELECT 1 FROM crops WHERE parcel_id = ? AND status = 'GROWING'`).get(parcelId);
 
-// Tarımsal kullanım hakkı: kirada ise yalnızca kiracı, değilse sahip
+// Kira bitti ama son kiracının ektiği ekin hâlâ tarlada (parsel el değiştirmedi): o ekin üzerinde hakkı sürer
+function eskiKiracininEkini(p, userId) {
+  const son = db.prepare(`SELECT sahip_id, kiraci_id FROM kiralar WHERE parcel_id = ? AND kiraci_id IS NOT NULL ORDER BY id DESC LIMIT 1`).get(p.id);
+  if (!son || son.kiraci_id !== userId || son.sahip_id !== p.owner_user_id) return false;
+  return !!db.prepare(`SELECT 1 FROM crops WHERE parcel_id = ? AND status = 'GROWING' AND user_id = ?`).get(p.id, userId);
+}
+
+// Tarımsal kullanım hakkı: kirada ise yalnızca kiracı, değilse sahip. Kira bitince eski kiracı yalnızca kendi
+// ektiği ve hâlâ tarlada duran ekini sulayıp hasat edebilir (yeni ekin ekemez: tarla dolu).
 function kullanimHakki(p, userId) {
   if (p.status !== 'ACTIVE') throw new OyunHatasi(423, 'Parsel geçici olarak dondurulmuş');
   const k = aktifKira(p.id);
   if (k) { if (k.kiraci_id !== userId) throw new OyunHatasi(403, k.sahip_id === userId ? 'Parselin kirada; tarımsal kullanım hakkı kiracıda' : 'Bu parselin kullanım hakkı sende değil'); return 'KIRACI'; }
-  if (p.owner_user_id !== userId) throw new OyunHatasi(403, 'Bu parselin kullanım hakkı sizde değil');
+  if (p.owner_user_id !== userId) {
+    if (eskiKiracininEkini(p, userId)) return 'ESKI_KIRACI';
+    throw new OyunHatasi(403, 'Bu parselin kullanım hakkı sizde değil');
+  }
   return 'SAHIP';
 }
 
@@ -29,6 +41,7 @@ const kiraTeklifi = db.transaction((userId, parcelId, govde = {}) => {
   if (p.zoning_type !== 'TARIM') throw new OyunHatasi(422, 'Yalnızca tarım parselleri kiraya verilebilir');
   if (acikKira(p.id)) throw new OyunHatasi(409, 'Bu parsel için açık bir kira kaydı var');
   if (db.prepare(`SELECT 1 FROM listings WHERE parcel_id = ? AND status = 'ACTIVE'`).get(p.id)) throw new OyunHatasi(409, 'Satış ilanındaki parsel kiraya verilemez');
+  if (ekinVar(p.id)) throw new OyunHatasi(409, 'Tarlada ekin var; hasat etmeden kiraya veremezsin', 'EKIN_VAR');
   const gunluk = Number(govde.gunluk), gun = Number(govde.gun);
   if (!Number.isInteger(gunluk) || gunluk < KIRA.minGunluk || gunluk > KIRA.maxGunluk) throw new OyunHatasi(400, `Günlük bedel ${KIRA.minGunluk}–${KIRA.maxGunluk}`);
   if (!Number.isInteger(gun) || gun < 1 || gun > KIRA.maxGun) throw new OyunHatasi(400, `Süre 1–${KIRA.maxGun} gün`);
@@ -42,6 +55,11 @@ const kirala = db.transaction((userId, kiraId) => {
   if (!k || k.durum !== 'TEKLIF') throw new OyunHatasi(404, 'Kira teklifi bulunamadı');
   if (k.sahip_id === userId) throw new OyunHatasi(400, 'Kendi parselini kiralayamazsın');
   if (simdi() > k.created_at + KIRA.teklifSuresiMs) throw new OyunHatasi(409, 'Teklifin süresi dolmuş');
+  // Bedel alınmadan önce: parsel kullanılabilir mi (dondurulmuş, el değiştirmiş ya da sahibi bu arada ekmiş olabilir)
+  const p = db.prepare(`SELECT owner_user_id, region_id, status FROM parcels WHERE id = ?`).get(k.parcel_id);
+  if (p.status !== 'ACTIVE') throw new OyunHatasi(423, 'Parsel geçici olarak dondurulmuş; şu an kiralanamaz');
+  if (p.owner_user_id !== k.sahip_id) throw new OyunHatasi(409, 'Parsel el değiştirmiş; bu teklif artık geçerli değil');
+  if (ekinVar(k.parcel_id)) throw new OyunHatasi(409, 'Tarlada şu an ekin var; sahibi hasat edince kiralayabilirsin', 'EKIN_VAR');
   const toplam = k.gunluk * k.gun;
   const ucret = Math.max(1, Math.floor(toplam * KIRA.ucretOrani));
   const t = simdi();
@@ -50,7 +68,6 @@ const kirala = db.transaction((userId, kiraId) => {
   const tx = L.yeniTx();
   L.aktar({ kaynak: L.hesap(userId), hedef: L.hesap(k.sahip_id), tutar: toplam, sebep: `Kira bedeli ${k.parcel_id} (${k.gun} gün)`, tx });
   L.aktar({ kaynak: L.hesap(k.sahip_id), hedef: 'SYS:SINK', tutar: ucret, sebep: 'Kira işlem ücreti', tx });
-  const p = db.prepare(`SELECT region_id FROM parcels WHERE id = ?`).get(k.parcel_id);
   L.denetim({ aktor: userId, eylem: 'LEASE_STARTED', varlik: k.parcel_id, sonra: { gun: k.gun, toplam }, bolge: p.region_id, herkese: true });
   bildir(k.sahip_id, `${adi(userId)} ${k.parcel_id} parselini ${k.gun} günlüğüne kiraladı: ₳${toplam} (ücret ₳${ucret}).`, `parsel:${k.parcel_id}`);
   return { tamam: true, toplam, bitis: t + k.gun * BOZULMA.gunMs };
@@ -65,7 +82,9 @@ function kiraBakim() {
   const t = simdi();
   for (const k of db.prepare(`SELECT * FROM kiralar WHERE durum = 'AKTIF' AND bitis <= ?`).all(t)) {
     if (db.prepare(`UPDATE kiralar SET durum = 'BITTI' WHERE id = ? AND durum = 'AKTIF'`).run(k.id).changes) {
-      for (const u of [k.sahip_id, k.kiraci_id]) bildir(u, `${k.parcel_id} parselinin kira süresi doldu; kullanım hakkı sahibine döndü.`, `parsel:${k.parcel_id}`);
+      const ekin = db.prepare(`SELECT 1 FROM crops WHERE parcel_id = ? AND status = 'GROWING' AND user_id = ?`).get(k.parcel_id, k.kiraci_id);
+      bildir(k.sahip_id, `${k.parcel_id} parselinin kira süresi doldu; kullanım hakkı sana döndü.${ekin ? ' Kiracının ektiği ekin hasat edilene kadar onundur.' : ''}`, `parsel:${k.parcel_id}`);
+      bildir(k.kiraci_id, `${k.parcel_id} parselinin kira süresi doldu.${ekin ? ' Ektiğin ekini yine sulayıp hasat edebilirsin.' : ''}`, `parsel:${k.parcel_id}`);
     }
   }
   db.prepare(`UPDATE kiralar SET durum = 'IPTAL' WHERE durum = 'TEKLIF' AND created_at < ?`).run(t - KIRA.teklifSuresiMs);
@@ -77,7 +96,7 @@ const ortakDavet = db.transaction((userId, parcelId, govde = {}) => {
   const oyun = require('./oyun');
   const p = oyun.parselGetir(parcelId);
   oyun.sahibiOlmali(p, userId);
-  const ortak = db.prepare(`SELECT id FROM users WHERE display_name = ? AND is_npc = 0 AND status = 'ACTIVE'`).get(String(govde.ortakAd || '').trim());
+  const ortak = db.prepare(`SELECT id FROM users WHERE display_name = ? AND is_npc = 0 AND status = 'ACTIVE'`).get(typeof govde.ortakAd === 'string' ? govde.ortakAd.trim() : '');
   if (!ortak) throw new OyunHatasi(404, 'Bu adla oyuncu bulunamadı');
   if (ortak.id === userId) throw new OyunHatasi(400, 'Kendinle ortak olamazsın');
   const pay = Math.round(Number(govde.pay) * 100) / 100;
@@ -116,6 +135,7 @@ function hasatPaylastir(p, ekenId, miktar, urun, tx) {
   for (const o of aktifOrtaklar(p.id)) {
     const adet = Math.floor(miktar * o.pay);
     if (adet < 1) continue;
+    require('./ekonomi').envanterBozulmasi(o.ortak_id);   // birikmiş bozulma önce: yeni gelen pay geçmiş günlerden bozulmaz
     L.envanterDegis(o.ortak_id, urun, adet, `Ortaklık hasat payı ${p.id}`, tx);
     kalan -= adet;
     paylar.push({ ortak: adi(o.ortak_id), adet });

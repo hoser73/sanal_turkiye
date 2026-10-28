@@ -12,9 +12,19 @@ const parseldenSimge = new Map(hucreli.map((s) => [s.parsel, s]));
 const koddanSimge = new Map(hucreli.map((s) => [s.kod, s]));
 const BOLGELER = [...new Set(SIMGELER.map((s) => s.bolge))];
 
+// Kart yalnızca haritada simgeye gidilip parsel kartı açıldıysa toplanır: son açılış (kullanıcı:kod → zaman) bellekte
+// tutulur; sunucu yeniden başlarsa kaybolur, oyuncu kartı yeniden açar.
+const GORME_SURESI = 15 * 60_000;
+const gorulen = new Map();
+function goruldu(userId, kod, t = Date.now()) {
+  if (gorulen.size > 50_000) for (const [k, v] of gorulen) if (t - v > GORME_SURESI) gorulen.delete(k);
+  gorulen.set(`${userId}:${kod}`, t);
+}
 const toplandiMi = (userId, kod) => !!userId && !!db.prepare(`SELECT 1 FROM koleksiyon WHERE user_id = ? AND simge = ?`).get(userId, kod);
-function parselSimgesi(parcelId, userId = null) {
+// gorme: parsel kartı açılışı (oyun.parselKarti) — kartı toplama hakkı 15 dakika sürer
+function parselSimgesi(parcelId, userId = null, { gorme = false } = {}) {
   const s = parseldenSimge.get(parcelId);
+  if (s && userId && gorme) goruldu(userId, s.kod);
   return s ? { kod: s.kod, ad: s.ad, ikon: s.ikon, not: s.not, bolge: s.bolge, toplandi: toplandiMi(userId, s.kod) } : null;
 }
 
@@ -22,6 +32,7 @@ const topla = db.transaction((userId, kod) => {
   const s = koddanSimge.get(String(kod));
   if (!s) throw new OyunHatasi(404, 'Simge bulunamadı');
   if (toplandiMi(userId, s.kod)) throw new OyunHatasi(409, 'Bu kart zaten albümünde');
+  if (!(Date.now() - (gorulen.get(`${userId}:${s.kod}`) ?? -Infinity) <= GORME_SURESI)) throw new OyunHatasi(409, 'Kartı toplamak için önce haritada simgeye git', 'GORULMEDI');
   const bugun = db.prepare(`SELECT COUNT(*) c FROM koleksiyon WHERE user_id = ? AND created_at > ?`).get(userId, Date.now() - 24 * 3600e3).c;
   if (bugun >= GUNLUK) throw new OyunHatasi(429, `Günde en fazla ${GUNLUK} kart toplanabilir; yolculuğa yarın devam et`);
   db.prepare(`INSERT INTO koleksiyon (user_id, simge, created_at) VALUES (?, ?, ?)`).run(userId, s.kod, Date.now());

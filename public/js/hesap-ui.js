@@ -112,7 +112,7 @@ function guvenlik(h) {
     : h.ikiAdim ? `
       <p><span class="cip yesil">✓ açık</span> Girişte parolanın yanında uygulamadaki kod da istenir. Kalan kurtarma kodu: <b>${h.kurtarmaKalan}</b></p>
       <details><summary>İki adımlı doğrulamayı kapat</summary>
-        <form class="form" data-form="2fa-kapat"><label>Parola<input name="sifre" type="password" autocomplete="current-password" required></label>
+        <form class="form" data-form="2fa-kapat">${parolaAlani(h)}
         <label>Kod ya da kurtarma kodu<input name="kod" autocomplete="one-time-code" required></label>
         <button class="dugme">Kapat</button></form></details>`
     : `<p>Hesabını parolan çalınsa bile korur. ${h.rol !== 'OYUNCU' ? '<b>Yetkili hesaplarda zorunludur.</b>' : 'Değerli arazilerin varsa önerilir.'}</p>
@@ -126,14 +126,20 @@ function guvenlik(h) {
       ${oturumlar.length > 1 ? '<button type="button" class="dugme ince" data-h="digerleri">Diğer tüm oturumları kapat</button>' : ''}
     </section>
     <section><h3>Parola</h3>
-      <details><summary>Parolayı değiştir</summary>
+      ${h.parolaVar ? `<details><summary>Parolayı değiştir</summary>
         <form class="form" data-form="sifre"><label>Mevcut parola<input name="sifre" type="password" autocomplete="current-password" required></label>
         <label>Yeni parola (en az 8 karakter)<input name="yeni" type="password" autocomplete="new-password" minlength="8" required></label>
         ${h.ikiAdim ? '<label>İki adımlı doğrulama kodu<input name="kod" autocomplete="one-time-code" required></label>' : ''}
-        <button class="dugme birincil">Değiştir</button><p class="kucuk">Diğer cihazlardaki oturumların kapatılır.</p></form></details>
+        <button class="dugme birincil">Değiştir</button><p class="kucuk">Diğer cihazlardaki oturumların kapatılır.</p></form></details>`
+      : `<p>Henüz parolan yok; Google, Apple ya da passkey ile giriyorsun. İstersen e-postana gelecek bağlantıyla parola belirleyebilirsin.</p>
+        ${h.email ? '<button type="button" class="dugme ince" data-h="parola-belirle">Parola belirle</button>' : ''}`}
     </section>
     ${h.dogrulandi ? '' : '<section><h3>E-posta doğrulama</h3><p>Gelen kutunu kontrol et. Bağlantı 48 saat geçerlidir.</p><button type="button" class="dugme" data-h="dogrula-yeniden">Bağlantıyı yeniden gönder</button></section>'}`;
 }
+
+// Kritik işlem formlarında parola alanı; parolasız hesapta (Google/Apple/passkey) son 15 dakikada açılmış oturum yeterlidir
+const parolaAlani = (h) => (h.parolaVar ? '<label>Parola<input name="sifre" type="password" autocomplete="current-password" required></label>'
+  : '<p class="kucuk">Parolan olmadığı için güvenlik amacıyla son 15 dakika içinde giriş yapmış olman gerekir. Olmazsa çıkış yapıp yeniden gir.</p>');
 
 // Giriş yolları: Google / Apple bağlantısı, passkey'ler, telefon doğrulama, parolasız hesapta parola belirleme
 function girisYollariBolumu(h) {
@@ -170,13 +176,13 @@ function gizlilik(h) {
     </section>
     <section><h3>Verilerim</h3>
       <p>KVKK m.11 kapsamında hesabınla ilgili tüm kayıtları (cüzdan, parseller, ilanlar, adaylıklar, onaylar, oturumlar…) makinece okunabilir bir dosya olarak indirebilirsin. Gizli oy ilkesi gereği oy içerikleri kimseyle ilişkilendirilmez ve dosyada yer almaz.</p>
-      <a class="dugme" href="/api/hesap/veri" download>⬇ Verilerimi indir (JSON)</a>
+      <a class="dugme" href="/api/hesap/veri" download>⬇️ Verilerimi indir (JSON)</a>
     </section>
     <section class="tehlike-bolge"><h3>Hesabı sil</h3>
       <p>Kimlik bilgilerin (e-posta, parola, doğum yılı, 2FA) kalıcı olarak silinir; parsellerin devlete döner, açık ilan ve tekliflerin kapanır, makamların boşalır.
       Ekonomi defteri ve denetim kaydı diğer oyuncuların işlem bütünlüğü için “Ayrılan oyuncu” adıyla anonim kalır. <b>Bu işlem geri alınamaz.</b></p>
       <details><summary>Hesabımı silmek istiyorum</summary>
-        <form class="form" data-form="sil"><label>Parola<input name="sifre" type="password" autocomplete="current-password" required></label>
+        <form class="form" data-form="sil">${parolaAlani(h)}
         ${h.ikiAdim ? '<label>İki adımlı doğrulama kodu<input name="kod" autocomplete="one-time-code" required></label>' : ''}
         <label>Onaylamak için <b>SİL</b> yaz<input name="onayMetni" autocomplete="off" required></label>
         <button class="dugme tehlike">Hesabımı kalıcı olarak sil</button></form></details>

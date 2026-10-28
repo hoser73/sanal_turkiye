@@ -215,8 +215,61 @@ test('hesap silme: parola ve SİL onayı ister, parseller devlete döner, kimlik
   assert.ok(db.prepare(`SELECT COUNT(*) c FROM wallet_ledger WHERE user_id = ?`).get(id).c > 0, 'ekonomi defteri anonim olarak kalır');
   assert.equal((await c('/api/ben')).veri, null);
   assert.equal((await istemci()('/api/giris', { email: 'silinen@test.local', sifre: 'parola123' })).durum, 401);
-  // Aynı e-postayla yeniden kayıt mümkündür
-  assert.equal((await istemci()('/api/kayit', kayitGovdesi('Silinen'))).durum, 201);
+  // Aynı e-postayla yeniden kayıt mümkündür; ama hoş geldin hibesi tekrar verilmez (akçe basma döngüsüne karşı)
+  assert.equal((await istemci()('/api/kayit', kayitGovdesi('Silinen', { email: 'SILINEN@test.local' }))).durum, 201);
+  const yeni = db.prepare(`SELECT id, tekrar_hesap FROM users WHERE email = 'silinen@test.local'`).get();
+  assert.equal(yeni.tekrar_hesap, 1);
+  assert.equal(db.prepare(`SELECT COUNT(*) c FROM wallet_ledger WHERE user_id = ? AND reason = 'Hoş geldin hibesi'`).get(yeni.id).c, 0);
+  assert.ok(!db.prepare(`SELECT 1 FROM silinen_kimlikler WHERE ozet LIKE '%silinen%'`).get(), 'yalnızca özet saklanır');
+  // Başka bir adresle açılan hesap hibeyi alır
+  assert.equal((await istemci()('/api/kayit', kayitGovdesi('Yepyeni'))).durum, 201);
+  assert.equal(db.prepare(`SELECT COUNT(*) c FROM wallet_ledger w JOIN users u ON u.id = w.user_id WHERE u.email = 'yepyeni@test.local' AND w.reason = 'Hoş geldin hibesi'`).get().c, 1);
+});
+
+test('hesap silme: açık vadeli hesap bozdurulur, anapara bankada kalmaz', async () => {
+  const c = await dogrulanmisOyuncu('Vadelici', 'V1');
+  const id = (await c('/api/ben')).veri.kullanici.id;
+  // Çarşı seviye kilidi testte atlanır: vadeli hesap doğrudan açılır
+  const L = require('../server/lib/ledger');
+  db.transaction(() => {
+    L.aktar({ kaynak: L.hesap(id), hedef: `BANKA:VADELI:${id}`, tutar: 100, sebep: 'test vadeli' });
+    db.prepare(`INSERT INTO banka_vadeli (user_id, tutar, faiz, bas, vade) VALUES (?, 100, 0.025, ?, ?)`).run(id, Date.now(), Date.now() + 7 * 864e5);
+  })();
+  assert.equal(Math.round(L.hesapBakiye(`BANKA:VADELI:${id}`)), 100);
+  assert.equal((await c('/api/hesap/sil', { sifre: 'parola123', onayMetni: 'SİL' })).durum, 200);
+  assert.equal(Math.round(L.hesapBakiye(`BANKA:VADELI:${id}`)), 0);
+  assert.equal(db.prepare(`SELECT durum FROM banka_vadeli WHERE user_id = ?`).get(id).durum, 'BOZULDU');
+});
+
+test('parolasız hesap: hesap silme taze oturumla parola sormadan olur; eski oturumda yeniden giriş istenir', async () => {
+  const c = await dogrulanmisOyuncu('Parolasiz', 'P1');
+  const id = (await c('/api/ben')).veri.kullanici.id;
+  db.prepare(`UPDATE users SET password_hash = NULL WHERE id = ?`).run(id);
+  assert.equal((await c('/api/hesap')).veri.parolaVar, false);
+  db.prepare(`UPDATE sessions SET created_at = datetime('now', '-1 hour') WHERE user_id = ?`).run(id);
+  assert.equal((await c('/api/hesap/sil', { onayMetni: 'SİL' })).veri.kod, 'YENIDEN_GIRIS');
+  db.prepare(`UPDATE sessions SET created_at = datetime('now') WHERE user_id = ?`).run(id);
+  assert.equal((await c('/api/hesap/sil', { onayMetni: 'SİL' })).durum, 200);
+});
+
+test('iki adımlı doğrulama: hesap başına 10 hatalı kod 15 dakikalık kilit getirir (yeni girişle sıfırlanmaz)', async () => {
+  const c = await dogrulanmisOyuncu('Kilitli', 'L1');
+  const kur = (await c('/api/2fa/kur', {})).veri;
+  assert.equal((await c('/api/2fa/etkinlestir', { kod: totp.kodUret(kur.sir, Date.now() - 30_000) })).durum, 200);
+  let hata = 0, son;
+  while (hata < 10) {
+    const g = istemci('L2');
+    await g('/api/giris', { email: 'kilitli@test.local', sifre: 'parola123' });
+    for (let i = 0; i < 4 && hata < 10; i++, hata++) son = await g('/api/giris/2fa', { kod: '000000' });
+  }
+  assert.equal(son.durum, 401);
+  const g = istemci('L3');
+  await g('/api/giris', { email: 'kilitli@test.local', sifre: 'parola123' });
+  const r = await g('/api/giris/2fa', { kod: totp.kodUret(kur.sir) });
+  assert.equal(r.durum, 429, 'kilitliyken doğru kod da kabul edilmez');
+  assert.equal(r.veri.kod, 'IKI_ADIM_BEKLE');
+  db.prepare(`UPDATE users SET ikiadim_kilit = ? WHERE email = 'kilitli@test.local'`).run(Date.now() - 1);
+  assert.equal((await g('/api/giris/2fa', { kod: totp.kodUret(kur.sir) })).durum, 200, 'süre dolunca açılır');
 });
 
 test('moderasyon: şikâyet, yetkili paneli 2FA ister, iki kişi kuralı, parsel dondurma', async () => {
@@ -265,6 +318,14 @@ test('içerik ön taraması: kimlik/telefon numarası içeren metin engellenir',
   assert.equal(icerikDenetle('Beni 0532 123 45 67 numaradan arayın').karar, 'ENGEL');
   assert.equal(icerikDenetle('TC: 12345678901').karar, 'ENGEL');
   assert.equal(icerikDenetle('sen tam bir s4lak mısın').karar, 'SUPHELI');
+  // Ayırıcı, tam genişlikli rakam ve tek tek yazılan rakamlarla atlatma denemeleri
+  for (const m of ['0532.123.45.67', '０５３２１２３４５６７', '1 2 3 4 5 6 7 8 9 0 1', '+90 (532) 123 45 67', '0532\u200B1234567', 'TR12 0006 1005 1978 6457 8413 26']) {
+    assert.equal(icerikDenetle(m).karar, 'ENGEL', m);
+  }
+  // Kısa sayılar ve binlik ayırıcılı fiyatlar geçer
+  for (const m of ['2024 yılında 3 kez', 'Fiyat 1.250.000 akçe, 2.500 de olur', '12.05.2024 saat 14.30', '100 200 300 400 500']) {
+    assert.equal(icerikDenetle(m).karar, 'TEMIZ', m);
+  }
 });
 
 test('görevden alma: sakinlerin dilekçesi eşiği geçince muhtarlık boşalır', async () => {
@@ -273,6 +334,8 @@ test('görevden alma: sakinlerin dilekçesi eşiği geçince muhtarlık boşalı
   for (const [i, x] of [muhtar, b, c].entries()) assert.equal((await x(`/api/parsel/${hucreler[i]}/edin`, {})).durum, 200);
   const mahalleId = db.prepare(`SELECT region_id FROM parcels WHERE id = ?`).get(hucreler[0]).region_id;
   const muhtarId = (await muhtar('/api/ben')).veri.kullanici.id;
+  // İmza kütüğüne yalnızca yeterince eski hesaplar girer (SECIM.secmenMinHesapYasiMs)
+  for (const ad of ['muhtarx', 'sakinb', 'sakinc']) db.prepare(`UPDATE users SET created_at = datetime('now', '-2 days') WHERE email = ?`).run(`${ad}@test.local`);
   // Görevde bir muhtar kur (seçim akışı secim.test.js'te sınanır)
   const t = Date.now();
   const secimId = db.prepare(`INSERT INTO secimler (region_id, tur, asama, duyuru_at, adaylik_at, kampanya_at, oylama_at, itiraz_at, bitis_at, created_at)

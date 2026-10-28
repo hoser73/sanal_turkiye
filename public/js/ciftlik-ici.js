@@ -530,6 +530,7 @@ export function ciftlikIciKur({ durum, eylemDagit, sunucuSimdi, ayrintiAc, dunya
     else if (ss.length) dugmeler.push(`<button type="button" class="ci-d mavi" data-ci="ciftlik-sula">💧<span>Sula${say(ss.length)}</span></button>`);
     if (bs.length || (!e && k.imar.tip === 'TARIM' && !set.length)) dugmeler.push(`<button type="button" class="ci-d yesil" data-ci="ek">🌱<span>Ek${say(bs.length)}</span></button>`);
     for (const y of k.yapilar || []) {
+      if (y.etkisiz) continue;   // bakımsız barınakta sunucu toplama ve yemlemeyi reddeder; önce bakım
       if (y.hayvan?.durum === 'HAZIR') dugmeler.push(`<button type="button" class="ci-d altin" data-eylem="hayvan-topla" data-id="${y.id}" data-hedef="yapi:${y.id}">${y.hayvan.urunIkon}<span>Topla</span></button>`);
       else if (y.hayvan?.durum === 'AC') dugmeler.push(`<button type="button" class="ci-d" data-eylem="hayvan-besle" data-id="${y.id}" data-hedef="yapi:${y.id}">🌽<span>Yemle</span></button>`);
     }
@@ -645,13 +646,18 @@ export function ciftlikIciKur({ durum, eylemDagit, sunucuSimdi, ayrintiAc, dunya
       ${y.kira ? `<p class="ci-not ${y.kira.birikmis >= 1 ? 'yesil' : ''}">🏡 Turistlere kiralanıyor · günde <b>${akce(y.kira.gunluk)}</b>${y.kira.havuz ? ' (havuzla +%50)' : ''}<br>Birikmiş kira: <b>${akce(y.kira.birikmis)}</b>${y.kira.dolu ? ' · <b>doldu</b>, topla ki birikmeye devam etsin' : ''}</p>` : ''}
       <div class="ci-dugmeler">
         ${y.kira && !ziyaret && y.kira.birikmis >= 1 ? `<button type="button" class="ci-b altin" data-eylem="kira-topla" data-id="${y.id}" data-hedef="yapi:${y.id}">💰 Kirayı topla</button>` : ''}
-        ${h?.durum === 'HAZIR' ? `<button type="button" class="ci-b altin" data-eylem="hayvan-topla" data-id="${y.id}" data-hedef="yapi:${y.id}">${h.urunIkon} Topla</button>` : ''}
-        ${h?.durum === 'AC' ? `<button type="button" class="ci-b" data-eylem="hayvan-besle" data-id="${y.id}" data-hedef="yapi:${y.id}">🌽 Yemle</button>` : ''}
+        ${h?.durum === 'HAZIR' && !y.etkisiz ? `<button type="button" class="ci-b altin" data-eylem="hayvan-topla" data-id="${y.id}" data-hedef="yapi:${y.id}">${h.urunIkon} Topla</button>` : ''}
+        ${h?.durum === 'AC' && !y.etkisiz ? `<button type="button" class="ci-b" data-eylem="hayvan-besle" data-id="${y.id}" data-hedef="yapi:${y.id}">🌽 Yemle</button>` : ''}
         ${y.etkisiz || (y.saglik ?? 100) < 90 ? `<button type="button" class="ci-b" data-eylem="bakim" data-hedef="yapi:${y.id}">🔧 Bakım</button>` : ''}
       </div>
       ${uretimHTML(y)}
-      ${y.durum === 'ACTIVE' && !ziyaret ? `<div class="ci-yukselt"><span>Seviye <b>${'★'.repeat(y.seviye || 1)}${'☆'.repeat(Math.max(0, (y.maxSeviye || 5) - (y.seviye || 1)))}</b>${h ? ` · her seviye +%50 ürün` : y.kira ? ' · her seviye +%50 kira' : ''}</span>
-        ${y.yukseltBedeli ? `<button type="button" class="ci-b altin kucuk" data-eylem="yapi-yukselt" data-id="${y.id}" data-hedef="yapi:${y.id}" ${(durum.ben?.bakiye ?? 0) < y.yukseltBedeli ? 'disabled' : ''}>⬆️ Yükselt ${akce(y.yukseltBedeli)}</button>` : '<em>En üst seviye</em>'}</div>` : ''}`, `yapi:${y.id}`);
+      ${y.yukseltEtki && !ziyaret ? `<div class="ci-yukselt"><span>Seviye <b>${'★'.repeat(y.seviye || 1)}${'☆'.repeat(Math.max(0, (y.maxSeviye || 5) - (y.seviye || 1)))}</b> · ${yukseltEtkiMetni(y)}</span>
+        ${y.yukseltBedeli ? `<button type="button" class="ci-b altin kucuk" data-eylem="yapi-yukselt" data-id="${y.id}" data-seviye="${(y.seviye || 1) + 1}" data-hedef="yapi:${y.id}" ${(durum.ben?.bakiye ?? 0) < y.yukseltBedeli ? 'disabled' : ''}>⬆️ Yükselt ${akce(y.yukseltBedeli)}</button>` : '<em>En üst seviye</em>'}</div>` : ''}`, `yapi:${y.id}`);
+  }
+  // Yükseltmenin etkisi: barınakta toplama miktarı, evde günlük kira (şimdi → sonraki seviye)
+  function yukseltEtkiMetni(y) {
+    const e = y.yukseltEtki, ok = (a, b) => (b != null ? `${a} → <b>${b}</b>` : a);
+    return e.tur === 'URUN' ? `toplamada ${ok(e.simdi, e.sonraki)} ${esc(y.hayvan?.urunAd || 'ürün')}` : `günlük kira ${ok(akce(e.simdi), e.sonraki != null ? akce(e.sonraki) : null)}`;
   }
   // Tesisin (değirmen, fırın, fabrika…) üretimi: süren partiler (topla) ve yapılabilecek reçeteler (üret)
   function uretimHTML(y) {
@@ -764,7 +770,8 @@ export function ciftlikIciKur({ durum, eylemDagit, sunucuSimdi, ayrintiAc, dunya
     isci = await api('/api/isci').catch(() => isci);
     const bit = isci?.aktif ? new Date(isci.bitis).toLocaleString('tr-TR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) : null;
     sayfaAc(`${ust2('👷', 'Tarla işçisi', bit ? `Çalışıyor · ${bit} tarihine kadar` : 'Sen yokken çiftliğin işlesin')}
-      <p class="ci-not">İşçi bütün tarlalarında olgun ekinleri hasat eder, susamış ekinleri sular (sulama bedeli senden), hayvanları yemler ve ürünlerini toplar.</p>
+      <p class="ci-not">İşçi bütün tarlalarında olgun ekinleri hasat eder, susamış ekinleri sular, hayvanları yemler ve ürünlerini toplar. Sulama bedeli ve ambarda eksik kalan yemin parası senden kesilir.</p>
+      <p class="ci-not">Bakımsız barınaktaki hayvanlara işçi bakamaz; bakımı sen yap.</p>
       <div class="ci-dugmeler">${[1, 3, 7].map((g) => `<button type="button" class="ci-b ${g === 3 ? 'altin' : ''}" data-eylem="isci-tut" data-gun="${g}" ${(durum.ben?.bakiye ?? 0) < (isci?.gunluk || 60) * g ? 'disabled' : ''}>${g} gün · ${akce((isci?.gunluk || 60) * g)}</button>`).join('')}</div>`);
   }
   // Genişletme: yandaki boş tarlayı çiftliğe katma

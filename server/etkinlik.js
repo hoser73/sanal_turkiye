@@ -87,15 +87,16 @@ function durum(userId = null, t = Date.now()) {
 }
 
 const odulAl = db.transaction((userId, gorev) => {
-  const d = durum(userId);
-  if (!d.aktif) throw new OyunHatasi(409, 'Şu an etkinlik yok');
-  const g = Number(gorev);
+  // Tek an: etkinliğin bitiş anında durum() ile aktifEtkinlik() farklı sonuç vermesin
+  const t = Date.now(), e = aktifEtkinlik(t), d = durum(userId, t);
+  if (!e || !d.aktif) throw new OyunHatasi(409, 'Şu an etkinlik yok');
+  if (typeof gorev !== 'number' || !Number.isInteger(gorev)) throw new OyunHatasi(400, 'Geçersiz görev');
+  const g = gorev;
   const hedef = g === -1 ? d.aktif.ortak : d.aktif.gorevler[g];
   if (!hedef) throw new OyunHatasi(404, 'Görev bulunamadı');
   if (hedef.alindi) throw new OyunHatasi(409, 'Bu ödülü zaten aldın');
   if (!hedef.alinabilir) throw new OyunHatasi(409, g === -1 ? 'Ortak hedefe henüz ulaşılmadı ya da katkın yok' : 'Görev henüz tamamlanmadı');
-  const yil = aktifEtkinlik().yil;
-  db.prepare(`INSERT INTO etkinlik_odulleri (user_id, etkinlik, yil, gorev, odul, at) VALUES (?, ?, ?, ?, ?, ?)`).run(userId, d.aktif.kod, yil, g, hedef.odul, Date.now());
+  db.prepare(`INSERT INTO etkinlik_odulleri (user_id, etkinlik, yil, gorev, odul, at) VALUES (?, ?, ?, ?, ?, ?)`).run(userId, d.aktif.kod, e.yil, g, hedef.odul, t);
   L.odul(userId, hedef.odul, `${d.aktif.ad} ödülü: ${hedef.ad}`);
   L.denetim({ aktor: userId, eylem: 'EVENT_REWARD_CLAIMED', sonra: { etkinlik: d.aktif.kod, gorev: g, odul: hedef.odul } });
   if (hedef.tp) require('./ciftlik').tpEkle(userId, hedef.tp, 'EVENT_REWARD_CLAIMED');

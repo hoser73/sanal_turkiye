@@ -19,7 +19,9 @@ export async function api(yol, govde) {
   }
   let veri = null;
   try { veri = await r.json(); } catch { /* boş yanıt */ }
-  if (!r.ok) throw new ApiHatasi(r.status, veri?.hata || 'Bağlantı hatası', veri?.kod);
+  // JSON olmayan hata yanıtı (vekil, hız sınırı…): durum koduna göre anlamlı ileti
+  if (!r.ok) throw new ApiHatasi(r.status, veri?.hata || (r.status === 429 ? 'Çok fazla istek; biraz sonra tekrar dene'
+    : r.status >= 500 ? 'Sunucuda geçici bir sorun var; biraz sonra tekrar dene' : 'İstek işlenemedi'), veri?.kod);
   return veri;
 }
 

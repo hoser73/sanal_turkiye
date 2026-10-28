@@ -145,3 +145,32 @@ test('borsa: süresi dolan emir iade edilir; ekonomi paneli yalnızca yetkiliye 
   assert.equal(require('../server/ekonomi').gini([1, 1, 1, 1]), 0);
   assert.ok(require('../server/ekonomi').gini([0.01, 0.01, 0.01, 100]) > 0.7);
 });
+
+test('borsa: bugün alınan ürün alıcının geçmiş günlerdeki bozulmasına uğramaz', async () => {
+  const alici = await oyuncu('tazealici'), satici = await oyuncu('tazesatici');
+  await satici('/api/ben');
+  urunVer(satici.id, 'DOMATES', 100);
+  assert.equal((await alici('/api/borsa/emir', { urun: 'DOMATES', yon: 'AL', fiyat: 2, miktar: 100, gun: 7 })).durum, 200);
+  db.prepare('UPDATE users SET bozulma_gun = bozulma_gun - 5 WHERE id = ?').run(alici.id);   // alıcı 5 gün uğramadı
+  assert.equal((await satici('/api/borsa/emir', { urun: 'DOMATES', yon: 'SAT', fiyat: 2, miktar: 100, gun: 7 })).veri.dolan, 100);
+  await alici('/api/ben');
+  assert.equal(stok(alici.id, 'DOMATES'), 100);
+});
+
+test('borsa: satış emrinde bekleyen ürün de bozulur; iptalde açık kalınan günlerin bozulması düşülür', async () => {
+  const c = await oyuncu('bekleyen');
+  await c('/api/ben');
+  urunVer(c.id, 'DOMATES', 100);
+  const e = (await c('/api/borsa/emir', { urun: 'DOMATES', yon: 'SAT', fiyat: 4, miktar: 100, gun: 7 })).veri;
+  db.prepare('UPDATE urun_emirleri SET created_at = created_at - ? WHERE id = ?').run(3 * BOZULMA.gunMs, e.id);
+  db.prepare('UPDATE users SET bozulma_gun = bozulma_gun - 3 WHERE id = ?').run(c.id);   // depo da 3 gündür işlenmedi
+  const r = await c(`/api/borsa/emir/${e.id}/iptal`, {});
+  assert.equal(r.durum, 200);
+  const emir = db.prepare('SELECT created_at, closed_at FROM urun_emirleri WHERE id = ?').get(e.id);
+  const gun = Math.floor(emir.closed_at / BOZULMA.gunMs) - Math.floor(emir.created_at / BOZULMA.gunMs);
+  const bozulan = Math.floor(100 * (1 - (1 - BOZULMA.envanterGunluk.DOMATES) ** gun));
+  assert.ok(bozulan > 0);
+  assert.equal(r.veri.bozulan, bozulan);
+  assert.equal(stok(c.id, 'DOMATES'), 100 - bozulan, 'iade edilen ürün bir daha bozulmaz');
+  assert.equal((await c('/api/ben')).veri.envanter.find((i) => i.item_id === 'DOMATES').miktar, 100 - bozulan);
+});

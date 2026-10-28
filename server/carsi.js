@@ -5,6 +5,7 @@
 // Banka akçe ile çalışır; akçe nakde çevrilemez, bu gerçek bir bankacılık hizmeti değildir.
 const db = require('./db');
 const L = require('./lib/ledger');
+const { metin, sayi } = require('./lib/girdi');
 const { CARSI, URUNLER, HAYVANLAR } = require('./config/rules');
 const { OyunHatasi } = L;
 
@@ -150,7 +151,7 @@ const satinAl = db.transaction((userId, kod, adet = 1) => {
   require('./ciftlik').seviyeKilidi(userId, 'carsi');
   const u = bul(CARSI.urunler, kod);
   if (!u) throw new OyunHatasi(400, 'Bu ürün satılmıyor');
-  adet = Number(adet);
+  adet = sayi(adet);
   if (!Number.isInteger(adet) || adet < 1 || adet > 20) throw new OyunHatasi(400, 'Adet 1–20 olmalı');
   if (u.kalici && L.envanterMiktar(userId, kod) > 0) throw new OyunHatasi(409, `${u.ad} zaten sende; kalıcı ürünler bir kez alınır`);
   if (u.kalici && adet > 1) throw new OyunHatasi(400, `${u.ad} kalıcıdır; yalnızca 1 adet alınır`);
@@ -167,19 +168,19 @@ const kullan = db.transaction((userId, { urun, parselId, yapiId } = {}) => {
   if (L.envanterMiktar(userId, urun) < 1) throw new OyunHatasi(409, `Envanterinde ${u.ad} yok; ${marka(u.dukkan).ad}'dan alabilirsin`);
   const oyun = require('./oyun'), t = simdi();
   if (u.kullan === 'EKIN') {
-    const p = oyun.parselGetir(String(parselId || ''));
+    const p = oyun.parselGetir(metin(parselId));
     require('./kira').kullanimHakki(p, userId);
     const e = db.prepare(`SELECT * FROM crops WHERE parcel_id = ? AND status = 'GROWING'`).get(p.id);
     if (!e) throw new OyunHatasi(409, 'Bu tarlada ekin yok');
     const kolonAd = urun === 'GUBRE' ? 'gubre' : 'ilac';
     if (e[kolonAd]) throw new OyunHatasi(409, `Bu ekine zaten ${u.ad.toLocaleLowerCase('tr-TR')} verildi`);
-    if (urun === 'GUBRE' && t >= e.ready_at) throw new OyunHatasi(409, 'Ekin olgunlaşmış; gübre artık işe yaramaz');
+    if (t >= e.ready_at) throw new OyunHatasi(409, `Ekin olgunlaşmış; ${u.ad.toLocaleLowerCase('tr-TR')} artık işe yaramaz`);
     db.prepare(`UPDATE crops SET ${kolonAd} = 1 WHERE id = ?`).run(e.id);
     L.envanterDegis(userId, urun, -1, `${u.ad}: ${p.id}`);
     L.denetim({ aktor: userId, eylem: 'SHOP_ITEM_USED', varlik: p.id, sonra: { urun }, bolge: p.region_id });
     return { tamam: true, urun, parsel: p.id };
   }
-  const s = db.prepare(`SELECT * FROM structures WHERE id = ?`).get(Number(yapiId));
+  const s = db.prepare(`SELECT * FROM structures WHERE id = ?`).get(sayi(yapiId));
   if (!s || !HAYVANLAR[s.type]) throw new OyunHatasi(404, 'Barınak bulunamadı');
   const p = oyun.parselGetir(s.parcel_id);
   oyun.sahibiOlmali(p, userId);
@@ -210,7 +211,7 @@ function bankaOzet(userId, t = simdi()) {
 }
 const vadeliAc = db.transaction((userId, tutar) => {
   require('./ciftlik').seviyeKilidi(userId, 'carsi');
-  tutar = Number(tutar);
+  tutar = sayi(tutar);
   if (!Number.isInteger(tutar) || tutar < B.vadeliMin) throw new OyunHatasi(400, `Vadeli hesap en az ${B.vadeliMin} akçe`);
   const acik = db.prepare(`SELECT COALESCE(SUM(tutar), 0) s FROM banka_vadeli WHERE user_id = ? AND durum = 'ACIK'`).get(userId).s;
   if (acik + tutar > B.vadeliMaks) throw new OyunHatasi(409, `Vadeli hesaplarının toplamı en çok ${B.vadeliMaks} akçe olabilir`);
@@ -236,7 +237,7 @@ function rotalar(app, { h, auth }) {
   app.get('/api/carsi', h((req) => ({ isletmeler: markalar(), urunler: CARSI.urunler, sarf: CARSI.sarf })));
   app.get('/api/carsi/subeler', h(require('./lib/onbellek').ortakYanit(30_000, () => subeler())));
   app.get('/api/carsi/:kategori', h((req) => vitrin(req.kullanici?.id ?? null, String(req.params.kategori))));
-  app.post('/api/carsi/satin-al', auth.girisGerekli, h((req) => satinAl(req.kullanici.id, String(req.body?.urun || ''), req.body?.adet ?? 1)));
+  app.post('/api/carsi/satin-al', auth.girisGerekli, h((req) => satinAl(req.kullanici.id, metin(req.body?.urun), req.body?.adet ?? 1)));
   app.post('/api/carsi/kullan', auth.girisGerekli, h((req) => kullan(req.kullanici.id, req.body || {})));
   app.get('/api/banka', auth.girisGerekli, h((req) => bankaOzet(req.kullanici.id)));
   app.post('/api/banka/vadeli', auth.dogrulanmisGerekli, h((req) => vadeliAc(req.kullanici.id, req.body?.tutar)));

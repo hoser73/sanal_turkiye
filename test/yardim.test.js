@@ -42,6 +42,8 @@ test('istek, gönderim, tamamlanma; sınırlar', async () => {
   const r = (await a('/api/yardim', { urun: 'BUGDAY', adet: 10 })).veri;
   assert.equal((await a('/api/yardim', { urun: 'DOMATES', adet: 3 })).durum, 409, 'tek açık istek');
   L.envanterDegis(b.id, 'BUGDAY', 6, 'deneme'); L.envanterDegis(c.id, 'BUGDAY', 20, 'deneme');
+  assert.equal((await b(`/api/yardim/${r.id}/gonder`, { adet: 1 })).veri.kod, 'SEVIYE', 'seviye 1 yan hesap ürün akıtamaz');
+  db.prepare('UPDATE users SET tp = 130 WHERE id IN (?, ?)').run(b.id, c.id);   // seviye 3
   const tpOnce = db.prepare('SELECT tp FROM users WHERE id = ?').get(b.id).tp;
   assert.equal((await b(`/api/yardim/${r.id}/gonder`, { adet: 8 })).durum, 409, 'elinde yok');
   assert.equal((await b(`/api/yardim/${r.id}/gonder`, { adet: 6 })).durum, 200);
@@ -50,8 +52,13 @@ test('istek, gönderim, tamamlanma; sınırlar', async () => {
   assert.ok(db.prepare('SELECT tp FROM users WHERE id = ?').get(b.id).tp > tpOnce, 'yardım TP kazandırır');
   assert.equal((await a(`/api/yardim/${r.id}/gonder`, { adet: 1 })).durum, 400, 'kendine gönderemez');
   assert.equal((await d(`/api/yardim/${r.id}/gonder`, { adet: 1 })).durum, 403, 'başka kooperatif');
+  const sayac = () => db.prepare("SELECT COUNT(*) c FROM audit_events WHERE actor_id = ? AND action = 'COOP_HELPED'").get(c.id).c;
+  assert.equal((await c(`/api/yardim/${r.id}/gonder`, { adet: 1 })).durum, 200);
+  assert.equal((await c(`/api/yardim/${r.id}/gonder`, { adet: 1 })).durum, 200);
+  assert.equal(sayac(), 1, 'aynı isteğe parça parça gönderim ödülü katlamaz');
   const son = (await c(`/api/yardim/${r.id}/gonder`, { adet: 20 })).veri;
-  assert.equal(son.adet, 4, 'kalan kadar gider'); assert.equal(son.istekTamam, true);
+  assert.equal(son.adet, 2, 'kalan kadar gider'); assert.equal(son.istekTamam, true);
+  assert.equal(sayac(), 1);
   assert.equal(L.envanterMiktar(a.id, 'BUGDAY'), 10);
   assert.equal((await a('/api/yardim', { urun: 'DOMATES', adet: 3 })).veri.kod, 'BEKLE', 'istekler arası bekleme');
   const durum = (await b('/api/yardim')).veri;

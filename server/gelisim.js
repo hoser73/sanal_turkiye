@@ -1,11 +1,13 @@
 // Çiftlik gelişimi (tutundurma): yapı yükseltme, işçi ve günlük görevler.
-//  • Yapı yükseltme: etkin bir yapı 3. seviyeye kadar yükseltilir; bedel = yapı maliyeti × hedef seviye × 1,5.
-//    Barınaklar (kümes, ahır, ağıl, mandıra) her seviyede toplamada fazladan ürün verir (hayvan sayısı artar).
+//  • Yapı yükseltme: yalnızca etkisi olan yapılar (hayvan barınakları ve kira getiren evler) 5. seviyeye kadar yükseltilir;
+//    bedel = yapı maliyeti × hedef seviye × 1,5. Barınak (kümes, ahır, ağıl, arı kovanı) her seviyede toplamada yarım kat
+//    fazla ürün verir (hayvan sayısı artar); ev her seviyede günlük kirayı yarım kat artırır.
 //  • İşçi: gün başına ücretle tutulur; süresi boyunca oyuncunun olgun ekinlerini hasat eder, susuz tarlaları sular
-//    (sulama bedeli olağan kuraldır) ve aç hayvanları yemler. Sunucu döngüsünde düzenli çalışır.
+//    ve aç hayvanları yemler (sulama ve eksik yem bedeli oyuncudan). Sunucu döngüsünde düzenli çalışır.
 //  • Günlük görevler: her gün oyuncuya özgü 3 görev (denetim kayıtlarından sayılır); hepsi bitince ödül alınır.
 const db = require('./db');
 const L = require('./lib/ledger');
+const { sayi } = require('./lib/girdi');
 const { OyunHatasi } = L;
 const { YAPILAR, HAYVANLAR, TARIM, OYUN_HIZI } = require('./config/rules');
 const simdi = () => Date.now();
@@ -21,24 +23,46 @@ const GELISIM = {
   gunlukOdul: 60, gunlukTp: 15,
 };
 
-// ---------- Yapı yükseltme
-const yukselt = db.transaction((userId, structureId) => {
+// ---------- Yapı yükseltme (yalnızca etkisi olan yapılar)
+const yukseltilebilir = (tip) => !!HAYVANLAR[tip] || !!YAPILAR[tip]?.gelir;
+// hedef: istemcinin beklediği yeni seviye (çift tıklamada ikinci istek 409 alır)
+const yukselt = db.transaction((userId, structureId, hedef) => {
   const oyun = require('./oyun');
   const s = db.prepare(`SELECT * FROM structures WHERE id = ?`).get(Number(structureId));
   if (!s) throw new OyunHatasi(404, 'Yapı bulunamadı');
   const p = oyun.parselGetir(s.parcel_id);
   oyun.sahibiOlmali(p, userId);
   if (s.status !== 'ACTIVE') throw new OyunHatasi(409, 'Yapı henüz tamamlanmadı');
+  if (!yukseltilebilir(s.type)) throw new OyunHatasi(409, `${YAPILAR[s.type]?.ad || 'Bu yapı'} yükseltilmez; yalnızca hayvan barınakları ve kiralık evler yükseltilir`, 'YUKSELMEZ');
   const sv = s.seviye || 1;
   if (sv >= GELISIM.maxSeviye) throw new OyunHatasi(409, 'Bu yapı en üst seviyede', 'EN_UST');
+  if (hedef !== undefined && sayi(hedef) !== sv + 1) throw new OyunHatasi(409, `Yapı zaten ${sv}. seviyede`, 'SEVIYE_DEGISTI');
   const bedel = Math.round((YAPILAR[s.type]?.maliyet || 50) * (sv + 1) * GELISIM.yukseltKat);
-  const tx = L.yeniTx();
-  L.harca(userId, bedel, `${YAPILAR[s.type]?.ad || s.type} ${sv + 1}. seviyeye yükseltildi`, tx);
+  const tx = L.yeniTx(), ad = YAPILAR[s.type]?.ad || s.type;
+  L.harca(userId, bedel, `${ad} ${sv + 1}. seviyeye yükseltildi`, tx);
+  // Kira yapısı: o ana kadar biriken kira eski seviyeden ödenir, sayaç yeni seviyeyle baştan başlar
+  let kira = 0;
+  if (YAPILAR[s.type]?.gelir) {
+    const k = kiraDurumu(s, db.prepare(`SELECT type, status FROM structures WHERE parcel_id = ?`).all(s.parcel_id));
+    if (k && !k.bakimGerekli && k.birikmis >= 1) { kira = k.birikmis; L.odul(userId, kira, `${ad} kira geliri`, tx); }
+    db.prepare(`UPDATE structures SET gelir_at = ? WHERE id = ?`).run(simdi(), s.id);
+  }
   db.prepare(`UPDATE structures SET seviye = ? WHERE id = ?`).run(sv + 1, s.id);
-  L.denetim({ anahtar: `STRUCTURE_UPGRADED:${tx}`, aktor: userId, eylem: 'STRUCTURE_UPGRADED', varlik: p.id, sonra: { yapi: s.type, seviye: sv + 1, bedel }, bolge: p.region_id });
-  return { tamam: true, seviye: sv + 1, bedel };
+  L.denetim({ anahtar: `STRUCTURE_UPGRADED:${tx}`, aktor: userId, eylem: 'STRUCTURE_UPGRADED', varlik: p.id, sonra: { yapi: s.type, seviye: sv + 1, bedel, kira }, bolge: p.region_id });
+  return { tamam: true, seviye: sv + 1, bedel, kira };
 });
-const yukseltmeBedeli = (s) => ((s.seviye || 1) >= GELISIM.maxSeviye ? null : Math.round((YAPILAR[s.type]?.maliyet || 50) * ((s.seviye || 1) + 1) * GELISIM.yukseltKat));
+const yukseltmeBedeli = (s) => (!yukseltilebilir(s.type) || (s.seviye || 1) >= GELISIM.maxSeviye ? null : Math.round((YAPILAR[s.type]?.maliyet || 50) * ((s.seviye || 1) + 1) * GELISIM.yukseltKat));
+// Bir sonraki seviyenin etkisi (arayüz için): barınakta toplama miktarı, evde günlük kira
+function yukseltmeEtkisi(s, yapilar, t = simdi()) {
+  if (!yukseltilebilir(s.type) || s.status !== 'ACTIVE') return null;
+  const sv = s.seviye || 1, sonraki = sv < GELISIM.maxSeviye ? { ...s, seviye: sv + 1 } : null;
+  const h = HAYVANLAR[s.type];
+  if (h) {
+    const { seviyeliMiktar } = require('./ciftlik');
+    return { tur: 'URUN', simdi: seviyeliMiktar(h, s), sonraki: sonraki && seviyeliMiktar(h, sonraki) };
+  }
+  return { tur: 'KIRA', simdi: kiraDurumu(s, yapilar, t).gunluk, sonraki: sonraki && kiraDurumu(sonraki, yapilar, t).gunluk };
+}
 
 // ---------- Konut kira geliri (Ev ve keyif): günlük kira birikir, oyuncu çiftliğinden toplar
 const KIRA = { gunMs: Math.round(86_400_000 / OYUN_HIZI), birikmeGun: 3, havuzKat: 1.5, seviyeKat: 0.5 };
@@ -74,7 +98,8 @@ const kiraTopla = db.transaction((userId, structureId) => {
 
 // ---------- İşçi
 const isciTut = db.transaction((userId, gun) => {
-  gun = Math.max(1, Math.min(GELISIM.isciMaxGun, Math.round(Number(gun) || 1)));
+  gun = sayi(gun);
+  if (!Number.isInteger(gun) || gun < 1 || gun > GELISIM.isciMaxGun) throw new OyunHatasi(400, `Gün sayısı 1–${GELISIM.isciMaxGun} arasında tam sayı olmalı`);
   const t = simdi(), mevcut = db.prepare(`SELECT bitis FROM isciler WHERE user_id = ?`).get(userId);
   const bas = Math.max(t, mevcut?.bitis || 0);
   if (bas - t + gun * 86_400_000 > GELISIM.isciMaxGun * 86_400_000) throw new OyunHatasi(409, `En fazla ${GELISIM.isciMaxGun} günlük işçi tutulabilir`);
@@ -161,7 +186,7 @@ const gunlukOdulAl = db.transaction((userId) => {
 });
 
 function rotalar(app, { h, auth }) {
-  app.post('/api/yapi/:id/yukselt', auth.girisGerekli, h((req) => yukselt(req.kullanici.id, req.params.id)));
+  app.post('/api/yapi/:id/yukselt', auth.girisGerekli, h((req) => yukselt(req.kullanici.id, req.params.id, req.body?.hedef)));
   app.post('/api/yapi/:id/kira', auth.girisGerekli, h((req) => kiraTopla(req.kullanici.id, req.params.id)));
   app.get('/api/isci', auth.girisGerekli, h((req) => isciDurumu(req.kullanici.id)));
   app.post('/api/isci/tut', auth.girisGerekli, h((req) => isciTut(req.kullanici.id, req.body?.gun)));
@@ -173,4 +198,4 @@ function rotalar(app, { h, auth }) {
 let zaman = null;
 function baslat() { if (!zaman) { zaman = setInterval(() => { try { isciTuru(); } catch (e) { require('./lib/gunluk').gunluk.warn('işçi turu', { hataIletisi: e.message }); } }, 30_000); zaman.unref?.(); } }
 
-module.exports = { GELISIM, baslat, rotalar, yukselt, yukseltmeBedeli, isciTut, isciDurumu, isciTuru, gunlukGorevler, gunlukOdulAl, kiraDurumu, kiraTopla, KIRA };
+module.exports = { GELISIM, baslat, rotalar, yukselt, yukseltilebilir, yukseltmeBedeli, yukseltmeEtkisi, isciTut, isciDurumu, isciTuru, gunlukGorevler, gunlukOdulAl, kiraDurumu, kiraTopla, KIRA };

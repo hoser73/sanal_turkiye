@@ -115,13 +115,23 @@ const teklifVer = db.transaction((userId, ihaleId, govde = {}) => {
   return { tamam: true, tutar };
 });
 
-// Biten ihaleler: en yüksekten başlayarak parsel sınırı uygun ilk teklif kazanır; diğerleri iade
+// Hesap silinirken: oyuncunun açık ihalelerdeki aktif teklifleri iade edilip kapanır (emanette akçe kalmasın)
+const tekliflerIade = db.transaction((userId) => {
+  const liste = db.prepare(`SELECT t.* FROM ihale_teklifleri t JOIN ihaleler i ON i.id = t.ihale_id
+                            WHERE t.user_id = ? AND t.durum = 'AKTIF' AND i.durum = 'ACIK'`).all(userId);
+  for (const tk of liste) teklifIade(tk, tk.ihale_id, 'İhale teklifi iadesi (hesap silindi)');
+  return liste.length;
+});
+
+// Biten ihaleler: en yüksekten başlayarak parsel sınırı uygun ilk teklif kazanır; diğerleri iade.
+// Hesabı silinmiş ya da askıdaki oyuncunun teklifi kazanamaz (iade edilir).
 const sonuclandir = db.transaction((t = Date.now()) => {
   const oyun = require('./oyun');
+  const aktifKullanici = db.prepare(`SELECT 1 FROM users WHERE id = ? AND status = 'ACTIVE' AND silindi_at IS NULL`);
   for (const i of db.prepare(`SELECT * FROM ihaleler WHERE durum = 'ACIK' AND bitis <= ?`).all(t)) {
     let kazanan = null;
     for (const tk of q.aktifler.all(i.id)) {
-      if (!kazanan) {
+      if (!kazanan && aktifKullanici.get(tk.user_id)) {
         try {
           db.transaction(() => oyun.parselEdin(tk.user_id, i.parcel_id, { id: i.id, fiyat: tk.tutar, kaynak: emanet(i.id) }))();
           kazanan = tk;
@@ -163,4 +173,4 @@ function rotalar(app, { h, auth }) {
   app.post('/api/ihale/:id/teklif', auth.dogrulanmisGerekli, h((req) => teklifVer(req.kullanici.id, req.params.id, req.body || {})));
 }
 
-module.exports = { rotalar, liste, teklifVer, sonuclandir, ihaleBakim, ihaledeMi, haftayiKur, haftaNo, ondeOlunan };
+module.exports = { rotalar, liste, teklifVer, sonuclandir, tekliflerIade, ihaleBakim, ihaledeMi, haftayiKur, haftaNo, ondeOlunan };

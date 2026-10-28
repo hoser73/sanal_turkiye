@@ -128,6 +128,10 @@ test('zirai bayi: gübre hasadı %20 artırır; ilaç dondan korur; aşı barın
   assert.equal(ekin(h1).don, 0, 'ilaç dondan korur');
   assert.equal(ekin(h2).don, 1);
   db.prepare(`UPDATE crops SET don = 0, ready_at = ?, waterings = 3 WHERE parcel_id IN (?, ?) AND status = 'GROWING'`).run(Date.now() - 1000, h1, h2);
+  // Olgun ekine ilaç işe yaramaz: reddedilir, stoktan düşmez
+  await c('/api/carsi/satin-al', { urun: 'ILAC' });
+  assert.equal((await c('/api/carsi/kullan', { urun: 'ILAC', parselId: h2 })).durum, 409);
+  assert.equal(L.envanterMiktar(c.id, 'ILAC'), 1);
   const m1 = (await c(`/api/parsel/${h1}/hasat`, {})).veri.miktar, m2 = (await c(`/api/parsel/${h2}/hasat`, {})).veri.miktar;
   assert.equal(m1, Math.round(m2 * (1 + CARSI.etki.gubreBonus)));
   // Aşı
@@ -150,23 +154,34 @@ test('zirai bayi: gübre hasadı %20 artırır; ilaç dondan korur; aşı barın
 
 test('nalbur: kalıp seti inşaatı kısaltır, bakım kiti bakımı ücretsiz yapar, örtü stoktan serilir', async () => {
   const c = await oyuncu();
+  L.odul(c.id, 2000, 'test bakiyesi');   // sera ve ikinci tarla
   const h = hucreBul('TARIM');
   await c(`/api/parsel/${h}/edin`, {});
   await c('/api/carsi/satin-al', { urun: 'KALIP_SETI' });
-  const ins = (await c(`/api/parsel/${h}/insaat`, { tip: 'TEL_CIT' })).veri;
+  // Kısa inşaatta (tel çit) kalıp seti harcanmaz
+  const cit = (await c(`/api/parsel/${h}/insaat`, { tip: 'TEL_CIT' })).veri;
+  assert.equal(cit.kalip, false); assert.equal(L.envanterMiktar(c.id, 'KALIP_SETI'), 1);
+  const ins = (await c(`/api/parsel/${h}/insaat`, { tip: 'SERA' })).veri;
   assert.equal(ins.kalip, true, JSON.stringify(ins));
   const s = db.prepare(`SELECT * FROM structures WHERE id = ?`).get(ins.yapiId);
-  assert.ok(Math.abs((s.completes_at - s.started_at) - YAPILAR.TEL_CIT.sureMs * (1 - CARSI.etki.kalipKisalma)) < 5);
+  assert.ok(Math.abs((s.completes_at - s.started_at) - YAPILAR.SERA.sureMs * (1 - CARSI.etki.kalipKisalma)) < 5);
   assert.equal(L.envanterMiktar(c.id, 'KALIP_SETI'), 0);
-  db.prepare(`UPDATE structures SET status = 'ACTIVE', completed_at = ?, bakim_at = ? WHERE id = ?`).run(Date.now() - 864e5 * 5, Date.now() - 864e5 * 5, ins.yapiId);
+  const yipran = (id) => db.prepare(`UPDATE structures SET status = 'ACTIVE', completed_at = ?, bakim_at = ? WHERE id = ?`).run(Date.now() - 864e5 * 5, Date.now() - 864e5 * 5, id);
+  // Bakım bedeli kitin fiyatından düşükse kit harcanmaz (tel çit)
+  yipran(cit.yapiId);
   await c('/api/carsi/satin-al', { urun: 'BAKIM_KITI' });
+  const ucuz = (await c(`/api/parsel/${h}/bakim`, {})).veri;
+  assert.equal(ucuz.kit, false); assert.ok(ucuz.tutar > 0 && ucuz.tutar <= CARSI.urunler.BAKIM_KITI.fiyat); assert.equal(L.envanterMiktar(c.id, 'BAKIM_KITI'), 1);
+  yipran(ins.yapiId);
   const once = L.bakiye(c.id);
   const b = (await c(`/api/parsel/${h}/bakim`, {})).veri;
   assert.equal(b.kit, true); assert.equal(b.tutar, 0); assert.equal(L.bakiye(c.id), once);
-  await c(`/api/parsel/${h}/ek`, { urun: 'BUGDAY' });
+  const h2 = hucreBul('TARIM');   // seralı tarlaya örtü serilmez
+  await c(`/api/parsel/${h2}/edin`, {});
+  await c(`/api/parsel/${h2}/ek`, { urun: 'BUGDAY' });
   await c('/api/carsi/satin-al', { urun: 'TARLA_ORTUSU' });
-  const o = (await c(`/api/parsel/${h}/ortu`, {})).veri;
-  assert.equal(o.stoktan, true); assert.equal(o.maliyet, 0);
+  const o = (await c(`/api/parsel/${h2}/ortu`, {})).veri;
+  assert.equal(o.stoktan, true, JSON.stringify(o)); assert.equal(o.maliyet, 0);
 });
 
 test('balık takımı: karides paketi ve sahte yem stoktan; misina koparsa sahte yem gider; örgü misina ve karbon kamış', async () => {

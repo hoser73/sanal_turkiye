@@ -1,7 +1,7 @@
 // Oyun motoru (modüler monolit, plan §13.2): parsel, imar, inşaat, tarım, pazar, görev.
 // Bütün kurallar SUNUCUDA denetlenir (§3.2); her değişiklik tek atomik işlemde yapılır (§8.4).
 const db = require('./db');
-const { IMAR, IMAR_KAYNAK_NOTU, YAPILAR, URUNLER, TARIM, NPC_PAZAR, HESAP, GOREVLER, BELEDIYE, BOZULMA, BAKIM, HAVA, CARSI, OZELLIK, SIYASI_EYLEMLER } = require('./config/rules');
+const { IMAR, IMAR_KAYNAK_NOTU, YAPILAR, URUNLER, TARIM, NPC_PAZAR, HESAP, GOREVLER, BELEDIYE, BOZULMA, BAKIM, HAVA, CARSI, OZELLIK, SIYASI_EYLEMLER, OYUN_HIZI } = require('./config/rules');
 const { adaParsel } = require('./harita/ada');
 const SIHIRBAZ_ILK_EKIN = () => require('./sihirbaz').SIHIRBAZ.ilkEkinMs;
 const L = require('./lib/ledger');
@@ -32,7 +32,10 @@ const q = {
 // Prototip zinciri kirliliğine karşı: yalnızca kendi anahtarları (ör. "__proto__" reddedilir)
 const bul = (tablo, kod) => (typeof kod === 'string' && Object.hasOwn(tablo, kod) ? tablo[kod] : null);
 const simdi = () => Date.now();
-const bugun = () => new Date().toISOString().slice(0, 10);
+// Türkiye günü (UTC+3): tüccar talebi ve ziyaret gibi günlük sınırlar İstanbul gece yarısında döner (diğer günlüklerle aynı)
+const TR_MS = 3 * 3_600_000;
+const bugun = (t = simdi()) => new Date(t + TR_MS).toISOString().slice(0, 10);
+const gunBasiMetni = (t = simdi()) => new Date(Date.parse(`${bugun(t)}T00:00:00Z`) - TR_MS).toISOString().replace('T', ' ').slice(0, 19);
 
 // ---------- Görevler ----------
 const gorevEkle = db.prepare(`INSERT OR IGNORE INTO quest_progress (user_id, quest_code) VALUES (?, ?)`);
@@ -237,7 +240,9 @@ function parselKarti(id, userId, komsuImar = {}, { hafif = false } = {}) {
     imarKullanimi: imarKullanimi(p, yapilar),
     sahip: sahip ? { ad: sahip.display_name, npc: !!sahip.is_npc, demoSakin: !!sahip.is_npc && !!q.npcKisilik.get(sahip.id)?.npc_kisilik, ben: benim, unvan: sahip.is_npc ? null : require('./kozmetik').secili(sahip.id).unvan?.ad || null } : null,
     kozmetik: sahip && !sahip.is_npc ? require('./kozmetik').haritaKodu(sahip.id) : '',
-    birincilBedel: !p.owner_user_id && imar.satilik ? tahsisFiyati(p, t) : null,
+    // Simge (kamu mirası) ve bu hafta ihalede olan tarla olağan yoldan edinilemez: tahsis bedeli gösterilmez
+    birincilBedel: !p.owner_user_id && imar.satilik && !require('./simge').parselSimgesi(id) && !require('./ihale').ihaledeMi(id) ? tahsisFiyati(p, t) : null,
+    ihalede: !p.owner_user_id && require('./ihale').ihaledeMi(id),
     gelismislikSkoru: gelismislikSkoru(p, yapilar, ekin),
     ...(() => {
       const deger = tahminiDeger(p, yapilar, t);
@@ -248,6 +253,7 @@ function parselKarti(id, userId, komsuImar = {}, { hafif = false } = {}) {
     })(),
     yapilar: yapilar.map((s) => ({ id: s.id, tip: s.type, ad: YAPILAR[s.type]?.ad, ikon: YAPILAR[s.type]?.ikon,
       seviye: s.seviye || 1, maxSeviye: require('./gelisim').GELISIM.maxSeviye, yukseltBedeli: benim && s.status === 'ACTIVE' ? require('./gelisim').yukseltmeBedeli(s) : null,
+      yukseltEtki: benim ? require('./gelisim').yukseltmeEtkisi(s, yapilar, t) : null,
       durum: s.status, bitis: s.completes_at, kalanMs: Math.max(0, s.completes_at - t),
       saglik: saglik(s, t), bakimMaliyeti: bakimMaliyeti(s, t), etkisiz: s.status === 'ACTIVE' && saglik(s, t) < BAKIM.etkisizEsik,
       hayvan: require('./ciftlik').hayvanDurumu(s, t), kira: require('./gelisim').kiraDurumu(s, yapilar, t) })),
@@ -262,7 +268,7 @@ function parselKarti(id, userId, komsuImar = {}, { hafif = false } = {}) {
     ...require('./kira').parselKira(id, userId),
     kullanimHakkim: !!userId && (() => { try { require('./kira').kullanimHakki(p, userId); return true; } catch { return false; } })(),
     afetKati: ekin?.afet_kati ?? 1,
-    simge: require('./simge').parselSimgesi(id, userId),
+    simge: require('./simge').parselSimgesi(id, userId, { gorme: !hafif }),
     hava: require('./dunya').ilHavasi(p.plaka),
     iklim: require('./iklim').parselIklimi(p.plaka, t),
     mevsim: (({ kod, ad, ikon }) => ({ kod, ad, ikon }))(require('./dunya').mevsim(t)),
@@ -330,6 +336,7 @@ const parselEdin = db.transaction((userId, id, ihale = null) => {
 });
 
 // ---------- İnşaat (§4.2) ----------
+const KALIP_MIN_MS = Math.round(3 * 60_000 / OYUN_HIZI);   // 3 oyun dakikasından kısa inşaatta kalıp seti harcanmaz
 const yapiEkle = db.prepare(`INSERT INTO structures (parcel_id, owner_user_id, type, footprint_m2, floor_area_m2, status, started_at, completes_at)
                              VALUES (?, ?, ?, ?, ?, 'BUILDING', ?, ?)`);
 const insaatBaslat = db.transaction((userId, id, tip) => {
@@ -345,10 +352,11 @@ const insaatBaslat = db.transaction((userId, id, tip) => {
   belediye.belediyePayi(p.ilce_id, y.maliyet, 'ruhsatPayi', 'ruhsat harcı', tx);
   const t = simdi();
   // Belediyenin yol bakımı yaptığı mahallede inşaat daha kısa sürer
-  // Nalburdan alınan kalıp seti varsa kendiliğinden kullanılır: inşaat kısalır
-  const kalip = require('./carsi').stoktanKullan(userId, 'KALIP_SETI', `Kalıp seti: ${y.ad} (${id})`, tx);
-  const sure = Math.round(y.sureMs * (belediye.mahalleHizmetleri(p.region_id).has('YOL_BAKIMI') ? 1 - BELEDIYE.etki.insaatKisalma : 1)
-    * (1 - require('./uretim').meslekBonusu(userId, 'MIMAR')) * (kalip ? 1 - CARSI.etki.kalipKisalma : 1));
+  // Nalburdan alınan kalıp seti kendiliğinden kullanılır (inşaat kısalır); kısa inşaatta harcanmaz
+  const sureKalipsiz = y.sureMs * (belediye.mahalleHizmetleri(p.region_id).has('YOL_BAKIMI') ? 1 - BELEDIYE.etki.insaatKisalma : 1)
+    * (1 - require('./uretim').meslekBonusu(userId, 'MIMAR'));
+  const kalip = sureKalipsiz >= KALIP_MIN_MS && require('./carsi').stoktanKullan(userId, 'KALIP_SETI', `Kalıp seti: ${y.ad} (${id})`, tx);
+  const sure = Math.round(sureKalipsiz * (kalip ? 1 - CARSI.etki.kalipKisalma : 1));
   const yapiId = yapiEkle.run(id, userId, tip, y.taban, y.taban * y.kat, t, t + sure).lastInsertRowid;
   // Yapı kimliği tek başına benzersiz değil: parsel boşaltılınca yapılar silinir ve SQLite en büyük kimliği yeniden verir
   L.denetim({ anahtar: `STRUCTURE_STARTED:${yapiId}:${t}`, aktor: userId, eylem: 'STRUCTURE_STARTED', varlik: id,
@@ -441,6 +449,7 @@ const sula = db.transaction((userId, id) => {
   const u = URUNLER[e.crop_type];
   if (e.waterings >= u.sulama) throw new OyunHatasi(409, 'Ekin yeterince sulandı');
   const t = simdi();
+  if (t >= e.ready_at) throw new OyunHatasi(409, 'Ekin olgunlaştı; sulama artık verimi değiştirmez, hasat et');
   if (e.last_watered_at && t - e.last_watered_at < TARIM.sulamaAraligiMs) {
     throw new OyunHatasi(429, 'Toprak hâlâ nemli; biraz sonra tekrar sula');
   }
@@ -501,15 +510,21 @@ const bakimYap = db.transaction((userId, id) => {
   const yapilar = q.yapilar.all(id).filter((s) => s.status === 'ACTIVE' && saglik(s, t) < 100);
   if (!yapilar.length) throw new OyunHatasi(409, 'Bakım gerektiren yapı yok');
   const tx = L.yeniTx();
-  // Nalburdan alınan bakım kiti varsa bakım ücretsiz
-  const kit = require('./carsi').stoktanKullan(userId, 'BAKIM_KITI', `Bakım kiti (${id})`, tx);
-  const tutar = kit ? 0 : Math.max(1, L.yuvarla(yapilar.reduce((a, s) => a + bakimMaliyeti(s, t), 0) * require('./koy-meydani').oran(userId, 'SAGLIK_OCAGI')));
+  const bedel = Math.max(1, L.yuvarla(yapilar.reduce((a, s) => a + bakimMaliyeti(s, t), 0) * require('./koy-meydani').oran(userId, 'SAGLIK_OCAGI')));
+  // Nalburdan alınan bakım kiti bakımı ücretsiz yapar; yalnızca bedel kitin fiyatını aşıyorsa harcanır
+  const kit = bedel > CARSI.urunler.BAKIM_KITI.fiyat && require('./carsi').stoktanKullan(userId, 'BAKIM_KITI', `Bakım kiti (${id})`, tx);
+  const tutar = kit ? 0 : bedel;
   if (!kit) {
     L.harca(userId, tutar, `Yapı bakımı (${id})`, tx);
     belediye.belediyePayi(p.ilce_id, tutar, 'ruhsatPayi', 'bakım ruhsat payı', tx);
   }
   const guncelle = db.prepare(`UPDATE structures SET bakim_at = ? WHERE id = ?`);
-  for (const s of yapilar) guncelle.run(t, s.id);
+  // Bakımsız dönemde kira birikmez: eşiğin altındaki kira yapısının sayacı bakımla yeniden başlar
+  const kiraSifirla = db.prepare(`UPDATE structures SET gelir_at = ? WHERE id = ?`);
+  for (const s of yapilar) {
+    if (YAPILAR[s.type]?.gelir && saglik(s, t) < BAKIM.etkisizEsik) kiraSifirla.run(t, s.id);
+    guncelle.run(t, s.id);
+  }
   L.denetim({ aktor: userId, eylem: 'STRUCTURES_MAINTAINED', varlik: id, sonra: { adet: yapilar.length, tutar }, bolge: p.region_id });
   return { tamam: true, tutar, adet: yapilar.length, kit };
 });
@@ -547,10 +562,11 @@ const npcSat = db.transaction((userId, urun, miktar) => {
   const ort = (birimFiyat(urun, satilan) + birimFiyat(urun, satilan + adet)) / 2;
   const pazarYeri = belediye.pazarBonusu(userId);   // belediyenin semt pazarı olan mahallede parseli varsa
   const koopPrimi = require('./kooperatif').satisPrimi(userId);
-  const tutar = Math.floor(ort * adet * (pazarYeri ? 1 + BELEDIYE.etki.pazarBonus : 1) * (1 + koopPrimi) * require('./koy-meydani').oran(userId, 'PAZAR_YERI') * require('./mini-etkinlik').tuccarKat());   // akçe tam sayı tutulur
+  const tutar = L.yuvarla(ort * adet * (pazarYeri ? 1 + BELEDIYE.etki.pazarBonus : 1) * (1 + koopPrimi) * require('./koy-meydani').oran(userId, 'PAZAR_YERI') * require('./mini-etkinlik').tuccarKat());   // kuruş hassasiyeti (defter 2 basamak)
+  if (tutar < 0.01) throw new OyunHatasi(409, 'Tüccarın bugünkü fiyatı bu miktara bir kuruş bile etmiyor; daha çok ürünle ya da yarın dene', 'DEGERSIZ');
   const tx = L.yeniTx();
   L.envanterDegis(userId, urun, -adet, 'NPC pazar satışı', tx);
-  if (tutar > 0) L.aktar({ kaynak: 'SYS:NPC', hedef: L.hesap(userId), tutar, sebep: `${adet} ${URUNLER[urun].ad} satışı`, tx });
+  L.aktar({ kaynak: 'SYS:NPC', hedef: L.hesap(userId), tutar, sebep: `${adet} ${URUNLER[urun].ad} satışı`, tx });
   talepYaz.run(gun, urun, adet);
   db.prepare(`INSERT INTO npc_kisisel (day, user_id, item_id, sold) VALUES (?, ?, ?, ?)
               ON CONFLICT(day, user_id, item_id) DO UPDATE SET sold = sold + excluded.sold`).run(gun, userId, urun, adet);
@@ -565,7 +581,7 @@ const ziyaret = db.transaction((userId, id) => {
   const p = parselGetir(id);
   if (!p.owner_user_id) throw new OyunHatasi(409, 'Boş parsel ziyaret edilemez');
   if (p.owner_user_id === userId) throw new OyunHatasi(409, 'Kendi parselini ziyaret edemezsin');
-  const dahaOnce = db.prepare(`SELECT 1 FROM visits WHERE visitor_id = ? AND parcel_id = ? AND date(created_at) = date('now')`).get(userId, id);
+  const dahaOnce = db.prepare(`SELECT 1 FROM visits WHERE visitor_id = ? AND parcel_id = ? AND created_at >= ?`).get(userId, id, gunBasiMetni());
   if (dahaOnce) throw new OyunHatasi(409, 'Bu parseli bugün zaten ziyaret ettin');
   db.prepare(`INSERT INTO visits (visitor_id, parcel_id) VALUES (?, ?)`).run(userId, id);
   const sahip = q.kullanici.get(p.owner_user_id);
@@ -715,5 +731,5 @@ module.exports = {
   parselKarti, parselEdin, insaatBaslat, ek, sula, hasat, bakimYap, npcSat, ziyaret, saglik, aktifYapiVar, birimFiyat,
   oyuncuOzeti, cuzdanHareketleri, haberAkisi, haritaParselleri, bolgeler, ilIstatistikleri, pazarDurumu,
   insaatUygunluk, imarKullanimi, birincilBedel, tahsisFiyati, parseliBosalt, bekleyenleriIsle, tahminiDeger, parselDegeri,
-  parselGetir, sahibiOlmali, gelismislikSkoru, ekinDurumu, bul, verimKati,
+  parselGetir, sahibiOlmali, gelismislikSkoru, ekinDurumu, bul, verimKati, bugun,
 };

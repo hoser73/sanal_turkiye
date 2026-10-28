@@ -1,7 +1,8 @@
 // Kooperatif yardım istekleri: üye kooperatifinden bir ürün ister ("10 buğday lazım"); diğer üyeler envanterinden gönderir.
 // Ürün doğrudan isteyenin envanterine geçer; yardım eden COOP_HELPED olayıyla TP, yol puanı ve hasat yarışı puanı alır
 // (akçe aktarılmaz). Değer aktarmayı sınırlamak için YARDIM kuralları: tek istekte en çok maksAdet, üye başına tek açık
-// istek ve istekler arasında bekleme, yardım edene günde en çok gunlukYardim gönderim. Dükkân, yöresel ve balık ürünleri istenmez.
+// istek ve istekler arasında bekleme, yardım edene günde en çok gunlukYardim gönderim; gönderen komşulukla aynı seviye eşiğini
+// geçmeli (yan hesap ürün akıtamasın) ve ödül olayı bir istekte yardımcı başına bir kez. Dükkân, yöresel ve balık ürünleri istenmez.
 const db = require('./db');
 const L = require('./lib/ledger');
 const { OyunHatasi } = L;
@@ -29,6 +30,7 @@ const q = {
   acikIstegim: db.prepare(`SELECT id FROM yardim_istekleri WHERE user_id = ? AND durum = 'ACIK' AND bitis > ?`),
   sonIstegim: db.prepare('SELECT MAX(created_at) AS t FROM yardim_istekleri WHERE user_id = ?'),
   bugunYardim: db.prepare('SELECT COUNT(*) AS c FROM yardim_katkilari WHERE user_id = ? AND at >= ?'),
+  katkimVar: db.prepare('SELECT 1 FROM yardim_katkilari WHERE istek_id = ? AND user_id = ? LIMIT 1'),
   acik: db.prepare(`SELECT i.*, u.display_name AS ad FROM yardim_istekleri i JOIN users u ON u.id = i.user_id
     WHERE i.koop_id = ? AND i.durum = 'ACIK' AND i.bitis > ? ORDER BY i.id DESC LIMIT 20`),
 };
@@ -57,6 +59,7 @@ const gonder = db.transaction((userId, istekId, govde = {}) => {
   if (i.durum !== 'ACIK' || i.bitis <= t) throw new OyunHatasi(409, 'Bu istek kapandı');
   if (i.user_id === userId) throw new OyunHatasi(400, 'Kendi isteğine gönderemezsin');
   if (q.uyelik.get(userId)?.koop_id !== i.koop_id) throw new OyunHatasi(403, 'Yalnızca aynı kooperatifin üyeleri gönderebilir');
+  require('./komsuluk').gondericiSeviyesi(userId, 'Kooperatife ürün göndermek');
   if (q.bugunYardim.get(userId, gunBasi(t)).c >= Y.gunlukYardim) throw new OyunHatasi(409, `Bugün en çok ${Y.gunlukYardim} kez yardım gönderebilirsin`, 'GUNLUK');
   const adet = Math.min(Number(govde.adet) || (i.adet - i.gelen), i.adet - i.gelen);
   if (!Number.isInteger(adet) || adet < 1) throw new OyunHatasi(400, 'Geçersiz adet');
@@ -64,12 +67,13 @@ const gonder = db.transaction((userId, istekId, govde = {}) => {
   const tx = L.yeniTx();
   L.envanterDegis(userId, i.urun, -adet, `Kooperatif yardımı #${i.id}`, tx);
   L.envanterDegis(i.user_id, i.urun, adet, `Kooperatif yardımı #${i.id}`, tx);
-  const gelen = i.gelen + adet, tamam = gelen >= i.adet;
+  const gelen = i.gelen + adet, tamam = gelen >= i.adet, ilkKatki = !q.katkimVar.get(i.id, userId);
   db.prepare('UPDATE yardim_istekleri SET gelen = ?, durum = ? WHERE id = ?').run(gelen, tamam ? 'TAMAM' : 'ACIK', i.id);
   db.prepare('INSERT INTO yardim_katkilari (istek_id, user_id, adet, at) VALUES (?, ?, ?, ?)').run(i.id, userId, adet, t);
   const ad = db.prepare('SELECT display_name FROM users WHERE id = ?').get(userId).display_name;
   require('./pazar').bildir(i.user_id, `🤝 ${ad} sana ${adet} ${URUNLER[i.urun].ad} gönderdi${tamam ? '; isteğin tamamlandı' : ''}`, 'arazilerim');
-  L.denetim({ aktor: userId, eylem: 'COOP_HELPED', varlik: `YARDIM:${i.id}`, sonra: { urun: i.urun, adet } });
+  // TP, yol, yarış ve imece puanı: aynı isteğe parça parça göndermek ödülü katlamasın
+  if (ilkKatki) L.denetim({ aktor: userId, eylem: 'COOP_HELPED', varlik: `YARDIM:${i.id}`, sonra: { urun: i.urun, adet } });
   return { tamam: true, adet, istekTamam: tamam };
 });
 

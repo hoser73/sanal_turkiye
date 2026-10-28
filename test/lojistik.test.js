@@ -143,6 +143,8 @@ test('referandum: imza eşiği, gizli oy, kütük, sonuç ve nisap', async () =>
   const hucreler = mahalleHucreleri([32.2, 38.4]);
   const [a, b, c] = [await oyuncu('refa'), await oyuncu('refb'), await oyuncu('refc')];
   for (const [i, x] of [a, b, c].entries()) assert.equal((await x(`/api/parsel/${hucreler[i]}/edin`, {})).durum, 200);
+  // İmza ve kütük hakkı yalnızca yeterince eski hesaplara (SECIM.secmenMinHesapYasiMs)
+  for (const x of [a, b, c]) db.prepare(`UPDATE users SET created_at = datetime('now', '-2 days') WHERE id = ?`).run(x.id);
   const ilce = db.prepare(`SELECT ilce_id FROM parcels WHERE id = ?`).get(hucreler[0]).ilce_id;
   assert.equal((await a(`/api/belediye/${ilce}/referandum`, { soru: 'kısa?' })).durum, 400);
   const r = (await a(`/api/belediye/${ilce}/referandum`, { soru: 'İlçeye yeni bir semt pazarı kurulmalı mı?', aciklama: 'Ürünlerimizi daha iyi satmak için.' })).veri;

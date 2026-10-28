@@ -71,6 +71,10 @@ test('WebSocket: oturum çereziyle kimlik; yabancı Origin reddedilir', async ()
   assert.equal((await misafir.bekle('merhaba')).kullanici, null);
   misafir.close();
   await assert.rejects(soket(c, 'https://kotu.example'), /403/);
+  // Bozuk yüzde kodlamalı çerez sunucuyu düşürmez: misafir olarak bağlanır
+  const bozuk = await soket({ cerez: () => 'st_oturum=%' });
+  assert.equal((await bozuk.bekle('merhaba')).kullanici, null);
+  bozuk.close();
 });
 
 test('bildirim anında canlı bağlantıya düşer', async () => {

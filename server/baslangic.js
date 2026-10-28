@@ -3,9 +3,11 @@
 // kadar akçe "başlangıç hediyesi" olarak verilir ve olağan tahsis (parselEdin) aynı işlemde yapılır — defter tutarlı kalır,
 // ILK_PARSEL görevi de olağan yoldan tamamlanır.
 const db = require('./db');
+const { metin } = require('./lib/girdi');
 const L = require('./lib/ledger');
 const { OyunHatasi } = L;
 const oyun = require('./oyun');
+const auth = require('./auth');
 const { hucreAra, parselHazirla } = require('./harita/parsel');
 const IL_MERKEZ = require('./harita/il-merkezleri');
 
@@ -23,16 +25,17 @@ function hakVar(userId) {
   return !!u && !u.is_npc && !u.baslangic_tarla_at && q.parselSayisi.get(userId).c === 0;
 }
 
-// Bir parseli hediye olarak tahsis et: tahsis bedeli kadar akçe hediye + olağan parselEdin, tek işlemde
+// Bir parseli hediye olarak tahsis et: tahsis bedeli kadar akçe hediye + olağan parselEdin, tek işlemde.
+// Silinmiş bir hesabın kimliğiyle açılan hesapta hediye verilmez: tarla olağan tahsisle, oyuncunun kendi akçesiyle alınır.
 function hediyeEt(userId, id) {
   const p = oyun.parselGetir(id);
   if (p.owner_user_id) throw new OyunHatasi(409, 'Bu arsa az önce başkasına geçti; başka bir arsa seç', 'TAHSISLI');
   if (p.zoning_type !== 'TARIM') throw new OyunHatasi(422, 'Başlangıç arsası tarım arazisi olmalı');
   if (p.area_m2 > ADAY_ALAN_UST) throw new OyunHatasi(422, 'Bu tarla hediye için çok büyük; daha küçük bir tarla seç', 'BUYUK');
-  const bedel = oyun.tahsisFiyati(p);
+  const bedel = auth.tekrarHesapMi(userId) ? 0 : oyun.tahsisFiyati(p);
   return db.transaction(() => {
     if (q.isaretle.run(Date.now(), userId).changes !== 1) throw new OyunHatasi(409, 'Başlangıç tarlanı zaten aldın', 'ALINDI');
-    L.odul(userId, bedel, 'Başlangıç tarlası hediyesi');
+    if (bedel > 0) L.odul(userId, bedel, 'Başlangıç tarlası hediyesi');
     const r = oyun.parselEdin(userId, id);
     // Hediye arsa ayrı işaretlenir: Hazine'ye satış için daha uzun tutma süresi (piyasa.js)
     db.prepare(`UPDATE parcel_ownership SET reason = 'BASLANGIC' WHERE parcel_id = ? AND user_id = ? AND end_at IS NULL`).run(id, userId);
@@ -59,7 +62,7 @@ async function adaylar(userId, { ilce, yer }) {
   if (yer && !y) throw new OyunHatasi(404, 'Mahalle ya da köy bulunamadı');
   const [lon, lat] = y ? [y.lon, y.lat] : [ilceSatir.center_lon, ilceSatir.center_lat];
   const hucreler = await hucreAra(lon, lat, ['TARIM'], 8, 3, 40);
-  const bulunan = [], buyukler = [];
+  const bulunan = [], buyukler = [], tekrar = auth.tekrarHesapMi(userId);
   for (const hucre of hucreler) {
     if (bulunan.length >= 3) break;
     const id = await parselHazirla(hucre);
@@ -67,7 +70,7 @@ async function adaylar(userId, { ilce, yer }) {
     const kart = oyun.parselKarti(id, userId, {}, { hafif: true });
     if (kart.sahip || kart.imar.tip !== 'TARIM') continue;
     const aday = { id, mahalle: kart.mahalle, ilce: kart.ilce, il: kart.il, alan: kart.alan, adaParsel: kart.adaParsel,
-      konum: kart.konum, geometri: kart.geometri, tarla: !!kart.tarla, hediye: kart.birincilBedel ?? null };
+      konum: kart.konum, geometri: kart.geometri, tarla: !!kart.tarla, hediye: tekrar ? 0 : kart.birincilBedel ?? null, bedel: kart.birincilBedel ?? null };
     (kart.alan <= ADAY_ALAN_UST ? bulunan : buyukler).push(aday);
   }
   const sonuc = bulunan.slice(0, 3);   // çok büyük tarlalar hediye edilmez
@@ -104,7 +107,7 @@ async function baslangicTarlasi(userId, secilen = null) {
 
 function rotalar(app, { h, auth }) {
   app.get('/api/baslangic/adaylar', auth.girisGerekli, h((req) => adaylar(req.kullanici.id, { ilce: req.query.ilce, yer: req.query.yer || null })));
-  app.post('/api/baslangic/tarla', auth.girisGerekli, h((req) => baslangicTarlasi(req.kullanici.id, req.body?.parsel ? String(req.body.parsel) : null)));
+  app.post('/api/baslangic/tarla', auth.girisGerekli, h((req) => baslangicTarlasi(req.kullanici.id, metin(req.body?.parsel) || null)));
 }
 
 module.exports = { rotalar, baslangicTarlasi, hakVar, adaylar };

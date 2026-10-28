@@ -24,14 +24,17 @@ test('çarpan: talep + gelişme modeli, yeterli satışta işlem fiyatına çeki
   const b = { sahipli: 10, yeni: 2, arsa: 1000, yapi: 1000, islemler: [] };
   const model = 1 + (10 * PIYASA.talepParsel + 2 * PIYASA.talepYeni) + PIYASA.gelisimKat;
   assert.equal(piyasa.carpanHesapla(b).carpan, Math.round(model * 1000) / 1000);
-  // Üç satış, değerinin iki katına: işlem çarpanı 2, ağırlık tam
-  const islemler = Array.from({ length: 3 }, () => ({ price: 200, deger_ani: 100, carpan_ani: 1 }));
+  // Üç farklı satıcı ve alıcı arasında üç satış, değerinin iki katına: işlem çarpanı 2, ağırlık tam
+  const islemler = Array.from({ length: 3 }, (_, i) => ({ price: 200, deger_ani: 100, carpan_ani: 1, seller_id: i + 1, buyer_id: i + 10 }));
   const c = piyasa.carpanHesapla({ ...b, islemler });
   assert.equal(c.islemCarpani, 2);
   assert.equal(c.carpan, Math.round((model * (1 - PIYASA.islemAgirlik) + 2 * PIYASA.islemAgirlik) * 1000) / 1000);
-  // Tek uç satış endeksi uçuramaz: ağırlığı düşük, sonuç üst sınırda kesilir
-  const uc = piyasa.carpanHesapla({ ...b, islemler: [{ price: 100000, deger_ani: 100, carpan_ani: 1 }] });
-  assert.equal(uc.carpan, PIYASA.maks);
+  // Tek uç satış ya da üç hesabın kendi arasındaki döngüsü endeksi oynatamaz: işlem sinyali devreye girmez
+  const uc = piyasa.carpanHesapla({ ...b, islemler: [{ price: 100000, deger_ani: 100, carpan_ani: 1, seller_id: 1, buyer_id: 2 }] });
+  assert.equal(uc.carpan, Math.round(model * 1000) / 1000);
+  const dongu = [[1, 2], [2, 3], [3, 1], [1, 2]].map(([s, a]) => ({ price: 199, deger_ani: 100, carpan_ani: 1, seller_id: s, buyer_id: a }));
+  assert.equal(piyasa.carpanHesapla({ ...b, islemler: dongu.slice(0, 2) }).islemCarpani, null);
+  assert.ok(piyasa.carpanHesapla({ ...b, islemler: dongu }).islemCarpani > 1, 'üç farklı satıcı ve alıcı: sinyal devrede');
   assert.equal(piyasa.carpanHesapla(null).carpan, 1, 'sahipli parseli olmayan mahalle tahsis seviyesinde');
 });
 
@@ -182,4 +185,58 @@ test('Hazine: 3 gün tutma, güncel teklif, %85 ödeme, parsel Hazine ilanına �
   const k2 = (await B(`/api/parsel/${yeni}`)).veri;
   assert.equal(k2.hazine.uygun, false);
   assert.match(k2.hazine.sebep, /günde/);
+});
+
+test('Hazine: başlangıç hediyesi arsa ikinci hesaba devredilse de 30 gün dolmadan Hazine\'ye satılamaz', async () => {
+  const [S, M] = [istemci(), istemci()];
+  for (const [c, ad] of [[S, 'Sibel'], [M, 'Murat']]) {
+    assert.equal((await c('/api/kayit', { email: `${ad.toLowerCase()}@test.local`, sifre: 'parola123', dogumYili: 1990, kosullarOnay: true, kvkkOnay: true, ad })).durum, 201);
+    await c('/api/ben');
+  }
+  const r = await S('/api/baslangic/tarla', {});
+  assert.equal(r.durum, 200, JSON.stringify(r.veri));
+  const p = r.veri.parsel;
+  const ilan = (await S(`/api/parsel/${p}/ilan`, { fiyat: 1, gun: 1 })).veri.ilanId;
+  assert.equal((await M(`/api/ilan/${ilan}/hemen-al`, { fiyat: 1 })).durum, 200);
+  geriAl(p, 4);
+  const k = (await M(`/api/parsel/${p}`)).veri;
+  assert.equal(k.hazine.uygun, false);
+  assert.match(k.hazine.sebep, /hediye/i);
+  assert.equal((await M(`/api/parsel/${p}/hazineye-sat`, {})).durum, 409);
+  // Hediyenin üstünden 30 gün geçince satılabilir
+  db.prepare(`UPDATE parcel_ownership SET start_at = datetime(start_at, '-31 days') WHERE parcel_id = ? AND reason = 'BASLANGIC'`).run(p);
+  assert.equal((await M(`/api/parsel/${p}`)).veri.hazine.uygun, true);
+});
+
+test('fiyat alarmı: açık alarm sayısı ne olursa olsun hedefe ulaşan her alarm tetiklenir', () => {
+  const alarm = require('../server/alarm');
+  const r = db.prepare('SELECT region_id FROM parcels WHERE id = ?').get(parsel).region_id;
+  piyasa.endeksKaydet(Date.now());
+  const u = db.prepare('SELECT owner_user_id FROM parcels WHERE id = ?').get(parsel).owner_user_id;
+  const ekle = db.prepare('INSERT INTO fiyat_alarmlari (user_id, bolge_id, yon, hedef, created_at) VALUES (?, ?, ?, ?, ?)');
+  db.transaction(() => { for (let i = 0; i < 600; i++) ekle.run(u, r, 'YUKARI', 9999, Date.now()); })();
+  const id = ekle.run(u, r, 'YUKARI', 1, Date.now()).lastInsertRowid;
+  alarm.alarmBakim(Date.now() + 120_000);
+  assert.ok(db.prepare('SELECT tetiklendi_at FROM fiyat_alarmlari WHERE id = ?').get(id).tetiklendi_at != null);
+  assert.equal(db.prepare('SELECT COUNT(*) c FROM fiyat_alarmlari WHERE hedef = 9999 AND tetiklendi_at IS NOT NULL').get().c, 0);
+});
+
+test('Hazine: tesisinde süren üretim olan parseli almaz (eski sahibin partisi kaybolmasın)', async () => {
+  const U = istemci();
+  assert.equal((await U('/api/kayit', { email: 'uretici@test.local', sifre: 'parola123', dogumYili: 1990, kosullarOnay: true, kvkkOnay: true, ad: 'Uretici' })).durum, 201);
+  const uid = (await U('/api/ben')).veri.kullanici.id;
+  const p = hucreBul('TARIM', [32.4, 37.8]);
+  assert.equal((await U(`/api/parsel/${p}/edin`, {})).durum, 200);
+  assert.equal((await U(`/api/parsel/${p}/insaat`, { tip: 'TEL_CIT' })).durum, 200);
+  db.prepare('UPDATE structures SET completes_at = ? WHERE parcel_id = ?').run(Date.now() - 1, p);
+  require('../server/oyun').bekleyenleriIsle();
+  const yapi = db.prepare('SELECT id FROM structures WHERE parcel_id = ?').get(p).id;
+  const parti = db.prepare(`INSERT INTO uretimler (user_id, parcel_id, structure_id, recete, parti, cikti, baslangic, bitis) VALUES (?, ?, ?, 'UN', 1, 1, ?, ?)`)
+    .run(uid, p, yapi, Date.now(), Date.now() + 1e7).lastInsertRowid;
+  geriAl(p, 4);
+  const r = await U(`/api/parsel/${p}/hazineye-sat`, {});
+  assert.equal(r.durum, 409);
+  assert.match(r.veri.hata, /süren üretimi topla/);
+  db.prepare(`UPDATE uretimler SET durum = 'TOPLANDI' WHERE id = ?`).run(parti);
+  assert.equal((await U(`/api/parsel/${p}`)).veri.hazine.uygun, true);
 });

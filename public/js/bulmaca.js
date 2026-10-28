@@ -77,7 +77,7 @@ export async function bulmacaAc({ yenile } = {}) {
         <div class="bm-satir"><span>Hamle</span><b>${d.bolum.hamle}</b></div>
         <div class="bm-satir"><span>Ödül</span><div>${d.gunluk.kalan ? odulHtml(d.odul) : '<small>Bugünkü ödüllü bölümler bitti; yine de oynayıp ilerleyebilirsin.</small>'}</div></div>
       </div>
-      <button type="button" class="bm-b ana" data-bm="oyna">▶ Oyna</button>
+      <button type="button" class="bm-b ana" data-bm="oyna">▶️ Oyna</button>
       <details class="bm-nasil"><summary>Nasıl oynanır?</summary>
         <p>Komşu iki taşı kaydırıp yer değiştir; yan yana ya da üst üste üç aynı motif patlar. Dörtlü eşleşme <b>şerit</b>, L ya da T biçimi <b>bohça</b>, beşli eşleşme <b>rozet</b> bırakır. Otlu karelerdeki taşı patlatınca ot temizlenir.</p>
         <p class="bm-kucuk">Günde ${d.gunluk.tavan} bölüm ödül verir; her 5. bölümde gübre, her 10. bölümde kalıp seti. Akçe oyun içidir, nakde çevrilmez.</p></details>
@@ -89,11 +89,26 @@ export async function bulmacaAc({ yenile } = {}) {
     const r = await api('/api/bulmaca/basla', {}).catch((e) => { tost(e.message, 'hata'); return null; });
     if (!r || !acik) return;
     oyun = tahtaKur(el, r, { ust, bitti: sonuc });
+    oyun.basladi = performance.now();
+    oyun.enKisa = r.enKisa || { tabanMs: 0, hamleMs: 0 };
+  }
+
+  // Sunucu en kısa süreyi denetler (HIZLI): çok hızlı bitirilen bölüm kaybolmasın, süre dolunca yeniden gönderilir
+  async function gonder(kazandi, hamle) {
+    if (!kazandi) return api('/api/bulmaca/bitir', { oyunId: oyun.id, kazandi: false });
+    for (let deneme = 0; ; deneme++) {
+      try { return await api('/api/bulmaca/bitir', { oyunId: oyun.id, kazandi: true, hamle }); } catch (e) {
+        if (e.kod !== 'HIZLI' || deneme >= 4 || !acik) throw e;
+        if (!deneme) tost('⏳ Sonuç kaydediliyor…');
+        const gereken = oyun.enKisa.tabanMs + hamle * oyun.enKisa.hamleMs - (performance.now() - oyun.basladi);
+        await uyu(Math.max(800, gereken + 300));
+      }
+    }
   }
 
   async function sonuc(kazandi, hamle) {
-    const r = await api('/api/bulmaca/bitir', kazandi ? { oyunId: oyun.id, kazandi: true, hamle } : { oyunId: oyun.id, kazandi: false })
-      .catch((e) => { tost(e.message, 'hata'); return null; });
+    let hata = null;
+    const r = await gonder(kazandi, hamle).catch((e) => { hata = e; return null; });
     if (!acik) return;
     const perde = document.createElement('div');
     perde.className = `bm-sonuc ${kazandi ? 'kazandi' : 'kaybetti'}`;
@@ -104,8 +119,10 @@ export async function bulmacaAc({ yenile } = {}) {
           : `<p class="bm-kucuk">${r.gunlukDoldu ? 'Bugünkü ödüllü bölümler bitti; yarın yine ödül var.' : ''}</p>`}
         <button type="button" class="bm-b ana" data-bm="menu">Sonraki bölüm</button><button type="button" class="bm-b" data-bm="kapat">Çiftliğe dön</button></div>`;
     } else {
+      // Ağ hatasında bağlantı uyarısı; sunucu reddettiyse (ör. AZ_HAMLE, SURE) sunucunun iletisi
+      const neden = !kazandi ? 'Az kaldı! Kaybetmenin cezası yok, yeniden dene.' : !hata || hata.kod === 'AG_YOK' ? 'Bağlantıyı denetleyip yeniden dene.' : hata.message;
       perde.innerHTML = `<div class="bm-sonuc-kutu"><div class="bm-sonuc-bas">${kazandi ? 'Kaydedilemedi' : 'Hamleler bitti'}</div>
-        <p class="bm-kucuk">${kazandi ? 'Bağlantıyı denetleyip yeniden dene.' : 'Az kaldı! Kaybetmenin cezası yok, yeniden dene.'}</p>
+        <p class="bm-kucuk">${esc(neden)}</p>
         <button type="button" class="bm-b ana" data-bm="menu">Yeniden dene</button><button type="button" class="bm-b" data-bm="kapat">Çiftliğe dön</button></div>`;
     }
     el.querySelector('.bm-kutu').appendChild(perde);

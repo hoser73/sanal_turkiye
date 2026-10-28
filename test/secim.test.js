@@ -259,3 +259,22 @@ test('az sakinli mahallede seçim açılmaz; gerekçe gösterilir', async () => 
   // Yaşayan nüfus açıkken demo sakinler yerleşince seçim kendiliğinden açılır; kapalıyken eşik açıklanır
   assert.match(m.yeniSecim, /Demo sakinler yerleştikçe|en az 3 oyuncu/);
 });
+
+test('kampanyada tüm adaylar çekilirse oylama açılmaz; boş pusula ve ilk oy ödülü yok', async () => {
+  const h = mahalleHucreleri([29.06, 37.78]);   // Denizli
+  const R = await oyuncu('Rana', 'r', h[0]);
+  const S = await oyuncu('Selim', 's', h[3]);
+  await oyuncu('Tuna', 't', h[6]);
+  await etkinOl(R, h[0]);
+  const mid = (await R(`/api/parsel/${h[0]}`)).veri.mahalleId;
+  secim.secimBakim({ zorla: true });
+  const sid = (await R(`/api/mahalle/${mid}`)).veri.secim.id;
+  asamayaGetir(sid, 'ADAYLIK');
+  assert.equal((await R(`/api/secim/${sid}/aday`, { manifesto: MANIFESTO })).durum, 200);
+  asamayaGetir(sid, 'KAMPANYA');
+  assert.equal((await R(`/api/secim/${sid}/adaylik-geri`, {})).durum, 200);
+  const s = asamayaGetir(sid, 'OYLAMA');
+  assert.equal(s.asama, 'ADAY_YOK');
+  assert.equal((await S(`/api/secim/${sid}/oy`, { secimler: {} })).durum, 409);
+  assert.ok(!db.prepare(`SELECT 1 FROM quest_progress q JOIN users u ON u.id = q.user_id WHERE u.email = 'selim@test.local' AND q.quest_code = 'ILK_OY'`).get());
+});

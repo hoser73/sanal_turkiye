@@ -12,6 +12,8 @@ const emanet = (bidId) => `ESCROW:BID:${bidId}`;
 // Satıcı tüccar meslekliyse ücret indirimi (açık formül: ücret × (1 − meslek bonusu))
 const ucretHesapla = (fiyat, saticiId = null) => Math.max(PAZAR.minUcret, Math.floor(fiyat * PAZAR.ucretOrani * (1 - require('./uretim').meslekBonusu(saticiId, 'TUCCAR'))));
 const sqlZamani = (s) => new Date(s.replace(' ', 'T') + 'Z').getTime();
+const sqlMetni = (ms) => new Date(ms).toISOString().replace('T', ' ').slice(0, 19);   // datetime('now') biçimi
+const hazineMi = (userId) => userId != null && userId === require('./piyasa').hazineId(false);
 
 function tamSayi(v, ad, min, max) {
   const n = Number(v);
@@ -39,9 +41,20 @@ const q = {
   mahalleParselSayisi: db.prepare(`SELECT COUNT(*) AS c FROM parcels WHERE owner_user_id = ? AND region_id = ?`),
 };
 
+// Bildirim metnindeki ham parsel kimliği (TR-0618015-0407079) oyuncunun tanıdığı biçime çevrilir: "Bademli 231/67"
+// (mahalle, Ada/Parsel). Bağlantı (link) kimliği korur.
+const parselEtiketi = db.prepare(`SELECT p.grid_x, p.grid_y, r.name AS mahalle FROM parcels p LEFT JOIN regions r ON r.id = p.region_id WHERE p.id = ?`);
+function okunurParsel(metin) {
+  return String(metin).replace(/TR-\d{7}-\d{7}/g, (id) => {
+    const p = parselEtiketi.get(id);
+    const ap = p && require('./harita/ada').adaParsel(p.grid_x, p.grid_y);
+    return p && ap ? `${p.mahalle || 'Parsel'} ${ap.ada}/${ap.parsel}` : id;
+  });
+}
 function bildir(userId, metin, link = null) {
   const u = q.kullanici.get(userId);
   if (!u || u.is_npc) return;
+  metin = okunurParsel(metin);
   q.bildirimYineleme.run(userId, metin, link);
   const id = q.bildir.run(userId, metin, link).lastInsertRowid;
   require('./lib/olaylar').yay('bildirim', { id, userId, metin, link });
@@ -118,9 +131,10 @@ function aliciUygunMu(userId, ilan, p) {
 function manipulasyonIsaretleri(saticiId, aliciId, p, fiyat, deger) {
   const isaretler = [];
   const pencere = simdi() - PAZAR.washPencereGun * 86400000;
-  const geriDonus = db.prepare(`SELECT 1 FROM trades WHERE parcel_id = ? AND seller_id = ? AND buyer_id = ? AND created_at >= ?`)
-    .get(p.id, aliciId, saticiId, pencere);
-  if (geriDonus) isaretler.push('GERI_DONUS');   // A→B→A
+  // Parsel, referans penceresinde daha önce sahibi olmuş birine dönüyor: A→B→A ve A→B→C→A döngüleri
+  const geriDonus = db.prepare(`SELECT 1 FROM parcel_ownership WHERE parcel_id = ? AND user_id = ? AND end_at IS NOT NULL AND end_at >= ?`)
+    .get(p.id, aliciId, sqlMetni(simdi() - PAZAR.referansGun * 86400000));
+  if (geriDonus) isaretler.push('GERI_DONUS');
   const cift = db.prepare(`SELECT COUNT(*) AS c FROM trades WHERE created_at >= ? AND
     ((seller_id = ? AND buyer_id = ?) OR (seller_id = ? AND buyer_id = ?))`).get(pencere, saticiId, aliciId, aliciId, saticiId).c;
   if (cift + 1 >= PAZAR.washCiftEsigi) isaretler.push('TEKRARLI_CIFT');
@@ -166,6 +180,9 @@ function devret(ilan, aliciId, fiyat, teklif) {
   if (pr.changes !== 1) throw new OyunHatasi(409, 'Parsel az önce değişti; tekrar deneyin');
   db.prepare(`UPDATE structures SET owner_user_id = ?, gelir_at = ? WHERE parcel_id = ?`).run(aliciId, t, p.id);   // kira sayacı yeni sahiple başlar
   db.prepare(`UPDATE crops SET user_id = ? WHERE parcel_id = ? AND status = 'GROWING'`).run(aliciId, p.id);
+  // Tesislerde süren üretim ve beslenmiş hayvanların ürünü de yapıyla birlikte alıcıya geçer
+  db.prepare(`UPDATE uretimler SET user_id = ? WHERE parcel_id = ? AND durum = 'URETIMDE'`).run(aliciId, p.id);
+  db.prepare(`UPDATE hayvan_bakim SET user_id = ? WHERE structure_id IN (SELECT id FROM structures WHERE parcel_id = ?)`).run(aliciId, p.id);
 
   const isaretler = manipulasyonIsaretleri(ilan.seller_id, aliciId, p, fiyat, degerAni);
   const tradeId = db.prepare(`INSERT INTO trades (listing_id, parcel_id, seller_id, buyer_id, price, fee, via, asset_snapshot, flags, created_at, deger_ani, carpan_ani)
@@ -262,6 +279,7 @@ const teklifRed = db.transaction((userId, teklifId) => {
 const teklifVer = db.transaction((userId, ilanId, govde) => {
   const i = aktifIlanGetir(ilanId);
   if (i.seller_id === userId) throw new OyunHatasi(409, 'Kendi ilanına teklif veremezsin');
+  if (hazineMi(i.seller_id)) throw new OyunHatasi(409, "Hazine pazarlık yapmaz; ilan fiyatından almak için Hemen al'ı kullan", 'HAZINE_PAZARLIK_YOK');
   const p = oyun.parselGetir(i.parcel_id);
   aliciUygunMu(userId, i, p);
   const tutar = tamSayi(govde?.tutar, 'Teklif', 1, PAZAR.maxFiyat);
@@ -278,7 +296,7 @@ const teklifVer = db.transaction((userId, ilanId, govde) => {
   L.denetim({ aktor: userId, eylem: 'BID_PLACED', varlik: `LISTING:${i.id}`, sonra: { teklif: id, tutar } });
 
   const satici = q.kullanici.get(i.seller_id);
-  if (satici.is_npc && satici.id !== require('./piyasa').hazineId(false)) {   // Hazine pazarlık yapmaz: yalnızca ilan fiyatından satar
+  if (satici.is_npc) {
     // Demo komşu: istenen fiyatın belirli oranı ve üstünü kabul eder, altını reddeder
     if (tutar >= Math.ceil(i.asking_price * PAZAR.npcKabulOrani)) {
       return { ...devret(q.ilan.get(i.id), userId, tutar, q.teklif.get(id)), npcKabul: true };
@@ -314,13 +332,18 @@ const hemenAl = db.transaction((userId, ilanId, govde) => {
 });
 
 // ---------- Okuma: ilan listesi, parsel ilan bilgisi, benim pazarım ----------
+// Hazine oyunun kendisidir: demo komşu (npc) sayılmaz, ayrı işaretlenir
+function saticiBilgisi(saticiId, ad, isNpc, userId) {
+  const hazine = hazineMi(saticiId);
+  return { ad, npc: !!isNpc && !hazine, hazine, ben: saticiId === userId };
+}
 function ilanSatiri(i, userId) {
   const enYuksek = db.prepare(`SELECT MAX(amount) AS m, COUNT(*) AS c FROM bids WHERE listing_id = ? AND status = 'ACTIVE'`).get(i.id);
   return {
     id: i.id, parsel: i.parcel_id, mahalle: i.mahalle, ilce: i.ilce, il: i.il, alan: i.area_m2, imar: i.zoning_type,
     konum: { lon: i.centroid_lon, lat: i.centroid_lat },
     fiyat: i.asking_price, enYuksekTeklif: enYuksek.m, teklifSayisi: enYuksek.c,
-    satici: { ad: i.satici, npc: !!i.is_npc, ben: i.seller_id === userId },
+    satici: saticiBilgisi(i.seller_id, i.satici, i.is_npc, userId),
     bitis: i.expires_at, olusturma: i.created_at, kosul: i.buyer_condition,
     m2Fiyat: Math.round((i.asking_price / i.area_m2) * 100) / 100,
     yapiSayisi: i.yapi,
@@ -370,7 +393,9 @@ function parselPazarBilgisi(parcelId, userId) {
   const p = oyun.parselGetir(parcelId);
   const i = q.aktifIlanParsel.get(p.id);
   const piyasa = piyasaGostergeleri(p);
-  if (!i) return { ilan: null, piyasa };
+  // Tüccar mesleğinin işlem masrafı indirimi (ilan formundaki net önizleme için)
+  const ucretIndirimi = userId ? require('./uretim').meslekBonusu(userId, 'TUCCAR') : 0;
+  if (!i) return { ilan: null, piyasa, ucretIndirimi };
 
   const satici = q.kullanici.get(i.seller_id);
   const benimIlanim = i.seller_id === userId;
@@ -393,7 +418,7 @@ function parselPazarBilgisi(parcelId, userId) {
   return {
     ilan: {
       id: i.id, fiyat: i.asking_price, birim: i.listing_currency, olusturma: i.created_at, bitis: i.expires_at,
-      satici: { ad: satici.display_name, npc: !!satici.is_npc, ben: benimIlanim },
+      satici: saticiBilgisi(satici.id, satici.display_name, satici.is_npc, userId),
       kosul: { kod: i.buyer_condition, ad: kosul.ad },
       ucretOrani: i.fee_rate, ucret: ucretHesapla(i.asking_price, i.seller_id), net: i.asking_price - ucretHesapla(i.asking_price, i.seller_id),
       ilanAniVarliklar: JSON.parse(i.asset_snapshot),
@@ -407,6 +432,7 @@ function parselPazarBilgisi(parcelId, userId) {
       gecmis,
     },
     piyasa,
+    ucretIndirimi,
   };
 }
 
@@ -449,7 +475,9 @@ function pazarOzeti(userId) {
 }
 
 function bildirimler(userId) {
-  return db.prepare(`SELECT id, text, link, read_at IS NOT NULL AS okundu, created_at FROM notifications WHERE user_id = ? ORDER BY id DESC LIMIT 60`).all(userId);
+  // Eski kayıtlarda ham parsel kimliği olabilir: okunurken de çevrilir
+  return db.prepare(`SELECT id, text, link, read_at IS NOT NULL AS okundu, created_at FROM notifications WHERE user_id = ? ORDER BY id DESC LIMIT 60`).all(userId)
+    .map((b) => (/TR-\d{7}-\d{7}/.test(b.text) ? { ...b, text: okunurParsel(b.text) } : b));
 }
 function bildirimleriOku(userId) {
   db.prepare(`UPDATE notifications SET read_at = datetime('now') WHERE user_id = ? AND read_at IS NULL`).run(userId);

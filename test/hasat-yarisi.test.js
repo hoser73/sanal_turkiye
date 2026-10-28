@@ -69,6 +69,33 @@ test('sonuç: sandık ödülü yalnızca yeterli katkı verenlere, ilk sıraya k
   assert.deepEqual(sonuc, { sira: 1, sandik: 2, bonus: Y.kasaBonusu[0] });
 });
 
+test('sonuç: kooperatif değiştiren haftada bir kez sandık payı alır; aktif olmayan (tek üyeli) kooperatif sandık açmaz', async () => {
+  const [a] = oyuncular;
+  const h = yaris.haftaNo() - 12;
+  const koop1 = db.prepare('SELECT koop_id FROM kooperatif_uyeleri WHERE user_id = ?').get(a.id).koop_id;
+  const ilId = db.prepare('SELECT il_id FROM kooperatifler WHERE id = ?').get(koop1).il_id;
+  const yeniUye = db.prepare('INSERT INTO users (display_name) VALUES (?)');
+  const yeniKoop = (ad, n) => {
+    const uyeler = Array.from({ length: n }, (_, i) => Number(yeniUye.run(`${ad}${i}`).lastInsertRowid));
+    const id = Number(db.prepare('INSERT INTO kooperatifler (il_id, ad, baskan_id, created_at) VALUES (?, ?, ?, ?)').run(ilId, ad, uyeler[0], Date.now()).lastInsertRowid);
+    for (const u of uyeler) db.prepare('INSERT INTO kooperatif_uyeleri (koop_id, user_id, katilim) VALUES (?, ?, ?)').run(id, u, Date.now());
+    return { id, uyeler };
+  };
+  const k2 = yeniKoop('Ikinci Koop', 3), k3 = yeniKoop('Tek Koop', 1);
+  const yaz = db.prepare('INSERT INTO koop_yaris (hafta, koop_id, user_id, puan) VALUES (?, ?, ?, ?)');
+  yaz.run(h, koop1, a.id, 900);           // a: önce koop1'de 900 (iki sandık)
+  yaz.run(h, k2.id, a.id, 400);           // sonra koop2'ye geçip 400 daha (koop2 de iki sandık)
+  yaz.run(h, k2.id, k2.uyeler[0], 500);
+  yaz.run(h, k3.id, k3.uyeler[0], 1600);  // tek üyeli: üç sandık puanı var ama aktif değil
+  const once = [a.id, k2.uyeler[0], k3.uyeler[0]].map((id) => L.bakiye(id));
+  assert.equal(yaris.sonuclandir(h), true);
+  const iki = Y.sandiklar[0].odul + Y.sandiklar[1].odul;
+  assert.equal(Math.round(L.bakiye(a.id) - once[0]), iki, 'yalnızca en çok katkı verdiği kooperatiften bir pay');
+  assert.equal(Math.round(L.bakiye(k2.uyeler[0]) - once[1]), iki);
+  assert.equal(Math.round(L.bakiye(k3.uyeler[0]) - once[2]), 0, 'tek üyeli kooperatif sandık açmaz');
+  assert.deepEqual(db.prepare('SELECT sira, sandik FROM koop_yaris_sonuc WHERE hafta = ? AND koop_id = ?').get(h, k3.id), { sira: null, sandik: 0 });
+});
+
 test('il sıralaması: kooperatifsiz oyuncu da iline puan yazar; ilk üç ilin yeterli katkı verenlerine il ödülü', async () => {
   const [a, , , yalniz] = oyuncular;
   const d = (await yalniz('/api/hasat-yarisi')).veri;

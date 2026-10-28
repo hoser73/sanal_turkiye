@@ -67,7 +67,7 @@ export async function mahallePaneli({ ben, mahalleId, sunucuSimdi, makbuzlar }) 
       : '<p class="kucuk">Henüz duyuru yok.</p>');
   }
 
-  p.push(dilekceBolumu({ dilekceler: v.dilekceler, bolgeId: v.mahalle.id, sakin: v.benSakinim, girisli: !!ben, sunucuSimdi,
+  p.push(dilekceBolumu({ dilekceler: v.dilekceler, bolgeId: v.mahalle.id, sakin: v.benSakinim, girisli: !!ben, sunucuSimdi, kurallar: v.dilekceKurallari,
     hedefler: v.muhtar ? [{ makam: 'MUHTAR', ad: v.muhtar.ad, userId: v.muhtar.userId, ben: v.muhtar.ben }] : [] }));
 
   p.push(`<div class="kutu gazete"><div class="satir"><b>📰 ${esc(v.mahalle.ad)} Gazetesi</b><button type="button" class="dugme ince" data-eylem="gazete" data-id="${v.mahalle.id}">Bu haftanın sayısı</button></div></div>`);
@@ -130,6 +130,7 @@ export function secimBolumu(s, ben, sunucuSimdi, makbuzlar) {
   const kazananlar = new Set(Object.values(s.sonuc?.kazananlar || {}).flat().concat(s.sonuc?.kazananAdayId ? [s.sonuc.kazananAdayId] : []));
   const p = [`<h3 class="bolum">${esc(s.turAd || 'Muhtarlık')} seçimi <span class="durum-cip ${SECIM_CIP[s.asama]}">${esc(s.asamaAd)}</span></h3><div class="kutu secim-kutu">`];
   p.push(adimlar(s, sunucuSimdi));
+  if (s.ara) p.push('<p class="kucuk"><b>Ara seçim:</b> yalnızca belediye başkanlığı seçilir; meclis görevini sürdürür. Seçilen başkan meclisin dönem sonuna kadar görev yapar.</p>');
 
   if (s.asama === 'DUYURU') {
     p.push(`<p>Seçim duyuruldu. Adaylık başvuruları yakında açılacak. ${bolgeAd} parseli olan, hesabı ve oyun içi itibarı yeterli her oyuncu ücretsiz aday olabilir${cokMakam ? ` (${makamlar.map(([, m]) => `${m.ad.toLocaleLowerCase('tr-TR')} ${m.koltuk} koltuk`).join(', ')}; bir seçimde tek makama)` : ''}.</p>`);

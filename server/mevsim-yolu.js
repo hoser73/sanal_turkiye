@@ -112,8 +112,8 @@ const odulAl = db.transaction((userId, govde = {}) => {
   const t = Date.now(), d = donem(t);
   let liste;
   if (govde.kademe != null) {
-    const n = Number(govde.kademe);
-    if (!Number.isInteger(n) || n < 1 || n > Y.kademe) throw new OyunHatasi(400, 'Geçersiz kademe');
+    const n = govde.kademe;
+    if (typeof n !== 'number' || !Number.isInteger(n) || n < 1 || n > Y.kademe) throw new OyunHatasi(400, 'Geçersiz kademe');
     liste = [n];
   } else {
     const alinan = new Set(q.alinanlar.all(userId, d.kod).map((r) => r.kademe));

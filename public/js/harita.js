@@ -1,7 +1,7 @@
 // Ulusal harita: ülke görünümü (81 il) → ilçe → mahalle → parsel hücreleri. 2B / 3B kipleri.
 // Plan §2.4: ülke ölçeğinde parsel yüklenmez; imar hücreleri z14 karolarıyla, oyuncu parselleri görünür alanla gelir.
 import * as maplibregl from '/vendor/maplibre/maplibre-gl.mjs';
-import { stilOlustur, SIRA } from './stil.js';
+import { stilOlustur, SIRA, KAYNAK } from './stil.js';
 import { esc } from './yardimci.js';
 import * as G from './izgara.js';
 import { parselParcalari } from './modeller.js';
@@ -37,7 +37,12 @@ function dolgu(kap) {
   const dar = kap.clientWidth < 700;
   if (!dar) return { top: 40, bottom: 40, left: 40, right: 40 + panelPayi() };
   const cekmece = document.getElementById('panel')?.offsetHeight || 0;
-  return { top: 64, bottom: cekmece + 12, left: 12, right: 12 };
+  // Üstte haritanın üstüne binen görev şeridi ve görünüm seçici kadar boşluk (ölçülür; gizliyse yok sayılır)
+  const ust = Math.max(64, ...['.rehber', '#kipSecici'].map((s) => {
+    const r = document.querySelector(s)?.getBoundingClientRect();
+    return r && r.height ? r.bottom - kap.getBoundingClientRect().top + 8 : 0;
+  }));
+  return { top: Math.min(ust, Math.max(64, kap.clientHeight - cekmece - 120)), bottom: cekmece + 12, left: 12, right: 12 };
 }
 
 // Türkiye görünümü: ülke harita alanını kenardan kenara doldurur (yalnızca üstteki düğmeler ve alttaki şerit için pay)
@@ -50,7 +55,8 @@ function ulkeDolgu(kap) {
 
 async function altlikVarMi() {
   try {
-    const r = await fetch('https://tiles.openfreemap.org/planet', { signal: AbortSignal.timeout(4000) });
+    // Yapılandırılan vektör karo kaynağı (kendi karo sunucusu da olabilir; sabit adres CSP'ye takılıp altlığı kapatıyordu)
+    const r = await fetch(KAYNAK.vektor, { signal: AbortSignal.timeout(4000) });
     return r.ok;
   } catch { return false; }
 }
@@ -652,8 +658,8 @@ export async function haritaKur(kap, { parselTik, ilTik, ilceTik, mahalleAlanTik
     parseleGit(id, { zoom, anlik = false } = {}) {
       const c = G.idCoz(id);
       if (!c) return;
-      const hedef = { center: G.merkez(c.x, c.y), zoom: zoom ?? Math.max(map.getZoom(), 17.2) };
-      if (anlik) map.jumpTo(hedef); else map.flyTo({ ...hedef, speed: 1.5, essential: true });
+      const hedef = { center: G.merkez(c.x, c.y), zoom: zoom ?? Math.max(map.getZoom(), 17.2), padding: dolgu(kap) };   // hedef panelin altında kalmasın
+      if (anlik) map.easeTo({ ...hedef, duration: 0 }); else map.flyTo({ ...hedef, speed: 1.5, essential: true });
     },
     // Parsel şu an ekranda görünen alanda mı (canlı olaylar yalnızca o zaman haritayı tazeler)
     gorunurMu(id) {
@@ -667,7 +673,7 @@ export async function haritaKur(kap, { parselTik, ilTik, ilceTik, mahalleAlanTik
     },
     yereGit({ merkez, bbox, zoom }) {
       if (bbox) map.fitBounds([[bbox[0], bbox[1]], [bbox[2], bbox[3]]], { padding: dolgu(kap), maxZoom: zoom ?? 15, duration: 1800 });
-      else map.flyTo({ center: merkez, zoom: zoom ?? 15.5, speed: 1.4, essential: true });
+      else map.flyTo({ center: merkez, zoom: zoom ?? 15.5, padding: dolgu(kap), speed: 1.4, essential: true });
     },
     // İl seçilince ilçeleri, ilçe seçilince mahalle alanlarını göster
     async ilceleriGoster(plaka) {
@@ -774,6 +780,9 @@ export async function haritaKur(kap, { parselTik, ilTik, ilceTik, mahalleAlanTik
     },
     // 3B yapı ışığı: güneşin gerçek konumu (harita merkezine göre)
     gunesGuncelle(t = Date.now()) {
+      // Stil yüklenirken (ilk açılış, tema değişimi, pencere boyutu değişirken gelen moveend) setLight hata fırlatır:
+      // stil hazır olunca bir kez daha dene
+      if (!map.isStyleLoaded()) { map.once('idle', () => this.gunesGuncelle(t)); return null; }
       const c = map.getCenter();
       const g = gunesKonumu(c.lng, c.lat, t);
       const i = isikRengi(g.yukseklik);

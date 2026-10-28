@@ -119,3 +119,40 @@ test('fiyat alarmı: hedef yönü kendiliğinden; endeks hedefe ulaşınca bir k
   assert.ok((await c('/api/bildirimler')).veri.some((x) => /endeksi/.test(x.text)));
   assert.equal((await c(`/api/alarm/${yukari.id}/sil`, {})).durum, 200);
 });
+
+// Testin kendi ihalesi (haftanın 3 ihalesi önceki testlerde tükenir): boş bir tarım parseli, gelecekte biter
+async function ozelIhale() {
+  const pid = await require('../server/harita/parsel').parselHazirla(hucreBul('TARIM'));
+  const id = db.prepare('INSERT INTO ihaleler (hafta, parcel_id, set_kod, taban, bitis) VALUES (?, ?, ?, ?, ?)').run(-1, pid, 'TEST', 100, Date.now() + 3600_000).lastInsertRowid;
+  return { id, pid };
+}
+
+test('ihale: hesabını silen oyuncunun teklifi iade edilir, emanette akçe kalmaz, ihaleyi kazanamaz', async () => {
+  const { id, pid } = await ozelIhale();
+  const a = await oyuncu('ihsil');
+  const once = L.bakiye(a.id);
+  assert.equal((await a(`/api/ihale/${id}/teklif`, { tutar: 150 })).durum, 200);
+  assert.equal(Math.round(L.hesapBakiye(`IHALE:${id}`)), 150);
+  assert.equal((await a('/api/hesap/sil', { sifre: 'parola123', onayMetni: 'SİL' })).durum, 200);
+  assert.equal(Math.round(L.hesapBakiye(`IHALE:${id}`)), 0, 'emanet boşaldı');
+  assert.equal(Math.round(L.bakiye(a.id)), Math.round(once), 'teklif silinen hesaba iade edildi');
+  assert.equal(db.prepare(`SELECT durum FROM ihale_teklifleri WHERE ihale_id = ? AND user_id = ?`).get(id, a.id).durum, 'IADE');
+  db.prepare('UPDATE ihaleler SET bitis = ? WHERE id = ?').run(Date.now() - 1, id);
+  ihale.sonuclandir();
+  assert.equal(db.prepare('SELECT owner_user_id FROM parcels WHERE id = ?').get(pid).owner_user_id, null);
+  assert.equal(db.prepare('SELECT durum FROM ihaleler WHERE id = ?').get(id).durum, 'SATILMADI');
+});
+
+test('ihale: askıdaki oyuncunun teklifi sonuçlanırken atlanır ve iade edilir; sıradaki geçerli teklif yoksa satılmaz', async () => {
+  const { id, pid } = await ozelIhale();
+  const b = await oyuncu('ihaski');
+  const once = L.bakiye(b.id);
+  assert.equal((await b(`/api/ihale/${id}/teklif`, { tutar: 120 })).durum, 200);
+  db.prepare(`UPDATE users SET status = 'SUSPENDED' WHERE id = ?`).run(b.id);
+  db.prepare('UPDATE ihaleler SET bitis = ? WHERE id = ?').run(Date.now() - 1, id);
+  ihale.sonuclandir();
+  assert.equal(db.prepare('SELECT owner_user_id FROM parcels WHERE id = ?').get(pid).owner_user_id, null);
+  assert.equal(db.prepare('SELECT durum FROM ihaleler WHERE id = ?').get(id).durum, 'SATILMADI');
+  assert.equal(Math.round(L.bakiye(b.id)), Math.round(once), 'teklif iade');
+  assert.equal(Math.round(L.hesapBakiye(`IHALE:${id}`)), 0);
+});

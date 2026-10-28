@@ -2,6 +2,7 @@
 // Silmede kimlik verileri kalıcı olarak silinir; değiştirilemez ekonomi defteri ve denetim kaydı anonim kimlikle kalır
 // (yasal saklama yükümlülüğü ve diğer oyuncuların işlem bütünlüğü için).
 const db = require('./db');
+const { metin } = require('./lib/girdi');
 const L = require('./lib/ledger');
 const auth = require('./auth');
 const { HESAP, YASAL, ROLLER } = require('./config/rules');
@@ -111,17 +112,21 @@ function veriDisaAktar(userId) {
   };
 }
 
-// Hesap silme: parola + (açıksa) 2FA + "SİL" onayı. Açık ilan/teklif/adaylık kapatılır, makamlar boşalır,
-// parseller devlete döner (üzerindeki yapılar kaldırılır), kimlik verileri silinir.
+// Hesap silme: parola (parolasız hesapta son 15 dakikada açılmış oturum) + (açıksa) 2FA + "SİL" onayı. Açık ilan/teklif/
+// ihale teklifi/adaylık kapatılır, vadeli hesaplar bozdurulur, makamlar boşalır, parseller devlete döner (üzerindeki
+// yapılar kaldırılır), kimlik verileri silinir.
 function hesapSil(req, res) {
   const userId = req.kullanici.id;
-  if (String(req.body?.onayMetni || '').toLocaleUpperCase('tr-TR') !== 'SİL') throw new OyunHatasi(400, 'Onaylamak için SİL yaz');
+  if (metin(req.body?.onayMetni).toLocaleUpperCase('tr-TR') !== 'SİL') throw new OyunHatasi(400, 'Onaylamak için SİL yaz');
   auth.yenidenKimlik(userId, req.body, { taze: auth.tazeOturumMu(req) });
   const pazar = require('./pazar');
   const yonetim = require('./moderasyon');
   db.transaction(() => {
     for (const i of db.prepare(`SELECT id FROM listings WHERE seller_id = ? AND status = 'ACTIVE'`).all(userId)) pazar.ilanIptal(userId, i.id);
     for (const b of db.prepare(`SELECT listing_id FROM bids WHERE buyer_id = ? AND status = 'ACTIVE'`).all(userId)) pazar.teklifGeriCek(userId, b.listing_id);
+    require('./ihale').tekliflerIade(userId);
+    // Açık vadeli hesaplar bozdurulur: anapara cüzdana döner (silinen hesap bir daha kapatamazdı)
+    for (const v of db.prepare(`SELECT id FROM banka_vadeli WHERE user_id = ? AND durum = 'ACIK'`).all(userId)) require('./carsi').vadeliKapat(userId, v.id);
     db.prepare(`UPDATE adaylar SET durum = 'CEKILDI' WHERE user_id = ? AND durum = 'AKTIF'
       AND secim_id NOT IN (SELECT id FROM secimler WHERE asama IN ('OYLAMA', 'ITIRAZ'))`).run(userId);
     if (db.prepare(`SELECT 1 FROM kooperatif_uyeleri WHERE user_id = ?`).get(userId)) require('./kooperatif').ayril(userId);
@@ -140,7 +145,9 @@ function hesapSil(req, res) {
     db.prepare(`UPDATE gorevden_alma SET durum = 'DUSTU', kapandi_at = ? WHERE hedef_id = ? AND durum = 'ACIK'`).run(Date.now(), userId);
     const parseller = db.prepare(`SELECT id FROM parcels WHERE owner_user_id = ?`).all(userId);
     for (const p of parseller) require('./oyun').parseliBosalt(p.id);
-    const eposta = db.prepare(`SELECT email FROM users WHERE id = ?`).get(userId).email;
+    const { email: eposta, telefon_ozet: telefonOzet } = db.prepare(`SELECT email, telefon_ozet FROM users WHERE id = ?`).get(userId);
+    // Aynı e-posta/telefonla yeniden kayıtta başlangıç hediyeleri tekrar verilmesin (yalnızca tuzlu özet saklanır)
+    auth.silinenKimlikKaydet({ email: eposta, telefonOzet });
     db.prepare(`DELETE FROM giden_postalar WHERE alici = ?`).run(eposta);
     db.prepare(`DELETE FROM sessions WHERE user_id = ?`).run(userId);
     db.prepare(`DELETE FROM eposta_tokenlari WHERE user_id = ?`).run(userId);

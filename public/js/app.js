@@ -98,7 +98,7 @@ const AKIS_METIN = {
   PROJECT_PROPOSED: (a) => ['📝', `Başkan <b>${esc(a.aktor)}</b> meclise teklif etti: ${esc(a.after?.ad)} (${akce(a.after?.maliyet)})`],
   COUNCIL_VOTE: (a) => ['🙋', `Meclis üyesi <b>${esc(a.aktor)}</b>, ${esc(a.after?.ad)} için “${({ EVET: 'evet', HAYIR: 'hayır', CEKIMSER: 'çekimser' })[a.after?.oy]}” dedi`],
   PROJECT_APPROVED: (a) => ['✅', `Meclis onayladı: <b>${esc(a.after?.ad)}</b> yapılıyor`],
-  PROJECT_REJECTED: (a) => ['✖', `Meclis reddetti: ${esc(a.after?.ad)}`],
+  PROJECT_REJECTED: (a) => ['✖️', `Meclis reddetti: ${esc(a.after?.ad)}`],
   PROJECT_COMPLETED: (a) => ['🏁', `<b>${esc(a.after?.ad)}</b> hizmete açıldı`],
   MUHTAR_REQUEST: (a) => ['📨', `Muhtar <b>${esc(a.aktor)}</b> belediyeden ${esc(a.after?.ad)} istedi`],
   MUHTAR_ANNOUNCEMENT: (a) => ['📢', `Muhtar <b>${esc(a.aktor)}</b>: “${esc(a.after?.metin)}”`],
@@ -165,7 +165,7 @@ function koyGorunumu() {
 async function baslangicTarlasiAl() {
   try {
     const r = await api('/api/baslangic/tarla', {});
-    tost(`🎁 Tarlan hazır! Başlangıç hediyesi ${akce(r.hediye)} ile tahsis edildi`);
+    tost(r.hediye > 0 ? `🎁 Tarlan hazır! Başlangıç hediyesi ${akce(r.hediye)} ile tahsis edildi` : `🌱 Tarlan hazır! ${akce(r.bedel ?? 0)} tahsis bedeliyle senin oldu`);
     ses('seviye');
     await benYenile({ sessiz: true });
     haritaYenile();
@@ -676,6 +676,12 @@ function parselPaneli() {
   // Sahiplik kutusu
   if (imar.parselDegil) {
     parcalar.push(`<div class="kutu"><b>${esc(imar.ad)} · parsel değil</b><p class="kucuk">${esc(imar.aciklama)} Yakındaki bir hücreye dokun.</p></div>`);
+  } else if (!k.sahip && k.simge) {
+    // Simge parsel: sahiplik kutusu yerine aşağıdaki simge kartı (Kartı topla) gösterilir
+  } else if (!k.sahip && k.ihalede) {
+    parcalar.push(`<div class="kutu vurgulu"><b>🔨 Bu tarla bu hafta ihalede</b>
+      <p class="kucuk">Olağan yoldan edinilemez; en yüksek teklifi veren alır.</p>
+      <button type="button" class="dugme birincil genis" data-eylem="pazar-alt" data-alt="ihale">İhaleye git</button></div>`);
   } else if (!k.sahip && k.birincilBedel != null) {
     parcalar.push(`<div class="kutu vurgulu">
       <div class="satir"><div><b>Boş parsel</b><div class="kucuk">Birincil tahsis bedeli</div></div><div class="fiyat">${akce(k.birincilBedel)}</div></div>
@@ -706,9 +712,9 @@ function parselPaneli() {
   else if (k.sahip && girisli()) parcalar.unshift(`<button type="button" class="dugme altin genis ciftlige-gir" data-eylem="ciftlik-gez">🏡 ${esc(k.sahip.ad ? tamlayan(k.sahip.ad) : 'Komşunun')} çiftliğini gez</button>`);
   if (ben) parcalar.push(`<div class="kutu danisman"><div class="satir"><b>🧑‍🌾 Danışman</b><button type="button" class="dugme ince" data-eylem="danisman">Öneri al</button></div><div id="danismanKutu"></div></div>`);
 
-  // Simge parsel (kamu mirası)
+  // Simge parsel (kamu mirası): kartın başında
   if (k.simge) {
-    parcalar.push(`<div class="kutu simge-kart"><div class="satir"><div><span style="font-size:30px">${k.simge.ikon}</span> <b>${esc(k.simge.ad)}</b>
+    parcalar.unshift(`<div class="kutu simge-kart"><div class="satir"><div><span style="font-size:30px">${k.simge.ikon}</span> <b>${esc(k.simge.ad)}</b>
       <div class="kucuk">Simge parsel · ${esc(k.simge.bolge)} · kamu mirası, edinilemez</div></div>
       ${girisli() ? (k.simge.toplandi ? '<span class="cip yesil">📔 albümde</span>' : `<button class="dugme altin ince" data-eylem="simge-topla" data-kod="${esc(k.simge.kod)}">📔 Kartı topla</button>`) : ''}</div>
       <p class="kucuk" style="margin-bottom:0">${esc(k.simge.not)}</p></div>`);
@@ -872,11 +878,11 @@ function tarlaBolumu(k) {
       <div class="kucuk">💧 ${e.sulama}/${e.gerekenSulama}${e.otomatikSulama ? '<br>otomatik' : ''}</div></div>
     <div class="cubuk"><span data-ilerleme-bas="${e.ekim}" data-ilerleme-son="${e.hazir}" style="width:${ilerleme * 100}%"></span></div>
     <div style="display:flex;gap:8px;margin-top:10px">
-      ${!e.otomatikSulama && e.sulama < e.gerekenSulama
+      ${!olgun && !e.otomatikSulama && e.sulama < e.gerekenSulama
         ? `<button class="dugme ince" data-eylem="sula">💧 Sula (${akce(e.sulamaMaliyeti)})</button>` : ''}
       <button class="dugme ${olgun ? 'altin' : ''} ince" data-eylem="hasat" ${olgun ? '' : 'disabled'}>${e.tazelik === 'CURUDU' ? '🧹 Tarlayı temizle' : '🧺 Hasat et'}</button>
     </div>
-    ${!e.otomatikSulama && e.sulama < e.gerekenSulama ? '<p class="kucuk">Eksik sulama verimi düşürür. Sulama hattı kurarsan otomatik sulanır; yağmur da açık tarlayı sular.</p>' : ''}
+    ${!olgun && !e.otomatikSulama && e.sulama < e.gerekenSulama ? '<p class="kucuk">Eksik sulama verimi düşürür. Sulama hattı kurarsan otomatik sulanır; yağmur da açık tarlayı sular.</p>' : ''}
     ${e.tazelik !== 'CURUDU' ? ortuSatiri(k, { ...e, donHassas: !!durum.kurallar.urunler[e.tip]?.donHassas }, (k.iklim?.ortu.birimMaliyet || 0) * kat) : ''}
     ${zirai(k, e, olgun)}
     ${e.don ? '<p class="kucuk kirmizi-metin">❄️ Bu ekin don gördü: verim %25 düşük olacak. Sera kurarsan sonraki ekinler korunur.</p>' : ''}
@@ -889,7 +895,7 @@ function zirai(k, e, olgun) {
   const rozet = [e.gubre ? '🧪 gübreli (+%20 hasat)' : '', e.ilac ? '🛡️ ilaçlı (don/dolu/sağanak koruması)' : ''].filter(Boolean);
   const dugmeler = !k.kullanimHakkim || e.tazelik === 'CURUDU' ? [] : [
     !e.gubre && !olgun && stokta('GUBRE') ? `<button class="dugme ince" data-eylem="carsi-kullan" data-urun="GUBRE">🧪 Gübre ver (${stokta('GUBRE')})</button>` : '',
-    !e.ilac && stokta('ILAC') ? `<button class="dugme ince" data-eylem="carsi-kullan" data-urun="ILAC">🛡️ İlaçla (${stokta('ILAC')})</button>` : '',
+    !e.ilac && !olgun && stokta('ILAC') ? `<button class="dugme ince" data-eylem="carsi-kullan" data-urun="ILAC">🛡️ İlaçla (${stokta('ILAC')})</button>` : '',
   ].filter(Boolean);
   if (!rozet.length && !dugmeler.length) return '';
   return `<div class="zirai-satir">${rozet.map((r) => `<span class="rozet-hava">${r}</span>`).join('')}${dugmeler.join('')}</div>`;
@@ -1070,7 +1076,7 @@ async function haberlerPaneli() {
       <button type="button" data-eylem="akis-filtre" data-filtre="il" aria-selected="${!!ilModu}" ${durum.konum ? '' : 'disabled'}>${durum.konum ? esc(durum.konum.il) : 'Bulunduğun il'}</button>
       <button type="button" data-eylem="akis-filtre" data-filtre="yaris" aria-selected="${lig}">🏁 Hasat yarışı</button>
     </div>
-    ${!lig ? '<div class="satir zaman-satir"><span class="kucuk">Son 30 günde Türkiye nasıl büyüdü?</span><button type="button" class="dugme ince" data-eylem="ulke-zaman">▶ Zaman yolculuğu</button></div>' : ''}`;
+    ${!lig ? '<div class="satir zaman-satir"><span class="kucuk">Son 30 günde Türkiye nasıl büyüdü?</span><button type="button" class="dugme ince" data-eylem="ulke-zaman">▶️ Zaman yolculuğu</button></div>' : ''}`;
   if (lig) return ust + yarisKarti(await api('/api/hasat-yarisi'));
   const akis = await api(`/api/akis${ilModu ? `?il=${durum.konum.ilId}` : ''}`);
   return `${ust}
@@ -1149,7 +1155,7 @@ async function eylemDagit(b, e = null) {
     }
     case 'yapi-yukselt':
       b.disabled = true;
-      return eylem(`/api/yapi/${b.dataset.id}/yukselt`, null, (r) => `⬆️ Yapı ${r.seviye}. seviyeye yükseldi (${akce(r.bedel)})`).then((r) => { if (r?.tamam) ses('seviye'); });
+      return eylem(`/api/yapi/${b.dataset.id}/yukselt`, { hedef: Number(b.dataset.seviye) || undefined }, (r) => `⬆️ Yapı ${r.seviye}. seviyeye yükseldi (${akce(r.bedel)})${r.kira ? ` · biriken kira: +${akce(r.kira)}` : ''}`).then((r) => { if (r?.tamam) ses('seviye'); });
     case 'isci-tut':
       b.disabled = true;
       return eylem('/api/isci/tut', { gun: Number(b.dataset.gun) }, (r) => `👷 İşçi tutuldu: ${new Date(r.bitis).toLocaleString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} tarihine kadar çalışacak`);
@@ -1249,7 +1255,7 @@ async function eylemDagit(b, e = null) {
       durum.harita.turkiyeyeGit();
       await durum.harita.zamanOynat(noktalar, { ilerleme: (o, t) => { b.textContent = `⏳ ${new Date(t).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}`; } });
       b.textContent = `✓ ${noktalar.length} parsel`;
-      setTimeout(() => { durum.harita.zamanTemizle(); b.textContent = '▶ Zaman yolculuğu'; b.disabled = false; }, 6000);
+      setTimeout(() => { durum.harita.zamanTemizle(); b.textContent = '▶️ Zaman yolculuğu'; b.disabled = false; }, 6000);
       return;
     }
     case 'kirala':
@@ -1442,7 +1448,7 @@ async function eylemDagit(b, e = null) {
     // ---- Pazar
     case 'pazar-alt':
       durum.pazarAlt = b.dataset.alt;
-      return panelCiz();
+      return durum.sekme === 'pazar' ? panelCiz() : sekmeSec('pazar');   // başka sekmeden (ör. parsel kartı) gelindiyse
     case 'borsa-urun':
       borsaUrunSec(b.dataset.urun);
       return panelCiz();
@@ -1846,7 +1852,7 @@ let hataSayisi = 0;
 function hataBildir(ileti, dosya, satir, yigin) {
   if (++hataSayisi > 5) return;
   fetch('/api/istemci-hata', { method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ ileti: String(ileti).slice(0, 500), dosya: String(dosya || '').replace(location.origin, ''), satir, yigin: String(yigin || '').slice(0, 1500), surum: '0.6' }) }).catch(() => {});
+    body: JSON.stringify({ ileti: String(ileti).slice(0, 500), dosya: String(dosya || '').replace(location.origin, ''), satir, yigin: String(yigin || '').slice(0, 1500), surum: durum.kurallar?.surum || '' }) }).catch(() => {});
 }
 window.addEventListener('error', (e) => hataBildir(e.message, e.filename, e.lineno, e.error?.stack));
 window.addEventListener('unhandledrejection', (e) => hataBildir(e.reason?.message || e.reason, '', null, e.reason?.stack));

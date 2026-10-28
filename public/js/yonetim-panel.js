@@ -1,6 +1,6 @@
 // Moderasyon ve denetim paneli: şikâyetler, iki kişi kuralıyla işlemler, seçim ve meclis denetimi, dilekçeler,
 // ekonomi gözlemi. Yalnızca yetkili roller (2FA zorunlu) erişir; tüm kararlar denetim kaydına yazılır.
-import { api, esc, zamanOnce } from './yardimci.js';
+import { api, esc, zamanOnce, sure } from './yardimci.js';
 
 const $ = (s) => document.querySelector(s);
 let veri = null, sekme = 'sikayet', ekonomi = null;
@@ -91,8 +91,9 @@ function meclis() {
 }
 
 function dilekce() {
-  return `<div class="kart"><table><thead><tr><th>#</th><th>Bölge</th><th>Makam</th><th>Hedef</th><th>İmza</th><th>Durum</th><th></th></tr></thead><tbody>
-    ${veri.dilekceler.map((d) => `<tr><td>${d.id}</td><td>${esc(d.bolge)}</td><td>${esc(d.makam)}</td><td>${esc(d.hedef)}</td><td>${d.imza}/${d.esik}</td><td>${cip(d.durum)}</td><td class="kucuk">${ms(d.bitis)}</td></tr>`).join('')
+  return `<div class="kart"><table><thead><tr><th>#</th><th>Bölge</th><th>Makam</th><th>Hedef</th><th>İmza</th><th>Durum</th><th>Bitiş</th></tr></thead><tbody>
+    ${veri.dilekceler.map((d) => `<tr><td>${d.id}</td><td>${esc(d.bolge)}</td><td>${esc(d.makam)}</td><td>${esc(d.hedef)}</td><td>${d.imza}/${d.esik}</td><td>${cip(d.durum)}</td>
+      <td class="kucuk">${d.durum === 'ACIK' && d.bitis > Date.now() ? `${sure(d.bitis - Date.now())} sonra` : ms(d.bitis)}</td></tr>`).join('')
       || '<tr><td colspan="7" class="kucuk">Dilekçe yok.</td></tr>'}</tbody></table></div>`;
 }
 
@@ -172,7 +173,7 @@ function ekonomiHTML(e) {
     <div class="kart"><h2 style="margin-top:0">Günlük akçe akışı</h2><table><thead><tr><th>Gün</th><th>Basılan</th><th>Yakılan</th><th>Net</th><th>İşlem</th></tr></thead><tbody>
       ${e.gunluk.map((g) => `<tr><td>${esc(g.gun)}</td><td>${g.basilan}</td><td>${g.yakilan}</td><td>${g.basilan - g.yakilan}</td><td>${g.islem}</td></tr>`).join('')}</tbody></table></div>
     <div class="kart"><h2 style="margin-top:0">Akış kaynakları (7 gün)</h2><table><thead><tr><th>Sebep</th><th>Yön</th><th>Tutar</th></tr></thead><tbody>
-      ${e.kaynaklar.map((x) => `<tr><td>${esc(x.sebep)}</td><td>${x.yon === 'BASIM' ? '⬆ basım' : '⬇ yakım'}</td><td>${x.tutar}</td></tr>`).join('')}</tbody></table></div>
+      ${e.kaynaklar.map((x) => `<tr><td>${esc(x.sebep)}</td><td>${x.yon === 'BASIM' ? '⬆️ basım' : '⬇️ yakım'}</td><td>${x.tutar}</td></tr>`).join('')}</tbody></table></div>
     ${e.urunler ? `<div class="kart"><h2 style="margin-top:0">Ürün piyasası</h2><table><thead><tr><th>Ürün</th><th>NPC fiyatı</th><th>Son işlem</th><th>Alış emri</th><th>Satış emri</th></tr></thead><tbody>
       ${e.urunler.map((u) => `<tr><td>${esc(u.ad)}</td><td>${u.npc}</td><td>${u.son ?? '—'}</td><td>${u.alis ?? '—'}</td><td>${u.satis ?? '—'}</td></tr>`).join('')}</tbody></table></div>` : ''}`;
 }
@@ -206,7 +207,7 @@ document.addEventListener('click', async (e) => {
         sponsorlar = null; tost('Varsayılana döndü'); ciz(); break;
       case 'yeniden-say': {
         const r = await api(`/api/secim/${b.dataset.id}/yeniden-say`);
-        document.getElementById(`sayim-${b.dataset.id}`).textContent = r.uyumlu ? `✓ ilk sayımla uyumlu (${r.toplam} pusula)` : '✖ UYUŞMUYOR — incele';
+        document.getElementById(`sayim-${b.dataset.id}`).textContent = r.uyumlu ? `✓ ilk sayımla uyumlu (${r.toplam} pusula)` : '✖️ UYUŞMUYOR — incele';
         break;
       }
     }

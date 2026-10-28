@@ -46,3 +46,17 @@ test('parseli olan oyuncu başlangıç tarlası alamaz', async () => {
   assert.equal((await B.c('/api/ben')).veri.baslangicTarlasi, false);
   assert.equal((await B.c('/api/baslangic/tarla', {})).durum, 409);
 });
+
+test('silinen hesabın e-postasıyla açılan hesap: başlangıç tarlası hediyesiz (kendi akçesiyle) alınır', async () => {
+  const A = await kayit('donguci');
+  assert.equal((await A.c('/api/hesap/sil', { sifre: 'parola123', onayMetni: 'SİL' })).durum, 200);
+  const B = await kayit('donguci');
+  const L = require('../server/lib/ledger');
+  assert.equal(L.bakiye(B.id), 0, 'hoş geldin hibesi yok');
+  db.transaction(() => L.odul(B.id, 100_000, 'test sermayesi'))();
+  const r = await B.c('/api/baslangic/tarla', {});
+  assert.equal(r.durum, 200, JSON.stringify(r.veri));
+  assert.equal(r.veri.hediye, 0);
+  assert.equal(db.prepare(`SELECT COUNT(*) c FROM wallet_ledger WHERE user_id = ? AND reason = 'Başlangıç tarlası hediyesi'`).get(B.id).c, 0);
+  assert.ok(L.bakiye(B.id) < 100_000, 'tahsis bedeli oyuncunun akçesinden');
+});

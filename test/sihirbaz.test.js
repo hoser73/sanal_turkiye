@@ -97,3 +97,34 @@ test('atla: sihirbaz biter, adım ödülleri artık verilmez', async () => {
   assert.equal((await A.c('/api/sihirbaz')).veri.aktif, false);
   assert.equal((await A.c('/api/sihirbaz/odul', { adim: 'ARSA' })).durum, 409);
 });
+
+test('sulama adımı yağmur/komşu sulamasıyla da tamam sayılır; sulamasız hasatta son adım yine alınır', async () => {
+  const A = await kayit('yagmurlu');
+  const ad = (await A.c(`/api/baslangic/adaylar?ilce=${ilce()}`)).veri.adaylar[0];
+  assert.equal((await A.c('/api/baslangic/tarla', { parsel: ad.id })).durum, 200);
+  assert.equal((await A.c(`/api/parsel/${ad.id}/ek`, { urun: 'BUGDAY' })).durum, 200);
+  assert.equal((await A.c('/api/sihirbaz/odul', { adim: 'SULAMA' })).durum, 409);
+  db.prepare(`UPDATE crops SET waterings = 1 WHERE parcel_id = ?`).run(ad.id);   // yağmur denetim kaydı yazmaz
+  assert.equal((await A.c('/api/sihirbaz')).veri.adimlar.find((x) => x.kod === 'SULAMA').tamam, true);
+  assert.equal((await A.c('/api/sihirbaz/odul', { adim: 'SULAMA' })).durum, 200);
+  // Başka oyuncu: hiç sulamadan hasat etti
+  const B = await kayit('sulamasiz');
+  const bAd = (await B.c(`/api/baslangic/adaylar?ilce=${ilce()}`)).veri.adaylar[0];
+  assert.equal((await B.c('/api/baslangic/tarla', { parsel: bAd.id })).durum, 200);
+  for (const eylem of ['CROP_PLANTED', 'CROP_HARVESTED', 'TRADE_SETTLED', 'STRUCTURE_STARTED']) L.denetim({ aktor: B.id, eylem, varlik: 'test' });
+  const son = await B.c('/api/sihirbaz/odul', { adim: 'GUNLUK' });
+  assert.equal(son.durum, 200, JSON.stringify(son.veri));
+  assert.equal(son.veri.bitti, true);
+});
+
+test('silinen hesabın e-postasıyla açılan hesap sihirbaz adımlarını yapar ama akçe ödülü almaz', async () => {
+  const A = await kayit('odulcu');
+  assert.equal((await A.c('/api/hesap/sil', { sifre: 'parola123', onayMetni: 'SİL' })).durum, 200);
+  const B = await kayit('odulcu');
+  L.denetim({ aktor: B.id, eylem: 'CROP_PLANTED', varlik: 'test' });
+  const once = L.bakiye(B.id);
+  const r = await B.c('/api/sihirbaz/odul', { adim: 'EKIM' });
+  assert.equal(r.durum, 200);
+  assert.equal(r.veri.odul, 0);
+  assert.equal(L.bakiye(B.id), once);
+});

@@ -30,7 +30,11 @@ function bagla(sunucu) {
     }
     const ip = istemciIp(req);
     if ((ipSayilari.get(ip) || 0) >= MAKS_IP_BAGLANTI || istemciler.size >= MAKS_BAGLANTI) { soket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n'); return soket.destroy(); }
-    wss.handleUpgrade(req, soket, bas, (ws) => { ws.ip = ip; ipSayilari.set(ip, (ipSayilari.get(ip) || 0) + 1); baglandi(ws, req); });
+    wss.handleUpgrade(req, soket, bas, (ws) => {
+      ws.ip = ip; ipSayilari.set(ip, (ipSayilari.get(ip) || 0) + 1);
+      // Express dışı yol: beklenmeyen bir istisna süreci kapatmasın, yalnızca bu bağlantı kapansın
+      try { baglandi(ws, req); } catch (e) { require('./lib/gunluk').gunluk.error('canlı bağlantı hatası', { hata: e }); ws.close(1011); }
+    });
   });
   const nabiz = setInterval(() => {
     for (const ws of istemciler) {

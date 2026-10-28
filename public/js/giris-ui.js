@@ -56,7 +56,7 @@ export function girisKur({ api, tost, girisSonrasi, iller, rehberBaslat, sihirba
     ikiAdim: () => `
       <h2 id="acilisBaslik">İki adımlı doğrulama</h2>
       <p class="alt">Kimlik doğrulayıcı uygulamandaki 6 haneli kodu ya da bir kurtarma kodunu gir.</p>${uyari()}
-      <form class="form" data-f="ikiAdim"><label>Doğrulama kodu<input name="kod" inputmode="numeric" autocomplete="one-time-code" maxlength="9" required autofocus></label>
+      <form class="form" data-f="ikiAdim"><label>Doğrulama kodu<input name="kod" inputmode="text" autocapitalize="characters" autocomplete="one-time-code" autocorrect="off" spellcheck="false" maxlength="9" required autofocus></label>
         <button class="dugme birincil genis">Doğrula</button></form>
       <p class="acilis-alt"><button type="button" class="bag" data-a="ekran" data-e="giris">← Girişe dön</button></p>`,
     unuttum: () => `

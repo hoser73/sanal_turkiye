@@ -176,10 +176,14 @@ test('meclis: açık oylama, yeter sayı, eşitlikte başkan, nitelikli çoğunl
   assert.equal((await E(`/api/proje/${p1}/oy`, { oy: 'EVET' })).durum, 403, 'üye olmayan');
   assert.equal((await B(`/api/proje/${p1}/oy`, { oy: 'BELKI' })).durum, 400);
 
-  // Başkanın parseli olan mahalle: nitelikli çoğunluk; tüm üyeler çıkarlı → karar alınamaz
+  // Başkanın parseli olan mahalle: nitelikli çoğunluk; oy kullanabilecek en az 2 üye yoksa teklif baştan reddedilir
   const r2 = await A(`/api/belediye/${ilceId}/proje`, { tur: 'PARK', hedefMahalleId: m1, gerekce: 'Kendi mahallemize park yapılması öneriliyor.' });
-  p2 = r2.veri.projeId;
-  assert.equal(r2.veri.nitelikli, true);
+  assert.equal(r2.durum, 409);
+  assert.match(r2.veri.hata, /nitelikli çoğunluk.*en az 2 meclis üyesi/);
+  // Teklif sonrası üyeler çıkarlı hâle gelirse oy kullanamaz, karar alınamaz (düzenek: doğrudan kayıt)
+  p2 = db.prepare(`INSERT INTO projeler (region_id, hedef_region_id, tur, maliyet, gerekce, teklif_eden_id, durum, nitelikli, nitelikli_sebep, oylama_bitis, created_at)
+                   VALUES (?, ?, 'PARK', 400, 'Kendi mahallemize park yapılması öneriliyor.', ?, 'MECLISTE', 1, 'başkanın hedef mahallede parseli var', ?, ?)`)
+    .run(ilceId, m1, kullanici('asli@test.local'), Date.now() + 86400000, Date.now()).lastInsertRowid;
   const cikar = await A(`/api/proje/${p2}/oy`, { oy: 'EVET' });
   assert.equal(cikar.durum, 403);
   assert.equal(cikar.veri.kod, 'CIKAR_CATISMASI');
@@ -278,4 +282,116 @@ test('defter: kasa ve emanetler tutarlı, harita belediye ve projeleri gösterir
   const fc = (await A('/api/harita/belediyeler?bbox=32.6,39.7,33.1,40.1')).veri;
   assert.ok(fc.features.some((f) => f.properties.tur === 'belediye' && /Asli/.test(f.properties.etiket)));
   assert.ok(fc.features.some((f) => f.properties.tur === 'proje' && /hizmette/.test(f.properties.etiket)));
+});
+
+// ---------- Denetim bulguları: talep, dilekçe kütüğü, referandum kütüğü, ara seçim, moderasyon
+const moderasyon = require('../server/moderasyon');
+let F, G, m3;
+async function yeniOyuncu(ad, hucre, eski) {
+  const c = istemci(ad);
+  const email = `${ad.toLowerCase()}@test.local`;
+  assert.equal((await c('/api/kayit', { email, sifre: 'parola123', dogumYili: 1990, kosullarOnay: true, kvkkOnay: true, ad })).durum, 201);
+  if (eski) db.prepare(`UPDATE users SET created_at = datetime('now', '-40 days') WHERE email = ?`).run(email);
+  if (hucre) assert.equal((await c(`/api/parsel/${hucre}/edin`, {})).durum, 200);
+  c.id = kullanici(email);
+  return c;
+}
+
+test('reddedilen projenin muhtar talebi yeniden açılır', async () => {
+  m3 = db.prepare(`SELECT id FROM regions WHERE parent_id = ? AND type = 'MAHALLE' AND id NOT IN (?, ?) LIMIT 1`).get(ilceId, m1, m2).id;
+  const t = Date.now();
+  db.prepare(`INSERT INTO muhtarlar (region_id, user_id, secim_id, aday_id, baslangic, bitis) VALUES (?, ?, ?, ?, ?, ?)`)
+    .run(m3, kullanici('emel@test.local'), secimId, adaylar.Asli, t - 1000, t + 86400000);
+  L.aktar({ kaynak: 'SYS:MINT', hedef: belediye.kasa(ilceId), tutar: 1000, sebep: 'Belediye geliri: devlet katkısı (test)' });
+  const tl = await E(`/api/mahalle/${m3}/talep`, { tur: 'PARK', aciklama: 'Üçüncü mahalleye park istiyoruz.' });
+  assert.equal(tl.durum, 200);
+  const r = await A(`/api/belediye/${ilceId}/proje`, { tur: 'PARK', hedefMahalleId: m3, gerekce: 'Muhtarın talebi üzerine park yapılması.', talepId: tl.veri.talepId });
+  assert.equal(r.durum, 200);
+  for (const c of [A, B]) await c(`/api/proje/${r.veri.projeId}/oy`, { oy: 'HAYIR' });
+  projeyiKarara(r.veri.projeId);
+  assert.equal(proje(r.veri.projeId).durum, 'REDDEDILDI');
+  const talep = db.prepare('SELECT durum, proje_id FROM talepler WHERE id = ?').get(tl.veri.talepId);
+  assert.equal(talep.durum, 'ACIK', 'talep yeniden açık');
+  assert.equal(talep.proje_id, null);
+});
+
+test('görevden alma: imza kütüğü dilekçe açılırken donar, yeni hesaplar ve sonradan gelenler imzalayamaz', async () => {
+  // Düzenek: görevin ilk %20'si (koruma) geçmiş olsun
+  db.prepare(`UPDATE belediye_uyeleri SET baslangic = baslangic - ? WHERE region_id = ?`).run(30 * 86400000, ilceId);
+  F = await yeniOyuncu('Fikret', h1[12], false);   // bugün açılmış hesap, ilçede parseli var
+  const doruk = kullanici('doruk@test.local');
+  const d = await E('/api/gorevden-alma', { bolgeId: ilceId, makam: 'MECLIS', hedefId: doruk, gerekce: 'Meclis toplantılarına hiç katılmıyor, oy da kullanmıyor.' });
+  assert.equal(d.durum, 200);
+  assert.equal(db.prepare('SELECT COUNT(*) c FROM gorevden_alma_kutuk WHERE dilekce_id = ?').get(d.veri.id).c, 4, 'kütük: Asli, Burak, Ceren, Emel');
+  const f = await F(`/api/gorevden-alma/${d.veri.id}/imza`, {});
+  assert.equal(f.durum, 403, 'yeni hesap imzalayamaz');
+  G = await yeniOyuncu('Gonca', null, true);
+  await G(`/api/parsel/${h1[15]}/edin`, {});   // dilekçeden sonra gelen sakin
+  assert.equal((await G(`/api/gorevden-alma/${d.veri.id}/imza`, {})).durum, 403, 'kütük dondurulmuş');
+  assert.equal((await F('/api/gorevden-alma', { bolgeId: ilceId, makam: 'MECLIS', hedefId: kullanici('ceren@test.local'), gerekce: 'Yeni hesapla dilekçe başlatma denemesi yapılıyor.' })).durum, 403);
+  const b = await B(`/api/gorevden-alma/${d.veri.id}/imza`, {});
+  assert.equal(b.veri.durum, 'BASARILI');
+  assert.deepEqual((await A(`/api/belediye/${ilceId}`)).veri.meclis.map((m) => m.ad).sort(), ['Burak', 'Ceren']);
+});
+
+test('referandum: yeni hesaplar öneremez ve kütüğe girmez', async () => {
+  assert.equal((await F(`/api/belediye/${ilceId}/referandum`, { soru: 'İlçeye yeni bir kütüphane yapılmalı mı?' })).durum, 403);
+  const r = (await A(`/api/belediye/${ilceId}/referandum`, { soru: 'İlçeye yeni bir kütüphane yapılmalı mı?' })).veri;
+  assert.equal(r.durum, 'OYLAMA', 'başkan önerisi doğrudan oylamada');
+  assert.equal((await F(`/api/belediye/${ilceId}`)).veri.referandumlar[0].ben.kutukte, false);
+  assert.equal((await B(`/api/belediye/${ilceId}`)).veri.referandumlar[0].ben.kutukte, true);
+  assert.equal((await F(`/api/referandum/${r.id}/oy`, { oy: 'HAYIR' })).durum, 403);
+  assert.equal((await B(`/api/referandum/${r.id}/oy`, { oy: 'EVET' })).durum, 200);
+});
+
+test('başkanlık boşalınca meclis görevde kalır; yalnızca başkanlık için ara seçim yapılır', async () => {
+  moderasyon.makamBosalt(ilceId, 'BASKAN', kullanici('asli@test.local'), 'test: başkanlık boşaldı');
+  let b = (await A(`/api/belediye/${ilceId}`)).veri;
+  assert.equal(b.baskan, null);
+  assert.deepEqual(b.meclis.map((m) => m.ad).sort(), ['Burak', 'Ceren'], 'meclis görevde');
+  const meclisBitis = b.meclis[0].bitis;
+  secim.secimBakim({ zorla: true });
+  b = (await A(`/api/belediye/${ilceId}`)).veri;
+  assert.equal(b.secim.ara, true);
+  assert.deepEqual(Object.keys(b.secim.makamlar), ['BASKAN']);
+  const sid = b.secim.id;
+  asamayaGetir(sid, 'ADAYLIK');
+  gecmisEtkinlik('emel@test.local', 12);
+  const M = 'Ara dönemde meclisle birlikte ilçenin yarım kalan işlerini tamamlayacağım.';
+  const mec = await E(`/api/secim/${sid}/aday`, { makam: 'MECLIS', manifesto: M });
+  assert.equal(mec.durum, 400);
+  assert.match(mec.veri.hata, /yalnızca belediye başkanlığına/);
+  assert.equal((await E(`/api/secim/${sid}/aday`, { manifesto: M })).durum, 200);
+  asamayaGetir(sid, 'KAMPANYA');
+  asamayaGetir(sid, 'OYLAMA');
+  const emel = (await A(`/api/belediye/${ilceId}`)).veri.secim.adaylar.find((a) => a.ad === 'Emel').id;
+  assert.equal((await A(`/api/secim/${sid}/oy`, { secimler: { BASKAN: emel } })).durum, 200);
+  asamayaGetir(sid, 'ITIRAZ');
+  asamayaGetir(sid, 'BITTI');
+  b = (await A(`/api/belediye/${ilceId}`)).veri;
+  assert.equal(b.secim.asama, 'SONUCLANDI');
+  assert.equal(b.baskan.ad, 'Emel');
+  assert.deepEqual(b.meclis.map((m) => m.ad).sort(), ['Burak', 'Ceren'], 'devirde meclis görevini sürdürür');
+  assert.equal(b.baskan.bitis, meclisBitis, 'ara seçimle gelen başkan meclisin dönem sonuna kadar görevde');
+});
+
+test('moderasyon: rol hiyerarşisi, katı onay ve askıya alınan makam sahibinin görevden ayrılması', async () => {
+  const rolVer = (id, rol) => db.prepare('UPDATE users SET rol = ? WHERE id = ?').run(rol, id);
+  const ceren = kullanici('ceren@test.local'), emel = kullanici('emel@test.local');
+  rolVer(F.id, 'MODERATOR'); rolVer(G.id, 'MODERATOR'); rolVer(ceren, 'DENETCI');
+  const gerekce = 'Kural ihlali iddiası inceleniyor.';
+  assert.throws(() => moderasyon.islemOner(F.id, { tur: 'HESAP_ASKI', hedef: String(G.id), gerekce }), (e) => e.status === 403, 'moderatör moderatörü askıya alamaz');
+  const oneri = moderasyon.islemOner(ceren, { tur: 'HESAP_ASKI', hedef: String(G.id), gerekce });
+  assert.throws(() => moderasyon.islemKarar(F.id, oneri.id, { onay: true }), (e) => e.status === 403, 'eş roldeki onaylayamaz');
+  assert.throws(() => moderasyon.islemKarar(F.id, oneri.id, { onay: 'false' }), (e) => e.status === 400, 'onay yalnızca boolean');
+  assert.equal(db.prepare('SELECT durum FROM moderasyon_islemleri WHERE id = ?').get(oneri.id).durum, 'ONAY_BEKLIYOR');
+  assert.equal(db.prepare('SELECT status FROM users WHERE id = ?').get(G.id).status, 'ACTIVE');
+
+  // Emel: başkan ve iki mahallenin muhtarı; askıya alınınca bütün makamları boşalır
+  const aski = moderasyon.islemOner(F.id, { tur: 'HESAP_ASKI', hedef: String(emel), gerekce });
+  moderasyon.islemKarar(G.id, aski.id, { onay: true });
+  assert.equal(db.prepare('SELECT status FROM users WHERE id = ?').get(emel).status, 'SUSPENDED');
+  const t = Date.now();
+  assert.equal(db.prepare('SELECT COUNT(*) c FROM muhtarlar WHERE user_id = ? AND bitis > ?').get(emel, t).c, 0, 'muhtarlıklar boşaldı');
+  assert.equal((await A(`/api/belediye/${ilceId}`)).veri.baskan, null, 'başkanlık boşaldı');
 });

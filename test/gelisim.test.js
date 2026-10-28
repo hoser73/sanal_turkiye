@@ -121,3 +121,50 @@ test('ev ve keyif: bağ evi tarlaya kurulur, kira birikir ve bir kez toplanır; 
   const ev = (await A.c(`/api/parsel/${k}`)).veri.yapilar.find((x) => x.tip === 'EV');
   assert.equal(ev.kira.gunluk, Math.round(YAPILAR.EV.gelir * 1.5));
 });
+
+test('yükseltme yalnızca etkisi olan yapıda; hedef seviye uyuşmazsa 409; birikmiş kira eski seviyeden ödenir', async () => {
+  const A = await kayit('yukseltmekurali');
+  const p = hucreBul('TARIM');
+  assert.equal((await A.c(`/api/parsel/${p}/edin`, {})).durum, 200);
+  const t0 = Date.now();
+  const yapi = (tip) => db.prepare(`INSERT INTO structures (parcel_id, owner_user_id, type, status, started_at, completes_at, completed_at) VALUES (?, ?, ?, 'ACTIVE', ?, ?, ?)`).run(p, A.id, tip, t0, t0, t0).lastInsertRowid;
+  const cit = yapi('TEL_CIT'), ev = yapi('BAG_EVI');
+  const kart = (await A.c(`/api/parsel/${p}`)).veri;
+  const kc = kart.yapilar.find((x) => x.id === cit), ke = kart.yapilar.find((x) => x.id === ev);
+  assert.equal(kc.yukseltBedeli, null); assert.equal(kc.yukseltEtki, null);
+  assert.deepEqual(ke.yukseltEtki, { tur: 'KIRA', simdi: YAPILAR.BAG_EVI.gelir, sonraki: Math.round(YAPILAR.BAG_EVI.gelir * 1.5) });
+  const once = L.bakiye(A.id);
+  assert.equal((await A.c(`/api/yapi/${cit}/yukselt`, {})).veri.kod, 'YUKSELMEZ');
+  assert.equal(L.bakiye(A.id), once, 'etkisiz yapı için para alınmaz');
+  // Bir günlük kira birikmiş: yükseltmede eski seviyeden ödenir, sayaç sıfırlanır
+  db.prepare(`UPDATE structures SET gelir_at = ? WHERE id = ?`).run(Date.now() - gelisim.KIRA.gunMs, ev);
+  const r = await A.c(`/api/yapi/${ev}/yukselt`, { hedef: 2 });
+  assert.equal(r.durum, 200, JSON.stringify(r.veri));
+  assert.equal(r.veri.kira, YAPILAR.BAG_EVI.gelir);
+  assert.equal((await A.c(`/api/yapi/${ev}/kira`, {})).durum, 409, 'geriye dönük artış yok');
+  // Çift tıklama: aynı hedefle ikinci istek
+  const ikinci = await A.c(`/api/yapi/${ev}/yukselt`, { hedef: 2 });
+  assert.equal(ikinci.durum, 409); assert.equal(ikinci.veri.kod, 'SEVIYE_DEGISTI');
+  assert.equal(db.prepare(`SELECT seviye FROM structures WHERE id = ?`).get(ev).seviye, 2);
+});
+
+test('bakımsız dönemin kirası bakımdan sonra toplanmaz', async () => {
+  const A = await kayit('bakimsizev');
+  const p = hucreBul('TARIM');
+  assert.equal((await A.c(`/api/parsel/${p}/edin`, {})).durum, 200);
+  const { BAKIM } = require('../server/config/rules');
+  const eski = Date.now() - 30 * BAKIM.gunMs;   // sağlık eşiğin altında
+  const ev = db.prepare(`INSERT INTO structures (parcel_id, owner_user_id, type, status, started_at, completes_at, completed_at, bakim_at, gelir_at) VALUES (?, ?, 'BAG_EVI', 'ACTIVE', ?, ?, ?, ?, ?)`)
+    .run(p, A.id, eski, eski, eski, eski, Date.now() - 2 * gelisim.KIRA.gunMs).lastInsertRowid;
+  assert.equal((await A.c(`/api/yapi/${ev}/kira`, {})).veri.kod, 'BAKIM');
+  assert.equal((await A.c(`/api/parsel/${p}/bakim`, {})).durum, 200);
+  assert.equal((await A.c(`/api/yapi/${ev}/kira`, {})).veri.kod, 'BOS');
+});
+
+test('işçi: geçersiz gün sayısı 400 ve ücret kesilmez', async () => {
+  const A = await kayit('iscigun');
+  const once = L.bakiye(A.id);
+  for (const gun of [-5, 'abc', null, 1.4, 0, 8, { toString: 1 }]) assert.equal((await A.c('/api/isci/tut', { gun })).durum, 400, JSON.stringify(gun));
+  assert.equal(L.bakiye(A.id), once);
+  assert.equal((await A.c('/api/isci/tut', { gun: 3 })).durum, 200);
+});

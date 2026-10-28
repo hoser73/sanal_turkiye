@@ -1,6 +1,6 @@
 // Belediye panosu (plan §6.1, §6.3, §6.4): yönetim, seçim, kasa, projeler ve meclis oylaması, talepler, faaliyet panosu.
 // Yalnızca HTML üretir; eylemler app.js'deki data-eylem / form işleyicilerinden geçer.
-import { api, esc, sayi, akce, sure, zamanOnce } from './yardimci.js';
+import { api, esc, sayi, akce, sure, zamanOnce, tost } from './yardimci.js';
 import { secimBolumu } from './secim-ui.js';
 import { dilekceBolumu } from './dilekce-ui.js';
 
@@ -10,13 +10,37 @@ const PANO_METIN = {
   PROJECT_PROPOSED: (a) => `📝 ${esc(a.aktor)} meclise teklif etti: ${esc(a.after?.ad)} (${akce(a.after?.maliyet)})${a.after?.nitelikli ? ' · nitelikli çoğunluk' : ''}`,
   COUNCIL_VOTE: (a) => `🙋 ${esc(a.aktor)} ${esc(a.after?.ad)} için “${OY_AD[a.after?.oy] || a.after?.oy}” oyu verdi`,
   PROJECT_APPROVED: (a) => `✅ Meclis onayladı: ${esc(a.after?.ad)} (${a.after?.evet} evet, ${a.after?.hayir} hayır)`,
-  PROJECT_REJECTED: (a) => `✖ Meclis reddetti: ${esc(a.after?.ad)} — ${esc(a.after?.sebep)}`,
+  PROJECT_REJECTED: (a) => `✖️ Meclis reddetti: ${esc(a.after?.ad)} — ${esc(a.after?.sebep)}`,
   PROJECT_COMPLETED: (a) => `🏁 Tamamlandı: ${esc(a.after?.ad)}`,
   MUHTAR_REQUEST: (a) => `📨 Muhtar ${esc(a.aktor)} talep etti: ${esc(a.after?.ad)}`,
   REQUEST_CLOSED: (a) => `🗂️ Talep kapatıldı: ${esc(a.after?.gerekce)}`,
-  ELECTION_CLOSED: (a) => (a.after?.tur === 'BELEDIYE' ? `🏅 ${esc(a.after?.kazanan)} belediye başkanı seçildi` : `🏅 ${esc(a.after?.kazanan)} muhtar seçildi`),
+  ELECTION_CLOSED: (a) => (a.after?.tur === 'BELEDIYE' ? `🏅 ${esc(a.after?.kazanan)} ${a.after?.ara ? 'ara seçimle ' : ''}belediye başkanı seçildi` : `🏅 ${esc(a.after?.kazanan)} muhtar seçildi`),
   ELECTION_ANNULLED: () => '⚠️ Seçim iptal edildi',
+  OFFICE_VACATED: (a) => `🪑 ${esc(MAKAM_AD[a.after?.makam] || 'Bir makam')} boşaldı${a.after?.sebep ? `: ${esc(a.after.sebep)}` : ''}`,
+  RECALL_STARTED: (a) => `✍️ ${esc(MAKAM_KISI[a.after?.makam] || 'Makam sahibi')} ${esc(a.after?.hedef || '')} için görevden alma dilekçesi açıldı (${a.after?.esik} imza gerekli)`,
+  RECALL_SUCCEEDED: (a) => `📜 Görevden alma dilekçesi eşiği geçti (${a.after?.imza}/${a.after?.esik} imza); ${esc((MAKAM_AD[a.after?.makam] || 'makam').toLocaleLowerCase('tr-TR'))} boşaldı`,
+  RECALL_FAILED: (a) => `📜 Görevden alma dilekçesi eşiğe ulaşmadı (${a.after?.imza}/${a.after?.esik} imza)`,
+  REFERENDUM_OPENED: (a) => `🗳️ Referandum oylaması açıldı: “${esc(a.after?.soru)}”`,
+  REFERENDUM_CLOSED: (a) => `🗳️ Referandum sonuçlandı: “${esc(a.after?.soru)}” → ${a.after?.kazanan ? esc(REF_SONUC[a.after.kazanan] || a.after.kazanan) : 'katılım nisabı sağlanamadı'}`,
 };
+const MAKAM_AD = { MUHTAR: 'Muhtarlık', BASKAN: 'Belediye başkanlığı', MECLIS: 'Bir meclis üyeliği' };
+const MAKAM_KISI = { MUHTAR: 'Muhtar', BASKAN: 'Başkan', MECLIS: 'Meclis üyesi' };
+const REF_SONUC = { EVET: 'Evet', HAYIR: 'Hayır', ESIT: 'oylar eşit' };
+const panoMetni = (a) => (PANO_METIN[a.action] ? PANO_METIN[a.action](a) : `📌 Yönetim kaydı${a.aktor ? ` · ${esc(a.aktor)}` : ''}`);
+const yuzde = (x) => `%${Math.round(x * 100)}`;
+const sureMetni = (ms) => (ms >= 864e5 && ms % 864e5 === 0 ? `${ms / 864e5} gün` : sure(ms));
+
+// Referandum makbuzu doğrulama (form bu modülde üretilir; işleyici bir kez bağlanır)
+if (typeof document !== 'undefined') {
+  document.addEventListener('submit', (e) => {
+    if (!e.target.matches?.('.ref-makbuz-form')) return;
+    e.preventDefault();
+    const f = e.target;
+    api(`/api/referandum/${f.dataset.ref}/makbuz`, { makbuz: f.makbuz.value.trim() })
+      .then((r) => tost(r.dahil ? '✓ Bu makbuzun oyu sayıma dahil' : '✗ Bu makbuz bu referandumda bulunamadı', r.dahil ? '' : 'hata'))
+      .catch((x) => tost(x.message, 'hata'));
+  });
+}
 const bas = (ad) => esc(ad.split(/\s+/).map((p) => p[0]).join('').slice(0, 2).toLocaleUpperCase('tr-TR'));
 
 export async function belediyePaneli({ ben, belediyeId, sunucuSimdi, makbuzlar, taslak }) {
@@ -47,13 +71,16 @@ export async function belediyePaneli({ ben, belediyeId, sunucuSimdi, makbuzlar, 
     if (v.baskan.vaatler.length) {
       p.push(`<details class="acilir"><summary>Başkanın vaatleri (${v.baskan.vaatler.length})</summary><ul class="madde">${v.baskan.vaatler.map((x) => `<li>${esc(x.metin)}</li>`).join('')}</ul></details>`);
     }
+  } else if (v.meclis.length) {
+    p.push(`<div class="kutu"><b>Başkanlık boş</b><p class="kucuk" style="margin-bottom:0">Meclis görevde; başkanlık için ara seçim yapılır. Başkan seçilene dek yeni proje teklif edilemez. ${esc(v.yeniSecim || '')}</p></div>
+      <div class="meclis-sirasi">${v.meclis.map((m) => `<span class="meclis-uye" title="Meclis üyesi"><span class="avatar">${bas(m.ad)}</span>${esc(m.ad)}${m.ben ? ' (sen)' : ''}${m.demo ? ' <span class="demo-rozet" title="Oyunun canlandırdığı demo sakin">demo</span>' : ''}</span>`).join('')}</div>`);
   } else {
     p.push(`<div class="kutu"><b>Geçici yönetim</b><p class="kucuk" style="margin-bottom:0">Seçilmiş başkan ve meclis yok; kasa birikir, proje yapılamaz. ${esc(v.yeniSecim || 'Seçim takvimi işliyor.')}</p></div>`);
   }
 
   if (v.secim) p.push(secimBolumu(v.secim, ben, sunucuSimdi, makbuzlar));
 
-  p.push(dilekceBolumu({ dilekceler: v.dilekceler, bolgeId: v.ilce.id, sakin: !!v.ben?.sakin, girisli: !!ben, sunucuSimdi,
+  p.push(dilekceBolumu({ dilekceler: v.dilekceler, bolgeId: v.ilce.id, sakin: !!v.ben?.sakin, girisli: !!ben, sunucuSimdi, kurallar: v.dilekceKurallari,
     hedefler: [v.baskan, ...v.meclis].filter(Boolean).map((u) => ({ makam: u.makam, ad: u.ad, userId: u.userId, ben: u.ben })) }));
 
   // Referandum (§6.6)
@@ -80,7 +107,7 @@ export async function belediyePaneli({ ben, belediyeId, sunucuSimdi, makbuzlar, 
         <label class="alan">Hedef mahalle <select name="hedefMahalleId">${v.mahalleler.map((m) => `<option value="${m.id}" ${taslak?.mahalleId === m.id ? 'selected' : ''}>${esc(m.ad)} (${m.sakin} sakin)${m.hizmetler.length ? ' · ' + m.hizmetler.map((h) => v.projeTurleri[h].ikon).join('') : ''}</option>`).join('')}</select></label>
         <label class="alan">Gerekçe <textarea name="gerekce" rows="3" minlength="20" maxlength="600" required placeholder="Meclise ve halka açıklama (20–600 karakter)">${esc(taslak?.gerekce || '')}</textarea></label>
         ${taslak?.talepId ? `<input type="hidden" name="talepId" value="${taslak.talepId}"><p class="kucuk">📨 Muhtar talebine bağlı teklif</p>` : ''}
-        <p class="kucuk">Etki: <span data-proje-etki>${esc(v.projeTurleri[taslak?.tur || turler[0][0]].etki)}</span>. Kendi parselinin olduğu mahalleye ya da ${akce(v.kurallar.buyukProjeEsigi)} ve üzeri projeye nitelikli çoğunluk (2/3) gerekir.</p>
+        <p class="kucuk">Etki: <span data-proje-etki>${esc(v.projeTurleri[taslak?.tur || turler[0][0]].etki)}</span>. Kendi parselinin olduğu mahalleye ya da ${akce(v.kurallar.buyukProjeEsigi)} ve üzeri projeye nitelikli çoğunluk (2/3) gerekir; bunun için o mahallede parseli olmayan en az ${v.kurallar.nitelikliMinUye ?? 2} üye gerekir.</p>
         <button class="dugme birincil genis" type="submit">Meclis gündemine al</button>
       </form></details>`);
   }
@@ -108,7 +135,7 @@ export async function belediyePaneli({ ben, belediyeId, sunucuSimdi, makbuzlar, 
 
   // Faaliyet panosu (§6.4)
   p.push(`<h3 class="bolum">Faaliyet panosu</h3>${v.pano.length ? `<ul class="zaman-cizgisi">${v.pano.map((a) => `
-    <li><span>${(PANO_METIN[a.action] || (() => esc(a.action)))(a)} <span class="kucuk">· ${esc(a.bolge || '')}</span></span><time>${zamanOnce(a.created_at)}</time></li>`).join('')}</ul>` : '<p class="kucuk">Henüz idari karar yok.</p>'}`);
+    <li><span>${panoMetni(a)} <span class="kucuk">· ${esc(a.bolge || '')}</span></span><time>${zamanOnce(a.created_at)}</time></li>`).join('')}</ul>` : '<p class="kucuk">Henüz idari karar yok.</p>'}`);
 
   if (v.gecmis.length) {
     p.push(`<h3 class="bolum">Geçmiş seçimler</h3><table class="tablo">${v.gecmis.map((g) => `
@@ -154,18 +181,23 @@ const REF_DURUM = { IMZA: 'imza topluyor', OYLAMA: 'oylamada', SONUCLANDI: 'sonu
 function referandumBolumu(v, ben, sunucuSimdi) {
   const liste = v.referandumlar || [];
   const sakin = !!v.ben?.sakin;
+  const rk = v.kurallar?.referandum || { imzaOrani: 0.25, sureMs: 3 * 864e5, nisapOrani: 0.3 };
   if (!liste.length && !(ben && sakin)) return '';
   const p = ['<h3 class="bolum">Referandum</h3>'];
   for (const r of liste) {
     const s = r.sonuc;
     p.push(`<div class="kutu referandum"><div class="satir"><b>“${esc(r.soru)}”</b><span class="cip">${esc(REF_DURUM[r.durum])}</span></div>
       ${r.aciklama ? `<p class="kucuk">${esc(r.aciklama)}</p>` : ''}<p class="kucuk">Öneren: ${esc(r.baslatan)}</p>
-      ${r.durum === 'IMZA' ? `<p class="kucuk">${r.imza}/${r.esik} imza</p>${ben && r.ben?.sakin && !r.ben.imzaladim ? `<button class="dugme ince" data-eylem="ref-imza" data-id="${r.id}">✍️ İmzala</button>` : ''}` : ''}
+      ${r.durum === 'IMZA' ? `<p class="kucuk">${r.imza}/${r.esik} imza</p>${ben && r.ben?.imzaHakki && !r.ben.imzaladim ? `<button class="dugme ince" data-eylem="ref-imza" data-id="${r.id}">✍️ İmzala</button>` : ''}` : ''}
       ${r.durum === 'OYLAMA' ? `<p class="kucuk">Kapanışa <span data-bitis="${r.oylamaBitis}">${sure(r.oylamaBitis - sunucuSimdi())}</span> · gizli oy</p>
-        ${r.ben?.oyKullandim ? '<p class="kucuk">✓ Oyunu kullandın</p>' : ben && r.ben?.sakin ? `<div class="satir-dugmeler"><button class="dugme ince birincil" data-eylem="ref-oy" data-id="${r.id}" data-oy="EVET">Evet</button>
-          <button class="dugme ince" data-eylem="ref-oy" data-id="${r.id}" data-oy="HAYIR">Hayır</button></div>` : ''}` : ''}
+        ${r.ben?.oyKullandim ? '<p class="kucuk">✓ Oyunu kullandın</p>' : ben && r.ben?.kutukte ? `<div class="satir-dugmeler"><button class="dugme ince birincil" data-eylem="ref-oy" data-id="${r.id}" data-oy="EVET">Evet</button>
+          <button class="dugme ince" data-eylem="ref-oy" data-id="${r.id}" data-oy="HAYIR">Hayır</button></div>`
+          : ben ? '<p class="kucuk">Oylama açıldığında bu ilçenin seçmen kütüğünde değildin; oy kullanamazsın.</p>' : ''}` : ''}
       ${s ? `<div class="ref-sonuc"><span style="flex:${s.oylar.EVET || 0.001}" class="evet">Evet ${s.oylar.EVET}</span><span style="flex:${s.oylar.HAYIR || 0.001}" class="hayir">Hayır ${s.oylar.HAYIR}</span></div>
-        <p class="kucuk">Katılım ${s.katilim}/${s.kutuk} · nisap ${s.nisap} · ${s.kazanan ? `sonuç: <b>${esc(s.kazanan)}</b>` : 'nisap sağlanamadı'} · danışma niteliğindedir</p>` : ''}
+        <p class="kucuk">Katılım ${s.katilim}/${s.kutuk} · nisap ${s.nisap} · ${s.kazanan ? `sonuç: <b>${esc(REF_SONUC[s.kazanan] || s.kazanan)}</b>` : 'nisap sağlanamadı'} · danışma niteliğindedir</p>` : ''}
+      ${['OYLAMA', 'SONUCLANDI', 'NISAP_YOK'].includes(r.durum) ? `<details class="acilir"><summary>Makbuzumu doğrula</summary>
+        <form class="ref-makbuz-form satir" data-ref="${r.id}"><input name="makbuz" maxlength="64" placeholder="Makbuz kodu" required aria-label="Makbuz kodu">
+        <button class="dugme ince" type="submit">Doğrula</button></form></details>` : ''}
     </div>`);
   }
   if (ben && sakin && !liste.some((r) => ['IMZA', 'OYLAMA'].includes(r.durum))) {
@@ -173,7 +205,7 @@ function referandumBolumu(v, ben, sunucuSimdi) {
       <label>Soru (evet/hayır, soru işaretiyle)<input name="soru" minlength="15" maxlength="200" required placeholder="İlçeye yeni bir semt pazarı kurulmalı mı?"></label>
       <label>Kısa açıklama<textarea name="aciklama" rows="2" maxlength="600"></textarea></label>
       <button class="dugme ince">Öner</button>
-      <p class="kucuk">${v.ben?.baskan ? 'Başkan olarak önerin doğrudan oylamaya açılır.' : 'Sakinlerin %25’i imzalayınca 3 günlük gizli oylama başlar.'} Katılım nisabı %30; sonuç danışma niteliğindedir.</p>
+      <p class="kucuk">${v.ben?.baskan ? 'Başkan olarak önerin doğrudan oylamaya açılır.' : `İmza eşiği sakinlerin ${yuzde(rk.imzaOrani)}; eşik aşılınca ${esc(sureMetni(rk.sureMs))} sürecek gizli oylama başlar.`} Katılım nisabı ${yuzde(rk.nisapOrani)}; sonuç danışma niteliğindedir.</p>
     </form></details>`);
   }
   return p.join('');

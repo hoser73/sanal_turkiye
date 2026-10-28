@@ -3,6 +3,7 @@
 // ilk yapı → günlük görevler. Her adımın tamamlanması denetim kayıtlarından (audit_events) okunur; adım ödülü bir kez
 // verilir. İlk ekin sihirbaz sürerken 1 dakikada olgunlaşır (oyun.js ek). Oyuncu her an "Atla" diyebilir.
 const db = require('./db');
+const { metin } = require('./lib/girdi');
 const L = require('./lib/ledger');
 const { OyunHatasi } = L;
 
@@ -11,7 +12,7 @@ const SIHIRBAZ = {
   adimlar: [
     { kod: 'ARSA', eylem: 'PARCEL_ACQUIRED', odul: 0 },
     { kod: 'EKIM', eylem: 'CROP_PLANTED', odul: 20 },
-    { kod: 'SULAMA', eylem: 'CROP_WATERED', odul: 10 },
+    { kod: 'SULAMA', eylem: 'CROP_WATERED', odul: 10, istege: true },   // yağmur/komşu da sular, sulamadan hasat da olur
     { kod: 'HASAT', eylem: 'CROP_HARVESTED', odul: 25 },
     { kod: 'SATIS', eylem: 'TRADE_SETTLED', odul: 20 },
     { kod: 'YAPI', eylem: 'STRUCTURE_STARTED', odul: 30 },
@@ -23,6 +24,7 @@ const q = {
   kullanici: db.prepare(`SELECT id, is_npc, sihirbaz_bitti_at FROM users WHERE id = ?`),
   eylemVar: db.prepare(`SELECT 1 FROM audit_events WHERE actor_id = ? AND action = ? LIMIT 1`),
   parselVar: db.prepare(`SELECT 1 FROM parcels WHERE owner_user_id = ? LIMIT 1`),
+  sulandi: db.prepare(`SELECT 1 FROM crops WHERE user_id = ? AND waterings > 0 LIMIT 1`),
   oduller: db.prepare(`SELECT adim FROM sihirbaz_odulleri WHERE user_id = ?`),
   odulYaz: db.prepare(`INSERT OR IGNORE INTO sihirbaz_odulleri (user_id, adim, tutar, created_at) VALUES (?, ?, ?, ?)`),
   bitir: db.prepare(`UPDATE users SET sihirbaz_bitti_at = ? WHERE id = ? AND sihirbaz_bitti_at IS NULL`),
@@ -34,6 +36,7 @@ const hizliIlkEkin = (userId) => aktifMi(userId) && !q.eylemVar.get(userId, 'CRO
 
 function adimTamam(userId, adim) {
   if (adim.kod === 'ARSA') return !!q.parselVar.get(userId);
+  if (adim.kod === 'SULAMA' && q.sulandi.get(userId)) return true;
   return adim.eylem ? !!q.eylemVar.get(userId, adim.eylem) : false;
 }
 
@@ -52,11 +55,13 @@ const odulAl = db.transaction((userId, kod) => {
   if (!adim) throw new OyunHatasi(400, 'Bilinmeyen adım');
   if (!aktifMi(userId)) throw new OyunHatasi(409, 'Sihirbaz bitti', 'BITTI');
   if (adim.eylem && !adimTamam(userId, adim)) throw new OyunHatasi(409, 'Bu adım henüz yapılmadı', 'YAPILMADI');
-  if (kod === 'GUNLUK' && SIHIRBAZ.adimlar.some((a) => a.eylem && !adimTamam(userId, a))) throw new OyunHatasi(409, 'Önceki adımlar bitmedi', 'YAPILMADI');
-  if (q.odulYaz.run(userId, kod, adim.odul, Date.now()).changes !== 1) return { tamam: true, odul: 0, tekrar: true };
-  if (adim.odul > 0) L.odul(userId, adim.odul, `Tanıtım ödülü: ${ADIM_ADI[kod] || kod}`);
+  if (kod === 'GUNLUK' && SIHIRBAZ.adimlar.some((a) => a.eylem && !a.istege && !adimTamam(userId, a))) throw new OyunHatasi(409, 'Önceki adımlar bitmedi', 'YAPILMADI');
+  // Silinmiş bir hesabın kimliğiyle açılan hesap adımları yapar ama akçe ödülü almaz
+  const tutar = require('./auth').tekrarHesapMi(userId) ? 0 : adim.odul;
+  if (q.odulYaz.run(userId, kod, tutar, Date.now()).changes !== 1) return { tamam: true, odul: 0, tekrar: true };
+  if (tutar > 0) L.odul(userId, tutar, `Tanıtım ödülü: ${ADIM_ADI[kod] || kod}`);
   if (kod === 'GUNLUK') q.bitir.run(Date.now(), userId);
-  return { tamam: true, odul: adim.odul, bitti: kod === 'GUNLUK' };
+  return { tamam: true, odul: tutar, bitti: kod === 'GUNLUK' };
 });
 
 function bitir(userId) {
@@ -66,7 +71,7 @@ function bitir(userId) {
 
 function rotalar(app, { h, auth }) {
   app.get('/api/sihirbaz', auth.girisGerekli, h((req) => durum(req.kullanici.id)));
-  app.post('/api/sihirbaz/odul', auth.girisGerekli, h((req) => odulAl(req.kullanici.id, String(req.body?.adim || ''))));
+  app.post('/api/sihirbaz/odul', auth.girisGerekli, h((req) => odulAl(req.kullanici.id, metin(req.body?.adim))));
   app.post('/api/sihirbaz/bitir', auth.girisGerekli, h((req) => bitir(req.kullanici.id)));
 }
 

@@ -135,6 +135,7 @@ test('tarla döngüsü: ek → sula → hasat; çift hasat yok', async () => {
   assert.equal((await a(`/api/parsel/${tarla}/sula`, {})).durum, 200);
   assert.equal((await a(`/api/parsel/${tarla}/sula`, {})).durum, 429, 'art arda sulama');
   await bekle(URUNLER.DOMATES.sureMs + 50);
+  assert.equal((await a(`/api/parsel/${tarla}/sula`, {})).durum, 409, 'olgun ekin sulanmaz');
   const [h1, h2] = await Promise.all([a(`/api/parsel/${tarla}/hasat`, {}), a(`/api/parsel/${tarla}/hasat`, {})]);
   assert.deepEqual([h1.durum, h2.durum].sort(), [200, 409]);
   const ben = (await a('/api/ben')).veri;
@@ -150,6 +151,20 @@ test('NPC pazarı: satış bakiyeyi artırır, olmayan ürün satılamaz', async
   const sonra = (await a('/api/ben')).veri;
   assert.ok(sonra.bakiye > ben.bakiye);
   assert.equal((await a('/api/pazar/sat', { urun: 'ALTIN', miktar: 1 })).durum, 400);
+});
+
+test('NPC pazarı kuruş hassasiyetinde öder (aşağı yuvarlama ürünü bedavaya götürmez); gün Türkiye saatiyle', async () => {
+  const L = require('../server/lib/ledger'), oyun = require('../server/oyun');
+  const c = istemci();
+  await c('/api/kayit', { email: 'kurus@test.local', sifre: 'parola123', dogumYili: 1990, kosullarOnay: true, kvkkOnay: true, ad: 'Kuruş' });
+  const id = (await c('/api/ben')).veri.kullanici.id;
+  L.envanterDegis(id, 'BUGDAY', 5, 'test');
+  const once = L.bakiye(id);
+  const r = (await c('/api/pazar/sat', { urun: 'BUGDAY', miktar: 5 })).veri;
+  assert.ok(r.tutar > 5 && !Number.isInteger(r.tutar), JSON.stringify(r));
+  assert.equal(L.yuvarla(L.bakiye(id) - once), r.tutar);
+  assert.equal(oyun.bugun(Date.parse('2026-01-01T21:30:00Z')), '2026-01-02');
+  assert.equal(oyun.bugun(Date.parse('2026-01-01T20:59:00Z')), '2026-01-01');
 });
 
 test('harita: görünür alandaki sahipli parseller ve imar karosu', async () => {
@@ -190,4 +205,13 @@ test('geçersiz girdiler 400 döner, 500 değil', async () => {
   assert.equal((await a(`/api/parsel/${tarla}/insaat`, { tip: '__proto__' })).durum, 422);
   assert.equal((await a('/api/karo/imar/99999/1.png')).durum, 400);
   assert.equal((await a('/api/harita/parseller?bbox=abc')).durum, 400);
+  for (const k of ['0x25c6/6327', '9670e0/6327', '%209670/6327']) assert.equal((await a(`/api/karo/imar/${k}.png`)).durum, 400, k);
+  // Metin beklenen alanda nesne: String() TypeError'ı 500 vermesin
+  const nesne = { toString: 1, valueOf: 1 };
+  for (const [yol, govde] of [[`/api/parsel/${tarla}/insaat`, { tip: nesne }], [`/api/parsel/${tarla}/ek`, { urun: nesne }], [`/api/parsel/${tarla}/sus`, { tur: nesne }],
+    ['/api/pazar/sat', { urun: nesne, miktar: 1 }], ['/api/pazar/sat', { urun: 'DOMATES', miktar: nesne }], ['/api/carsi/satin-al', { urun: nesne }],
+    ['/api/carsi/kullan', { urun: 'GUBRE', parselId: nesne }], [`/api/parsel/${tarla}/uretim`, { recete: nesne, parti: nesne }]]) {
+    const r = await a(yol, govde);
+    assert.ok(r.durum >= 400 && r.durum < 500, `${yol} ${r.durum}`);
+  }
 });

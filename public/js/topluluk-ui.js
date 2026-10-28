@@ -18,7 +18,9 @@ export async function meslekBolumu() {
 
 // Hasat yarışı kartı: kooperatifin takım puanı, üç sandık, Türkiye sıralaması, üyelerin katkısı ve il sıralaması (hasat-yarisi.js)
 const EYLEM_AD = { ORDER_DELIVERED: 'Sipariş teslim', DAILY_QUESTS_REWARDED: 'Günlük görevler', GI_PRODUCED: 'Yöresel ürün', CROP_HARVESTED: 'Hasat',
-  PRODUCTION_COLLECTED: 'Üretim', ANIMAL_PRODUCE_COLLECTED: 'Hayvan ürünü', NEIGHBOR_HELPED: 'Komşuya yardım' };
+  PRODUCTION_COLLECTED: 'Üretim', ANIMAL_PRODUCE_COLLECTED: 'Hayvan ürünü', NEIGHBOR_HELPED: 'Komşuya yardım', COOP_HELPED: 'Kooperatife yardım',
+  PUZZLE_WON: 'Motif bulmacası', FISH_CAUGHT: 'Balık' };
+const eylemAdi = (kod) => EYLEM_AD[kod] || 'Diğer işler';
 export function yarisKarti(y) {
   const b = y.benim, son = 1500;
   const sandiklar = b ? b.sandiklar : [];
@@ -28,8 +30,8 @@ export function yarisKarti(y) {
         ${b ? `<div class="yaris-puan"><b>${sayi(b.puan)}</b><small>${b.sira ? `Türkiye ${b.sira}.` : 'puan'}</small></div>` : ''}</div>
       ${b ? `<div class="yaris-yol"><div class="yaris-cubuk"><b style="width:${Math.min(100, (b.puan / enBuyuk) * 100)}%"></b></div>
           ${sandiklar.map((s) => `<span class="yaris-sandik${s.acik ? ' acik' : ''}" style="left:${(s.esik / enBuyuk) * 100}%" title="${esc(s.ad)}: ${s.esik} puan">${s.acik ? '🎁' : '📦'}<small>${s.esik}</small></span>`).join('')}</div>
-        <p class="kucuk yaris-not">Her sandık, haftada en az ${y.minKatki} puan katan üyeye ${sandiklar.map((s) => akce(s.odul)).join(' / ')} verir. Senin katkın: <b>${sayi(b.katkim)}</b>${b.katkim < y.minKatki ? ` (${y.minKatki - b.katkim} puan daha)` : ' ✓'}</p>
-        ${b.aktif ? '' : `<p class="kucuk uyari-metin">Sıralamaya girmek için kooperatifte en az ${y.minUye} üye olmalı.</p>`}
+        <p class="kucuk yaris-not">Her sandık, en az ${y.minUye} üyeli kooperatifte haftada en az ${y.minKatki} puan katan üyeye ${sandiklar.map((s) => akce(s.odul)).join(' / ')} verir. Senin katkın: <b>${sayi(b.katkim)}</b>${b.katkim < y.minKatki ? ` (${y.minKatki - b.katkim} puan daha)` : ' ✓'}</p>
+        ${b.aktif ? '' : `<p class="kucuk uyari-metin">Sıralamaya girmek ve sandık açmak için kooperatifte en az ${y.minUye} üye olmalı.</p>`}
         ${b.uyeler.length ? `<ul class="yaris-uyeler">${b.uyeler.map((u) => `<li${u.ben ? ' class="ben"' : ''}><span>${esc(u.ad)}${u.ben ? ' (sen)' : ''}</span><b>${sayi(u.puan)}</b></li>`).join('')}</ul>` : ''}`
       : '<p class="kucuk">Bir kooperatife katıl ya da kur: üyelerin hasadı, siparişi ve üretimi takım puanına eklenir; sandıklar ve haftanın ilk üçüne kasa bonusu var.</p>'}
       ${y.siralama.length ? `<h4 class="yaris-baslik">🏆 Bu hafta Türkiye</h4><ol class="yaris-siralama">${y.siralama.slice(0, 5).map((t) => `<li${t.ben ? ' class="ben"' : ''}>
@@ -43,7 +45,7 @@ export function yarisKarti(y) {
         : '<p class="kucuk">Bu hafta henüz il puanı yok.</p>'}
       <p class="kucuk">İl puanı = toplam ÷ √oyuncu (kalabalık il kazanmasın). İlk üç ilde en az ${y.minKatki} puan katanlara ${y.ilOdulu.map((x) => akce(x)).join(' / ')}. Puanın memleketine yazılır; seçmediysen ilk tarlanın iline.</p>
       ${y.gecenIller.length ? `<p class="kucuk">Geçen haftanın birinci ili: <b>${esc(y.gecenIller[0].il)}</b></p>` : ''}
-      <details class="acilir"><summary>Puan nasıl kazanılır?</summary><ul class="yol-kaynak">${y.puanlar.map((p) => `<li><span>${esc(EYLEM_AD[p.eylem] || p.eylem)}</span><b>+${p.puan}</b></li>`).join('')}</ul></details>
+      <details class="acilir"><summary>Puan nasıl kazanılır?</summary><ul class="yol-kaynak">${y.puanlar.map((p) => `<li><span>${esc(eylemAdi(p.eylem))}</span><b>+${p.puan}</b></li>`).join('')}</ul></details>
     </div>`;
 }
 
@@ -82,7 +84,7 @@ export async function kooperatifBolumu({ ben, konum }) {
       <p><button type="button" class="bag tehlike" data-eylem="koop-ayril">Kooperatiften ayrıl</button></p>`;
   }
   const iller = [...new Map(ben.portfoy.map((p) => [p.il, p])).values()];
-  return `${yaris}<p>Kooperatif, aynı ildeki oyuncuların ortak kasası ve dayanışmasıdır. ${3} ve üzeri üyeli kooperatifin üyeleri tüccara satışta fiyat primi ve küçük bir hasat primi alır.</p>
+  return `${yaris}<p>Kooperatif, aynı ildeki oyuncuların ortak kasası ve dayanışmasıdır. ${y?.minUye ?? 3} ve üzeri üyeli kooperatifin üyeleri tüccara satışta fiyat primi ve küçük bir hasat primi alır.</p>
     ${l.kooperatifler.length ? `<ul class="liste">${l.kooperatifler.map((k) => `<li class="liste-oge"><span class="ikon">🤝</span><div class="govde"><b>${esc(k.ad)}</b>
       <span class="kucuk">${esc(k.il)} · ${k.uye} üye${k.aciklama ? ` · ${esc(k.aciklama)}` : ''}</span></div>
       <button class="dugme ince" data-eylem="koop-katil" data-id="${k.id}">Katıl</button></li>`).join('')}</ul>` : '<p class="kucuk">Henüz kooperatif yok.</p>'}

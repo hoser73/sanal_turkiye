@@ -274,3 +274,18 @@ test('önceden ele geçirme: doğrulanmamış hesabı e-postanın gerçek sahibi
     assert.equal((await sahip('/api/ben')).veri.hesap.dogrulandi, true);
   } finally { process.env.OTOMATIK_DOGRULA = '1'; }
 });
+
+test('telefon: silinen hesabın numarası yeni hesapta doğrulanınca hesap "tekrar" işaretlenir (başlangıç ödülleri verilmez)', async () => {
+  const a = istemci();
+  await a('/api/kayit', { email: 'telsil@test.local', sifre: 'parola123', ...profil('Telefon Silen') });
+  const k = (await a('/api/telefon/kod', { telefon: '05467778899' })).veri;
+  assert.equal((await a('/api/telefon/dogrula', { kod: k.gelistirmeKodu })).durum, 200);
+  assert.equal((await a('/api/hesap/sil', { sifre: 'parola123', onayMetni: 'SİL' })).durum, 200);
+  const b = istemci();
+  await b('/api/kayit', { email: 'telyeni@test.local', sifre: 'parola123', ...profil('Telefon Yeni') });
+  const id = db.prepare(`SELECT id FROM users WHERE email = 'telyeni@test.local'`).get().id;
+  assert.ok(!db.prepare(`SELECT tekrar_hesap FROM users WHERE id = ?`).get(id).tekrar_hesap, 'yeni e-posta: işaret yok');
+  const k2 = (await b('/api/telefon/kod', { telefon: '+90 546 777 88 99' })).veri;
+  assert.equal((await b('/api/telefon/dogrula', { kod: k2.gelistirmeKodu })).durum, 200);
+  assert.equal(db.prepare(`SELECT tekrar_hesap FROM users WHERE id = ?`).get(id).tekrar_hesap, 1);
+});

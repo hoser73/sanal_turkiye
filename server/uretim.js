@@ -2,6 +2,7 @@
 // Meslek bonusları açık formülle hesaplanır: bonus = taban + (seviye − 1) × seviyeBonusu; seviye = 1 + ⌊√(xp / basamak)⌋ (en çok 5).
 const db = require('./db');
 const L = require('./lib/ledger');
+const { metin, sayi } = require('./lib/girdi');
 const { yol } = require('./lib/olaylar');
 const { URUNLER, RECETELER, YAPILAR, MESLEKLER, MESLEK } = require('./config/rules');
 const { OyunHatasi } = L;
@@ -62,10 +63,10 @@ const uretimBaslat = db.transaction((userId, parcelId, govde = {}) => {
   const oyun = require('./oyun');
   const p = oyun.parselGetir(parcelId);
   oyun.sahibiOlmali(p, userId);
-  const kod = String(govde.recete || '');
+  const kod = metin(govde?.recete);
   const r = bul(RECETELER, kod);
   if (!r) throw new OyunHatasi(400, 'Geçersiz reçete');
-  const parti = Number(govde.parti ?? 1);
+  const parti = sayi(govde?.parti ?? 1);
   if (!Number.isInteger(parti) || parti < 1 || parti > 10) throw new OyunHatasi(400, 'Parti sayısı 1–10 olmalı');
   const s = tesisSec(p, userId, r);
   if (db.prepare(`SELECT 1 FROM uretimler WHERE structure_id = ? AND durum = 'URETIMDE'`).get(s.id)) throw new OyunHatasi(409, 'Bu tesiste süren bir üretim var');
@@ -89,6 +90,8 @@ const uretimTopla = db.transaction((userId, uretimId) => {
   const u = db.prepare(`SELECT * FROM uretimler WHERE id = ?`).get(Number(uretimId));
   if (!u || u.user_id !== userId) throw new OyunHatasi(404, 'Üretim bulunamadı');
   if (u.durum !== 'URETIMDE') throw new OyunHatasi(409, 'Bu üretim zaten toplandı');
+  // Parsel devredildiyse (pazar devri üretimi alıcıya geçirir; Hazine'ye satışta tesis Hazine'nindir) eski sahip toplayamaz
+  if (db.prepare(`SELECT owner_user_id FROM parcels WHERE id = ?`).get(u.parcel_id)?.owner_user_id !== userId) throw new OyunHatasi(409, 'Bu tesis artık senin değil', 'DEVREDILDI');
   if (simdi() < u.bitis) throw new OyunHatasi(409, 'Üretim henüz bitmedi');
   if (db.prepare(`UPDATE uretimler SET durum = 'TOPLANDI' WHERE id = ? AND durum = 'URETIMDE'`).run(u.id).changes !== 1) throw new OyunHatasi(409, 'Eşzamanlı işlem');
   const tx = L.yeniTx();

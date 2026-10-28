@@ -118,7 +118,9 @@ function afetleriUygula(o, t) {
         say(e.user_id);
       }
     } else if (tur === 'SICAK') {
-      for (const e of db.prepare(`${ekinler} AND c.waterings > 0 AND NOT EXISTS (SELECT 1 FROM structures s WHERE s.parcel_id = c.parcel_id AND s.type = 'SULAMA_HATTI' AND s.status = 'ACTIVE')`).all(ilB.id)) {
+      // Olgun ekin ve seralı tarla etkilenmez; sulama hattı kurumayı önler
+      for (const e of db.prepare(`${ekinler} AND c.waterings > 0 AND c.ready_at > ${Number(t)}
+          AND NOT EXISTS (SELECT 1 FROM structures s WHERE s.parcel_id = c.parcel_id AND s.type IN ('SULAMA_HATTI', 'SERA') AND s.status = 'ACTIVE')`).all(ilB.id)) {
         db.prepare(`UPDATE crops SET waterings = MAX(0, waterings - ?) WHERE id = ?`).run(AFET.SICAK.sulamaKaybi, e.id);
         say(e.user_id);
       }
@@ -129,7 +131,8 @@ function afetleriUygula(o, t) {
     require('./iklim').afetEtkilenenleri(afetId, [...etkilenen.keys()], o.plaka, t);
     L.denetim({ eylem: 'WEATHER_EVENT', varlik: `IL:${ilB.id}`, bolge: ilB.id, herkese: true, sonra: { tur, ad: AFET[tur].ad, il: ilB.name, etkilenen: adet } });
     const metin = { FIRTINA: 'yapıların yıprandı; bakım yapmayı unutma', SAGANAK: 'açık tarladaki ekinlerin verim kaybetti', DOLU: 'açık tarladaki ekinlerin zarar gördü', SICAK: 'açık tarlaların kurudu; yeniden sulaman gerekiyor' }[tur];
-    for (const [u, n] of etkilenen) bildir(u, `${AFET[tur].ikon} ${require('./lib/turkce').bulunma(ilB.name)} ${AFET[tur].ad.toLocaleLowerCase('tr-TR')}: ${n} varlığın etkilendi — ${metin}. Sera ve sulama hattı korur.`, null);
+    const korunma = { FIRTINA: '', SAGANAK: 'Sera, tarla örtüsü ve bitki koruma ilacı korur.', DOLU: 'Sera, tarla örtüsü ve bitki koruma ilacı korur.', SICAK: 'Sera ve sulama hattı korur.' }[tur];
+    for (const [u, n] of etkilenen) bildir(u, `${AFET[tur].ikon} ${require('./lib/turkce').bulunma(ilB.name)} ${AFET[tur].ad.toLocaleLowerCase('tr-TR')}: ${n} varlığın etkilendi — ${metin}.${korunma && ` ${korunma}`}`, null);
     olan.push(tur);
   }
   return olan;

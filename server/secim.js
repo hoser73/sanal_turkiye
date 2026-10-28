@@ -17,11 +17,16 @@ const { SECIM, ITIBAR, BELEDIYE, HESAP, NUFUS } = require('./config/rules');
 const L = require('./lib/ledger');
 const { OyunHatasi } = L;
 
+// Ara seçim: belediye başkanlığı dönem ortasında boşalırsa yalnızca başkanlık seçilir, meclis görevde kalır
+if (!db.prepare(`PRAGMA table_info(secimler)`).all().some((k) => k.name === 'ara')) db.exec(`ALTER TABLE secimler ADD COLUMN ara INTEGER NOT NULL DEFAULT 0`);
+
 const AKTIF = ['DUYURU', 'ADAYLIK', 'KAMPANYA', 'OYLAMA', 'ITIRAZ'];
 const AKTIF_SQL = `('DUYURU','ADAYLIK','KAMPANYA','OYLAMA','ITIRAZ')`;
 const SIRA = [...AKTIF, 'BITTI'];
 const ASAMA_AD = { DUYURU: 'Duyuru', ADAYLIK: 'Adaylık', KAMPANYA: 'Kampanya', OYLAMA: 'Oylama', ITIRAZ: 'İtiraz', SONUCLANDI: 'Sonuçlandı', IPTAL: 'İptal edildi', ADAY_YOK: 'Aday çıkmadı' };
 const TUR = (s) => SECIM.turler[s.tur] || SECIM.turler.MUHTAR;
+// Seçimde doldurulan makamlar (ara seçimde yalnızca başkanlık)
+const makamListesi = (s) => (s.ara ? ['BASKAN'] : Object.keys(TUR(s).makamlar));
 const toplamSure = (tur) => tur.asamalar.reduce((a, x) => a + x.sureMs, 0);
 
 const simdi = () => Date.now();
@@ -62,6 +67,8 @@ const q = {
   muhtar: db.prepare(`SELECT m.*, u.display_name AS ad FROM muhtarlar m JOIN users u ON u.id = m.user_id
                       WHERE m.region_id = ? AND m.baslangic <= ? AND m.bitis > ? ORDER BY m.id DESC LIMIT 1`),
   baskan: db.prepare(`SELECT * FROM belediye_uyeleri WHERE region_id = ? AND makam = 'BASKAN' AND baslangic <= ? AND bitis > ? ORDER BY id DESC LIMIT 1`),
+  // Görevdeki meclisin dönem sonu (verilen andan sonra da görevde kalacak üyeler)
+  meclisBitisi: db.prepare(`SELECT MAX(bitis) AS b FROM belediye_uyeleri WHERE region_id = ? AND makam = 'MECLIS' AND baslangic <= ? AND bitis > ?`),
   mahalle: db.prepare(`SELECT r.*, ri.name AS ilce, ri.id AS ilce_id, rl.name AS il, rl.id AS il_id FROM regions r JOIN regions ri ON ri.id = r.parent_id
                        JOIN regions rl ON rl.id = ri.parent_id WHERE r.id = ? AND r.type = 'MAHALLE'`),
 };
@@ -151,13 +158,16 @@ function takvim(tur, bas) {
 function secimAc(regionId, turKod = 'MUHTAR', bas = simdi()) {
   const tur = SECIM.turler[turKod];
   const t = takvim(tur, bas);
-  const id = db.prepare(`INSERT INTO secimler (region_id, tur, asama, duyuru_at, adaylik_at, kampanya_at, oylama_at, itiraz_at, bitis_at, created_at)
-                         VALUES (?, ?, 'DUYURU', ?, ?, ?, ?, ?, ?, ?)`)
-    .run(regionId, turKod, t.DUYURU, t.ADAYLIK, t.KAMPANYA, t.OYLAMA, t.ITIRAZ, t.BITIS, bas).lastInsertRowid;
+  // Meclis seçim bittikten sonra da görevdeyse yalnızca başkanlık için ara seçim yapılır
+  const ara = turKod === 'BELEDIYE' && q.meclisBitisi.get(regionId, bas, t.BITIS)?.b ? 1 : 0;
+  const id = db.prepare(`INSERT INTO secimler (region_id, tur, asama, duyuru_at, adaylik_at, kampanya_at, oylama_at, itiraz_at, bitis_at, created_at, ara)
+                         VALUES (?, ?, 'DUYURU', ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(regionId, turKod, t.DUYURU, t.ADAYLIK, t.KAMPANYA, t.OYLAMA, t.ITIRAZ, t.BITIS, bas, ara).lastInsertRowid;
   L.denetim({ anahtar: `ELECTION_ANNOUNCED:${id}`, eylem: 'ELECTION_ANNOUNCED', varlik: `SECIM:${id}`, bolge: regionId, herkese: true,
-    sonra: { tur: turKod, adaylik: t.ADAYLIK, oylama: t.OYLAMA } });
+    sonra: { tur: turKod, adaylik: t.ADAYLIK, oylama: t.OYLAMA, ...(ara ? { ara: true } : {}) } });
   const link = turKod === 'BELEDIYE' ? `belediye:${regionId}` : `mahalle:${regionId}`;
-  for (const s of sakinler(tur, regionId)) bildir(s.id, `${tur.ad} seçimi duyuruldu. Adaylık başvuruları yakında açılıyor.`, link);
+  const duyuru = ara ? 'Belediye başkanlığı için ara seçim duyuruldu; meclis görevini sürdürüyor.' : `${tur.ad} seçimi duyuruldu.`;
+  for (const s of sakinler(tur, regionId)) bildir(s.id, `${duyuru} Adaylık başvuruları yakında açılıyor.`, link);
   return id;
 }
 
@@ -209,14 +219,15 @@ function denetimYap(s) {
 // Pusulada yer alan makamlar: aktif adayı olanlar (ör. meclise aday çıkmadıysa pusula yalnızca başkan bölümüdür)
 function adayliMakamlar(s) {
   const aktif = new Set(q.aktifAdaylar.all(s.id).map((a) => a.makam || 'MUHTAR'));
-  return Object.keys(TUR(s).makamlar).filter((m) => aktif.has(m));
+  return makamListesi(s).filter((m) => aktif.has(m));
 }
 
 // Her makam için koltuk sayısı kadar kazanan (en az 1 oy); eşitlikte açık kura. marj: koltuğu belirleyen fark.
 function kazananlariBelirle(s, oylar, adaylar) {
   const tur = TUR(s);
   const sonuc = {};
-  for (const [makam, m] of Object.entries(tur.makamlar)) {
+  for (const makam of makamListesi(s)) {
+    const m = tur.makamlar[makam];
     const sirali = adaylar.filter((a) => (a.makam || 'MUHTAR') === makam)
       .map((a) => ({ id: a.id, oy: oylar[a.id] || 0, kura: sha(`kura:${s.id}:${a.id}`) }))
       .sort((a, b) => b.oy - a.oy || a.kura.localeCompare(b.kura));
@@ -282,6 +293,14 @@ function gecis(s, sonraki, t) {
     return;
   }
   if (sonraki === 'OYLAMA') {
+    // Kampanyada adaylar çekildiyse ana makamda aday kalmamış olabilir: boş pusulayla oylama açılmaz
+    const anaMakam = Object.keys(tur.makamlar)[0];
+    if (!q.aktifAdaylar.all(s.id).some((a) => (a.makam || 'MUHTAR') === anaMakam)) {
+      if (db.prepare(`UPDATE secimler SET asama = 'ADAY_YOK', bitis_at = ? WHERE id = ? AND asama = ?`).run(t, s.id, s.asama).changes !== 1) return;
+      olay('ELECTION_NO_CANDIDATE', {}, false);
+      kutugeBildir(`${tur.ad} seçiminde adaylar çekildiği için oylama yapılamadı; geçici yönetim sürüyor.`);
+      return;
+    }
     if (asamaYaz.run('OYLAMA', s.id, s.asama).changes !== 1) return;
     olay('VOTING_OPENED');
     kutugeBildir(`${tur.ad} seçiminde oylama başladı. Oyun gizlidir.`);
@@ -345,21 +364,29 @@ function karar(s, t) {
   const adayGetir = db.prepare(`SELECT a.*, u.display_name AS ad FROM adaylar a JOIN users u ON u.id = a.user_id WHERE a.id = ?`);
   const ana = adayGetir.get(s.kazanan_aday_id);
   if (s.tur === 'BELEDIYE') {
-    // Devir: önceki başkan ve meclisin görevi biter; yeni yönetim 90 gün görev alır
-    db.prepare(`UPDATE belediye_uyeleri SET bitis = ? WHERE region_id = ? AND bitis > ?`).run(t, s.region_id, t);
+    // Devir: önceki başkan ve meclisin görevi biter; yeni yönetim 90 gün görev alır.
+    // Ara seçimde yalnızca başkanlık devredilir; meclis görevde kalır, yeni başkan meclisin dönem sonuna kadar görev yapar.
+    let bitis = t + tur.donemMs;
+    if (s.ara) {
+      bitis = q.meclisBitisi.get(s.region_id, t, t)?.b || bitis;
+      db.prepare(`UPDATE belediye_uyeleri SET bitis = ? WHERE region_id = ? AND makam = 'BASKAN' AND bitis > ?`).run(t, s.region_id, t);
+      // Başkan seçilen meclis üyesi meclis koltuğundan ayrılır
+      db.prepare(`UPDATE belediye_uyeleri SET bitis = ? WHERE region_id = ? AND makam = 'MECLIS' AND user_id = ? AND bitis > ?`).run(t, s.region_id, ana.user_id, t);
+    } else db.prepare(`UPDATE belediye_uyeleri SET bitis = ? WHERE region_id = ? AND bitis > ?`).run(t, s.region_id, t);
     const uyeEkle = db.prepare(`INSERT INTO belediye_uyeleri (region_id, user_id, makam, secim_id, aday_id, baslangic, bitis) VALUES (?, ?, ?, ?, ?, ?, ?)`);
     const vaatEkle = db.prepare(`INSERT INTO gorev_vaatleri (uye_id, sira, metin, updated_at) VALUES (?, ?, ?, ?)`);
     for (const [makam, idler] of Object.entries(sonuc.kazananlar)) {
       for (const adayId of idler) {
         const a = adayGetir.get(adayId);
-        const uid = uyeEkle.run(s.region_id, a.user_id, makam, s.id, a.id, t, t + tur.donemMs).lastInsertRowid;
+        const uid = uyeEkle.run(s.region_id, a.user_id, makam, s.id, a.id, t, bitis).lastInsertRowid;
         JSON.parse(a.vaatler).forEach((v, i) => vaatEkle.run(uid, i + 1, v, t));
       }
     }
     const meclis = (sonuc.kazananlar.MECLIS || []).map((id) => adayGetir.get(id).ad);
     L.denetim({ anahtar: `ELECTION_CLOSED:${s.id}`, aktor: ana.user_id, eylem: 'ELECTION_CLOSED', varlik: `SECIM:${s.id}`, bolge: s.region_id, herkese: true,
-      sonra: { tur: 'BELEDIYE', kazanan: ana.ad, oy: sonuc.oylar[ana.id] || 0, toplam: sonuc.toplam, meclis } });
-    kutugeBildir(`${ana.ad} belediye başkanı seçildi; meclis: ${meclis.length ? meclis.join(', ') : 'üye seçilmedi'}.`);
+      sonra: { tur: 'BELEDIYE', kazanan: ana.ad, oy: sonuc.oylar[ana.id] || 0, toplam: sonuc.toplam, meclis, ...(s.ara ? { ara: true } : {}) } });
+    kutugeBildir(s.ara ? `${ana.ad} ara seçimle belediye başkanı oldu; meclis görevini sürdürüyor.`
+      : `${ana.ad} belediye başkanı seçildi; meclis: ${meclis.length ? meclis.join(', ') : 'üye seçilmedi'}.`);
     return;
   }
   // Muhtarlık devri: önceki muhtarın görevi biter, yenisi 30 günlüğüne başlar; vaatleri takip listesine geçer
@@ -413,9 +440,11 @@ const metin = (v, ad, min, max) => {
 const adayOl = db.transaction((userId, secimId, govde) => {
   const s = aktifSecimGetir(secimId, ['ADAYLIK']);
   const tur = TUR(s);
-  const makamlar = Object.keys(tur.makamlar);
+  const makamlar = makamListesi(s);
   const makam = govde?.makam ?? (makamlar.length === 1 ? makamlar[0] : null);
-  if (!makamlar.includes(makam)) throw new OyunHatasi(400, `Makam seçilmeli: ${makamlar.map((m) => tur.makamlar[m].ad).join(' / ')}`);
+  if (!makamlar.includes(makam)) {
+    throw new OyunHatasi(400, s.ara ? 'Bu ara seçimde yalnızca belediye başkanlığına aday olunur; meclis görevde' : `Makam seçilmeli: ${makamlar.map((m) => tur.makamlar[m].ad).join(' / ')}`);
+  }
   const u = adayUygunlugu(userId, s, makam);
   if (!u.uygun) throw new OyunHatasi(403, `${tur.makamlar[makam].ad} adayı olamazsın: ${u.sebepler.join('; ')}`, 'ADAY_UYGUN_DEGIL');
   const manifesto = metin(govde?.manifesto, 'Manifesto', 20, SECIM.aday.manifestoMaks);
@@ -447,6 +476,7 @@ const oyVer = db.transaction((userId, secimId, govde, cihaz) => {
   const tur = TUR(s);
   if (!q.kutukte.get(s.id, userId)) throw new OyunHatasi(403, 'Seçmen kütüğünde değilsin (kütük kampanya başında dondurulur)', 'KUTUK_DISI');
   const makamlar = adayliMakamlar(s);
+  if (!makamlar.length) throw new OyunHatasi(409, 'Bu seçimde oylanacak aday yok', 'ADAY_YOK');
   const tercih = Object.keys(tur.makamlar).length === 1 ? { [makamlar[0]]: govde?.adayId ?? govde?.secimler?.[makamlar[0]] } : (govde?.secimler || {});
   const adaySorgu = db.prepare(`SELECT id FROM adaylar WHERE id = ? AND secim_id = ? AND makam = ? AND durum = 'AKTIF'`);
   const secilen = {};
@@ -557,7 +587,7 @@ function secimDetayi(s, userId) {
   const sonucGorunur = !!s.sonuc_json;
   const sonuc = s.sonuc_json ? JSON.parse(s.sonuc_json) : null;
   const makamUygunlugu = userId && s.asama === 'ADAYLIK'
-    ? Object.fromEntries(Object.keys(tur.makamlar).map((m) => [m, adayUygunlugu(userId, s, m)])) : null;
+    ? Object.fromEntries(makamListesi(s).map((m) => [m, adayUygunlugu(userId, s, m)])) : null;
   const ben = userId ? {
     sakin: sakinMi(tur, s.region_id, userId),
     kutukte: !!q.kutukte.get(s.id, userId),
@@ -568,8 +598,8 @@ function secimDetayi(s, userId) {
     itirazim: db.prepare(`SELECT sebep, durum, yanit FROM itirazlar WHERE secim_id = ? AND user_id = ?`).get(s.id, userId) || null,
   } : null;
   return {
-    id: s.id, tur: s.tur, turAd: tur.ad, asama: s.asama, asamaAd: ASAMA_AD[s.asama],
-    makamlar: Object.fromEntries(Object.entries(tur.makamlar).map(([k, m]) => [k, { ad: m.ad, koltuk: m.koltuk }])),
+    id: s.id, tur: s.tur, turAd: tur.ad, asama: s.asama, asamaAd: ASAMA_AD[s.asama], ara: !!s.ara,
+    makamlar: Object.fromEntries(makamListesi(s).map((k) => [k, { ad: tur.makamlar[k].ad, koltuk: tur.makamlar[k].koltuk }])),
     takvim: tur.asamalar.map((a) => ({ kod: a.kod, ad: a.ad, bas: s[`${a.kod.toLowerCase()}_at`] })).concat([{ kod: 'SONUC', ad: 'Sonuç ve devir', bas: s.bitis_at }]),
     adaylar: adayListesi(s, userId, sonucGorunur, sonuc),
     kutukSayisi: q.kutukSayisi.get(s.id).c,
@@ -617,6 +647,7 @@ function mahalleBilgisi(regionId, userId) {
     duyurular: db.prepare(`SELECT d.id, d.metin, d.created_at, u.display_name AS ad FROM mahalle_duyurulari d JOIN users u ON u.id = d.user_id
                            WHERE d.region_id = ? AND d.gizlendi = 0 ORDER BY d.id DESC LIMIT 10`).all(r.id),
     dilekceler: require('./moderasyon').dilekceler(r.id, userId),
+    dilekceKurallari: require('./moderasyon').dilekceKurallari,
     secim: bolgeSecimi(r.id, userId),
     gecmis: gecmisSecimler(r.id),
     hizmetler: [...require('./belediye').mahalleHizmetleri(r.id)].map((k) => ({ kod: k, ...BELEDIYE.projeler[k] })),

@@ -2,6 +2,7 @@
 // Mesafe il merkezleri arası kuş uçuşu × güzergâh katsayısıdır (kara 1,3; deniz 1,2). Varışta ürün o ilin günlük talebine göre satılır.
 // Fırtına, limanlar arası deniz sevkiyatını geciktirir. Açık formül: ücret = sabit + km × km ücreti × miktar.
 const db = require('./db');
+const { metin, sayi } = require('./lib/girdi');
 const L = require('./lib/ledger');
 const { LOJISTIK, URUNLER, NPC_PAZAR, AFET } = require('./config/rules');
 const { OyunHatasi } = L;
@@ -113,7 +114,7 @@ function lojistikBilgisi(userId) {
 function rotalar(app, { h, auth }) {
   app.get('/api/lojistik', h((req) => lojistikBilgisi(req.kullanici?.id ?? null)));
   app.get('/api/lojistik/teklif', h((req) => {
-    const r = teklif({ urun: String(req.query.urun || ''), miktar: Number(req.query.miktar), kaynak: String(req.query.kaynak || ''), hedef: String(req.query.hedef || ''), mod: String(req.query.mod || 'KARA') });
+    const r = teklif({ urun: metin(req.query.urun), miktar: sayi(req.query.miktar), kaynak: metin(req.query.kaynak), hedef: metin(req.query.hedef), mod: metin(req.query.mod) || 'KARA' });
     return { km: r.km, maliyet: r.maliyet, sureMs: r.sureMs, tahminiGelir: r.tahminiGelir, ilKati: r.ilKati, kaynak: r.a.name, hedef: r.b.name };
   }));
   app.post('/api/sevkiyat', auth.dogrulanmisGerekli, h((req) => gonder(req.kullanici.id, req.body)));

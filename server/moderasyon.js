@@ -3,7 +3,7 @@
 const db = require('./db');
 const L = require('./lib/ledger');
 const { icerikDenetle } = require('./lib/icerik');
-const { MODERASYON, GOREVDEN_ALMA, SECIM, ROLLER } = require('./config/rules');
+const { MODERASYON, GOREVDEN_ALMA, SECIM, ROLLER, OZELLIK } = require('./config/rules');
 const { OyunHatasi } = L;
 
 const simdi = () => Date.now();
@@ -14,6 +14,14 @@ const metinAl = (v, ad, min, max) => {
   return v.trim();
 };
 const rolu = (userId) => db.prepare(`SELECT rol FROM users WHERE id = ?`).get(userId)?.rol;
+// Rol hiyerarşisi: yetkili bir hesaba yönelik işlemi yalnızca ondan üst roldeki biri önerir ve onaylar
+const RUTBE = { OYUNCU: 0, MODERATOR: 1, DENETCI: 2, ADMIN: 3 };
+const rutbe = (userId) => RUTBE[rolu(userId)] ?? 0;
+const sqlMs = (s) => new Date(String(s).replace(' ', 'T') + 'Z').getTime();
+// Dilekçe açılırken dondurulan imza kütüğü: o an bölgede parseli olan ve hesabı yeterince eski sakinler
+db.exec(`CREATE TABLE IF NOT EXISTS gorevden_alma_kutuk (
+  dilekce_id INTEGER NOT NULL REFERENCES gorevden_alma(id), user_id INTEGER NOT NULL REFERENCES users(id), PRIMARY KEY (dilekce_id, user_id)
+) WITHOUT ROWID`);
 const yetkililer = () => db.prepare(`SELECT id FROM users WHERE rol IN ('MODERATOR', 'DENETCI', 'ADMIN') AND status = 'ACTIVE'`).all();
 
 // ---------- Şikâyet hedefleri
@@ -89,15 +97,15 @@ function makamBosalt(regionId, makam, hedefId, sebep, aktor = null) {
   const tur = makam === 'MUHTAR' ? SECIM.turler.MUHTAR : SECIM.turler.BELEDIYE;
   const ad = { MUHTAR: 'Muhtarlık', BASKAN: 'Belediye başkanlığı', MECLIS: 'Bir meclis üyeliği' }[makam];
   const link = makam === 'MUHTAR' ? `mahalle:${regionId}` : `belediye:${regionId}`;
-  for (const s of secim.sakinler(tur, regionId)) {
-    bildir(s.id, `${ad} boşaldı: ${sebep}.${makam === 'MECLIS' ? '' : ' Ara seçim takvimi açılacak.'}`, link);
-  }
+  const sonra = { MUHTAR: ' Yeni muhtarlık seçimi takvimi açılacak.', BASKAN: ' Meclis görevini sürdürür; başkanlık için ara seçim takvimi açılacak.',
+    MECLIS: ' Koltuk dönem sonuna dek boş kalır.' }[makam];
+  for (const s of secim.sakinler(tur, regionId)) bildir(s.id, `${ad} boşaldı: ${sebep}.${sonra}`, link);
   return true;
 }
-function tumMakamlariBosalt(userId, sebep) {
+function tumMakamlariBosalt(userId, sebep, aktor = userId) {
   const t = simdi();
-  for (const m of db.prepare(`SELECT region_id FROM muhtarlar WHERE user_id = ? AND baslangic <= ? AND bitis > ?`).all(userId, t, t)) makamBosalt(m.region_id, 'MUHTAR', userId, sebep, userId);
-  for (const b of db.prepare(`SELECT region_id, makam FROM belediye_uyeleri WHERE user_id = ? AND baslangic <= ? AND bitis > ?`).all(userId, t, t)) makamBosalt(b.region_id, b.makam, userId, sebep, userId);
+  for (const m of db.prepare(`SELECT region_id FROM muhtarlar WHERE user_id = ? AND baslangic <= ? AND bitis > ?`).all(userId, t, t)) makamBosalt(m.region_id, 'MUHTAR', userId, sebep, aktor);
+  for (const b of db.prepare(`SELECT region_id, makam FROM belediye_uyeleri WHERE user_id = ? AND baslangic <= ? AND bitis > ?`).all(userId, t, t)) makamBosalt(b.region_id, b.makam, userId, sebep, aktor);
 }
 
 // Görevdeki makam sahibi (yoksa null)
@@ -144,7 +152,9 @@ function uygula(islem) {
       break;
     }
     case 'PARSEL_COZ': db.prepare(`UPDATE parcels SET status = 'ACTIVE', version = version + 1 WHERE id = ?`).run(x.id); break;
-    case 'HESAP_ASKI': db.prepare(`UPDATE users SET status = 'SUSPENDED' WHERE id = ? AND status = 'ACTIVE'`).run(x.id); break;
+    case 'HESAP_ASKI':
+      if (db.prepare(`UPDATE users SET status = 'SUSPENDED' WHERE id = ? AND status = 'ACTIVE'`).run(x.id).changes) tumMakamlariBosalt(x.id, sebep, islem.onaylayan_id);
+      break;
     case 'HESAP_AC': db.prepare(`UPDATE users SET status = 'ACTIVE' WHERE id = ? AND status = 'SUSPENDED'`).run(x.id); break;
     case 'GOREVDEN_AL': makamBosalt(x.regionId, x.makam, x.userId, sebep, islem.onaylayan_id); break;
     case 'SECIM_IPTAL': {
@@ -159,6 +169,11 @@ function uygula(islem) {
   }
 }
 
+function rutbeDenetle(aktorId, tur, hedef) {
+  if (tur !== 'HESAP_ASKI') return;
+  if (rutbe(aktorId) <= rutbe(Number(hedef))) throw new OyunHatasi(403, 'Yetkili bir hesabı askıya alma işlemini yalnızca ondan üst roldeki biri önerebilir ya da onaylayabilir');
+}
+
 function islemOner(modId, govde = {}) {
   const tur = String(govde.tur || '');
   const tanim = Object.hasOwn(MODERASYON.islemler, tur) ? MODERASYON.islemler[tur] : null;
@@ -167,6 +182,7 @@ function islemOner(modId, govde = {}) {
   const hedef = String(govde.hedef || '').slice(0, 80);
   hedefCoz(tur, hedef);
   if (tur === 'HESAP_ASKI' && Number(hedef) === modId) throw new OyunHatasi(400, 'Kendi hesabın için işlem öneremezsin');
+  rutbeDenetle(modId, tur, hedef);
   const sikayetId = govde.sikayetId ? Number(govde.sikayetId) : null;
   const t = simdi();
   return db.transaction(() => {
@@ -184,12 +200,15 @@ function islemOner(modId, govde = {}) {
   })();
 }
 
-const islemKarar = db.transaction((modId, islemId, { onay } = {}) => {
+const islemKarar = db.transaction((modId, islemId, govde = {}) => {
+  const onay = govde?.onay;
+  if (typeof onay !== 'boolean') throw new OyunHatasi(400, 'Karar onay: true ya da onay: false olmalı');
   const i = db.prepare(`SELECT * FROM moderasyon_islemleri WHERE id = ?`).get(Number(islemId));
   if (!i) throw new OyunHatasi(404, 'İşlem bulunamadı');
   if (i.durum !== 'ONAY_BEKLIYOR') throw new OyunHatasi(409, 'İşlem zaten karara bağlandı');
   if (i.oneren_id === modId) throw new OyunHatasi(403, 'Önerdiğin işlemi sen onaylayamazsın (iki kişi kuralı)');
   const tanim = MODERASYON.islemler[i.tur];
+  if (onay) rutbeDenetle(modId, i.tur, i.hedef);
   if (onay && tanim.denetciGerekli && ![rolu(i.oneren_id), rolu(modId)].some((r) => r === 'DENETCI' || r === 'ADMIN')) {
     throw new OyunHatasi(403, 'Bu işlem için iki kişiden biri denetçi ya da yönetici olmalı');
   }
@@ -225,9 +244,18 @@ function gorevdenAlmaBakim() {
   }
 }
 
+const kutukVar = (id) => !!db.prepare(`SELECT 1 FROM gorevden_alma_kutuk WHERE dilekce_id = ? LIMIT 1`).get(id);
+const kutukte = (id, userId) => !!db.prepare(`SELECT 1 FROM gorevden_alma_kutuk WHERE dilekce_id = ? AND user_id = ?`).get(id, userId);
+// İmza kütüğü (dilekçe açılırken): bölgede parseli olan, hesabı yeterince eski sakinler; hedef hariç
+function imzaKutugu(makam, regionId, hedefId, t) {
+  const sinir = t - SECIM.secmenMinHesapYasiMs;
+  return require('./secim').sakinler(dilekceBolgeTuru(makam), regionId).filter((s) => s.id !== hedefId && sqlMs(s.created_at) <= sinir);
+}
+
 function imzaHakki(userId, d) {
   const secim = require('./secim');
   if (userId === d.hedef_id) return 'Kendi görevden alma dilekçeni imzalayamazsın';
+  if (d.id && kutukVar(d.id)) return kutukte(d.id, userId) ? null : 'Dilekçe açıldığında bu bölgenin imza kütüğünde değildin';
   if (!secim.sakinMi(dilekceBolgeTuru(d.makam), d.region_id, userId)) return d.makam === 'MUHTAR' ? 'Bu mahallede parselin olmalı' : 'Bu ilçede parselin olmalı';
   return null;
 }
@@ -245,11 +273,12 @@ const dilekceBaslat = db.transaction((userId, govde = {}) => {
   const engel = imzaHakki(userId, d0);
   if (engel) throw new OyunHatasi(403, engel);
   const t = simdi();
+  const kutuk = imzaKutugu(makam, regionId, g.user_id, t);
+  if (!kutuk.some((s) => s.id === userId)) throw new OyunHatasi(403, `Dilekçe başlatmak için hesabın en az ${Math.max(1, Math.round(SECIM.secmenMinHesapYasiMs / SECIM.gunMs))} günlük olmalı`);
   if (t < g.baslangic + (g.bitis - g.baslangic) * GOREVDEN_ALMA.korumaOrani) throw new OyunHatasi(409, 'Görevin ilk döneminde (ilk %20) görevden alma dilekçesi başlatılamaz');
   const son = db.prepare(`SELECT kapandi_at FROM gorevden_alma WHERE region_id = ? AND makam = ? AND hedef_id = ? AND durum = 'BASARISIZ' ORDER BY id DESC LIMIT 1`).get(regionId, makam, g.user_id);
   if (son && son.kapandi_at + GOREVDEN_ALMA.beklemeMs > t) throw new OyunHatasi(409, 'Başarısız bir dilekçeden sonra bekleme süresi dolmadı');
-  const secim = require('./secim');
-  const uygun = secim.sakinler(dilekceBolgeTuru(makam), regionId).filter((s) => s.id !== g.user_id).length;
+  const uygun = kutuk.length;
   const esik = Math.max(GOREVDEN_ALMA.minImza, Math.ceil(uygun * GOREVDEN_ALMA.imzaOrani));
   if (esik > uygun) throw new OyunHatasi(409, `Dilekçe için en az ${esik} imza gerekir; bölgede imza atabilecek ${uygun} sakin var`);
   let id;
@@ -260,10 +289,12 @@ const dilekceBaslat = db.transaction((userId, govde = {}) => {
     if (String(e.message).includes('UNIQUE')) throw new OyunHatasi(409, 'Bu makam için zaten açık bir dilekçe var');
     throw e;
   }
+  const kutukEkle = db.prepare(`INSERT INTO gorevden_alma_kutuk (dilekce_id, user_id) VALUES (?, ?)`);
+  for (const s of kutuk) kutukEkle.run(id, s.id);
   db.prepare(`INSERT INTO gorevden_alma_imzalar (dilekce_id, user_id, created_at) VALUES (?, ?, ?)`).run(id, userId, t);
   L.denetim({ anahtar: `RECALL_STARTED:${id}`, aktor: userId, eylem: 'RECALL_STARTED', varlik: `GOREVDEN_ALMA:${id}`, bolge: regionId, herkese: true, sonra: { makam, hedef: g.ad, esik } });
   const link = makam === 'MUHTAR' ? `mahalle:${regionId}` : `belediye:${regionId}`;
-  for (const s of secim.sakinler(dilekceBolgeTuru(makam), regionId)) if (s.id !== userId) bildir(s.id, `${g.ad} için görevden alma dilekçesi açıldı (${esik} imza gerekli).`, link);
+  for (const s of kutuk) if (s.id !== userId) bildir(s.id, `${g.ad} için görevden alma dilekçesi açıldı (${esik} imza gerekli).`, link);
   dilekceSonucla(db.prepare(`SELECT * FROM gorevden_alma WHERE id = ?`).get(id), t);
   return { tamam: true, id, esik };
 });
@@ -349,8 +380,10 @@ function rotalar(app, { h, auth }) {
   const yetkili = auth.rolGerekli(...YETKILI);
   app.post('/api/sikayet', auth.dogrulanmisGerekli, h((req) => sikayetEt(req.kullanici.id, req.body)));
   app.get('/api/sikayet/tanimlar', h(() => ({ sebepler: MODERASYON.sebepler, hedefTurleri: MODERASYON.hedefTurleri })));
-  app.post('/api/gorevden-alma', auth.dogrulanmisGerekli, h((req) => dilekceBaslat(req.kullanici.id, req.body)));
-  app.post('/api/gorevden-alma/:id/imza', auth.dogrulanmisGerekli, h((req) => dilekceImzala(req.kullanici.id, req.params.id)));
+  if (OZELLIK.siyaset) {   // siyaset kapalıyken görevden alma uçları hiç kaydedilmez
+    app.post('/api/gorevden-alma', auth.dogrulanmisGerekli, h((req) => dilekceBaslat(req.kullanici.id, req.body)));
+    app.post('/api/gorevden-alma/:id/imza', auth.dogrulanmisGerekli, h((req) => dilekceImzala(req.kullanici.id, req.params.id)));
+  }
   app.get('/api/yonetim/panel', yetkili, h((req) => panel(req.kullanici.id)));
   app.post('/api/yonetim/sikayet/:id', yetkili, h((req) => sikayetKarar(req.kullanici.id, req.params.id, req.body)));
   app.post('/api/yonetim/islem', yetkili, h((req) => islemOner(req.kullanici.id, req.body)));
@@ -358,7 +391,12 @@ function rotalar(app, { h, auth }) {
   app.post('/api/yonetim/rol', auth.rolGerekli('ADMIN'), h((req) => rolDegistir(req.kullanici.id, req.body)));
 }
 
+// İstemci metinleri için dilekçe kuralları (sabit metin yerine)
+const dilekceKurallari = { imzaOrani: GOREVDEN_ALMA.imzaOrani, minImza: GOREVDEN_ALMA.minImza, sureMs: GOREVDEN_ALMA.sureMs,
+  korumaOrani: GOREVDEN_ALMA.korumaOrani, minHesapYasiMs: SECIM.secmenMinHesapYasiMs };
+
 module.exports = {
+  dilekceKurallari,
   rotalar, sikayetEt, sikayetKarar, islemOner, islemKarar, makamBosalt, tumMakamlariBosalt, gorevdeki,
   dilekceBaslat, dilekceImzala, dilekceler, gorevdenAlmaBakim, panel, rolDegistir, YETKILI,
 };
