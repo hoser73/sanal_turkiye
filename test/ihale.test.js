@@ -73,6 +73,31 @@ test('ihale: kendi teklifini yükseltmek yalnızca son teklifi kilitler; geçile
   assert.equal(db.prepare(`SELECT COUNT(*) c FROM (SELECT tx_group FROM wallet_ledger GROUP BY tx_group HAVING ROUND(SUM(debit) - SUM(credit), 2) <> 0)`).get().c, 0);
 });
 
+test('ihale: önde olunan ihale parsel sınırına sayılır (sınırdaki lider başka parsel alamaz, sınırdaki oyuncu teklif veremez)', async () => {
+  const H = require('../server/config/rules').HESAP, eskiSinir = H.maxParsel;
+  const i = (await (await oyuncu('ihd'))('/api/ihale')).veri.ihaleler.find((x) => x.durum === 'ACIK');
+  assert.ok(i, 'açık ihale');
+  const a = await oyuncu('iha3'), b = await oyuncu('ihb3');
+  const ust = db.prepare(`SELECT MAX(tutar) m FROM ihale_teklifleri WHERE ihale_id = ? AND durum = 'AKTIF'`).get(i.id).m;
+  const tutar = ust ? Math.ceil(ust * (1 + I.artis)) : i.taban;
+  H.maxParsel = 1;
+  try {
+    // B'nin bir parseli var: sınırda, teklif veremez
+    assert.equal((await b(`/api/parsel/${hucreBul('TARIM')}/edin`, {})).durum, 200);
+    assert.equal((await b(`/api/ihale/${i.id}/teklif`, { tutar })).veri.kod, 'PARSEL_SINIRI');
+    // A parselsiz: teklif verir ve önde; artık başka parsel edinemez (ihale sınıra sayılır)
+    assert.equal((await a(`/api/ihale/${i.id}/teklif`, { tutar })).durum, 200);
+    const r = await a(`/api/parsel/${hucreBul('TARIM')}/edin`, {});
+    assert.equal(r.durum, 409);
+    assert.match(r.veri.hata, /ihale/);
+    // İhale bitince A tarlayı alır (kendi ihalesi sınırdan düşülür)
+    db.prepare('UPDATE ihaleler SET bitis = ? WHERE id = ?').run(Date.now() - 1, i.id);
+    ihale.sonuclandir();
+  } finally { H.maxParsel = eskiSinir; }
+  assert.equal(db.prepare('SELECT owner_user_id FROM parcels WHERE id = ?').get(i.parsel).owner_user_id, a.id);
+  assert.equal(db.prepare('SELECT durum FROM ihaleler WHERE id = ?').get(i.id).durum, 'SATILDI');
+});
+
 test('fiyat alarmı: hedef yönü kendiliğinden; endeks hedefe ulaşınca bir kez bildirim; sınır', async () => {
   const c = await oyuncu('alarmci');
   const h = hucreBul('TARIM');

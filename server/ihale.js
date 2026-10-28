@@ -2,8 +2,8 @@
 // her ilinde il merkezine yakın boş bir tarım hücresi açık artırmaya çıkar. İhaledeki tarla olağan yoldan edinilemez
 // (oyun.parselEdin). Taban: tahsis bedelinin IHALE.tabanOrani'sı. Teklif akçesi emanete (IHALE:<id>) geçer; geçilen teklif
 // ve oyuncunun eski teklifi iade edilir; yeni teklif en az IHALE.artis kadar yüksek olmalı. Pazar günü TR 21.00'de
-// biter: en yüksek teklifi veren (parsel sınırı uygunsa; değilse sıradaki) tarlayı olağan tahsisle alır, ödeme
-// emanetten yapılır, diğer teklifler iade edilir. Hafta ilk açıldığında ihaleler kurulur (hücre arama eşzamansızdır).
+// biter: en yüksek teklifi veren tarlayı olağan tahsisle alır, ödeme emanetten yapılır. Önde olunan ihaleler parsel
+// sınırına sayıldığından lider bitişte sınırda kalamaz; yine de tahsis olmazsa ihale satılmadan kapanır ve akçe iade edilir. Hafta ilk açıldığında ihaleler kurulur (hücre arama eşzamansızdır).
 const db = require('./db');
 const L = require('./lib/ledger');
 const { OyunHatasi } = L;
@@ -38,6 +38,16 @@ const q = {
   iade: db.prepare(`UPDATE ihale_teklifleri SET durum = 'IADE' WHERE id = ?`),
 };
 const ihaledeMi = (parcelId) => !!q.acikParsel.get(parcelId);
+// Oyuncunun önde olduğu açık ihaleler (geçilen teklif hemen iade edildiğinden ihalede tek aktif teklif vardır).
+// Parsel sınırına sayılır: önde olan oyuncu ihale biterken sınırda kalıp tarlayı alamaz hâle gelmesin
+// (yoksa ihale satılmadan kapanır; ihaleyi kilitleyip son anda başka parsel almak satışı boşa çıkarırdı).
+const q2 = {
+  onde: db.prepare(`SELECT i.id, p.region_id FROM ihale_teklifleri t JOIN ihaleler i ON i.id = t.ihale_id JOIN parcels p ON p.id = i.parcel_id
+                    WHERE t.user_id = ? AND t.durum = 'AKTIF' AND i.durum = 'ACIK'`),
+};
+function ondeOlunan(userId, { haric = null, regionId = null } = {}) {
+  return q2.onde.all(userId).filter((x) => x.id !== haric && (regionId == null || x.region_id === regionId)).length;
+}
 const bildir = (userId, m, link) => require('./pazar').bildir(userId, m, link);
 const teklifIade = (tk, ihaleId, sebep, tx = L.yeniTx()) => {
   q.iade.run(tk.id);
@@ -79,8 +89,13 @@ const teklifVer = db.transaction((userId, ihaleId, govde = {}) => {
   if (!i) throw new OyunHatasi(404, 'İhale bulunamadı');
   if (i.durum !== 'ACIK' || t >= i.bitis) throw new OyunHatasi(409, 'Bu ihale bitti', 'BITTI');
   if (db.prepare('SELECT is_npc FROM users WHERE id = ?').get(userId)?.is_npc) throw new OyunHatasi(403, 'Demo hesaplar teklif veremez');
-  if (db.prepare('SELECT COUNT(*) AS c FROM parcels WHERE owner_user_id = ?').get(userId).c >= HESAP.maxParsel) {
-    throw new OyunHatasi(409, `Hesap başına en fazla ${HESAP.maxParsel} parsel; önce birini sat`, 'PARSEL_SINIRI');
+  const p = db.prepare('SELECT region_id FROM parcels WHERE id = ?').get(i.parcel_id);
+  if (db.prepare('SELECT COUNT(*) AS c FROM parcels WHERE owner_user_id = ?').get(userId).c + ondeOlunan(userId, { haric: i.id }) >= HESAP.maxParsel) {
+    throw new OyunHatasi(409, `Hesap başına en fazla ${HESAP.maxParsel} parsel (önde olduğun ihaleler dahil); önce birini sat`, 'PARSEL_SINIRI');
+  }
+  if (db.prepare('SELECT COUNT(*) AS c FROM parcels WHERE owner_user_id = ? AND region_id = ?').get(userId, p.region_id).c
+      + ondeOlunan(userId, { haric: i.id, regionId: p.region_id }) >= HESAP.maxParselMahalle) {
+    throw new OyunHatasi(409, `Bir mahallede en fazla ${HESAP.maxParselMahalle} parsel (önde olduğun ihaleler dahil)`, 'PARSEL_SINIRI');
   }
   const tutar = Number(govde.tutar);
   const ust = q.enYuksek.get(i.id);
@@ -108,7 +123,7 @@ const sonuclandir = db.transaction((t = Date.now()) => {
     for (const tk of q.aktifler.all(i.id)) {
       if (!kazanan) {
         try {
-          db.transaction(() => oyun.parselEdin(tk.user_id, i.parcel_id, { fiyat: tk.tutar, kaynak: emanet(i.id) }))();
+          db.transaction(() => oyun.parselEdin(tk.user_id, i.parcel_id, { id: i.id, fiyat: tk.tutar, kaynak: emanet(i.id) }))();
           kazanan = tk;
           db.prepare(`UPDATE ihale_teklifleri SET durum = 'KAZANDI' WHERE id = ?`).run(tk.id);
           bildir(tk.user_id, `🔨 İhaleyi kazandın! ${i.parcel_id} artık senin (₳${tk.tutar}).`, `parsel:${i.parcel_id}`);
@@ -148,4 +163,4 @@ function rotalar(app, { h, auth }) {
   app.post('/api/ihale/:id/teklif', auth.dogrulanmisGerekli, h((req) => teklifVer(req.kullanici.id, req.params.id, req.body || {})));
 }
 
-module.exports = { rotalar, liste, teklifVer, sonuclandir, ihaleBakim, ihaledeMi, haftayiKur, haftaNo };
+module.exports = { rotalar, liste, teklifVer, sonuclandir, ihaleBakim, ihaledeMi, haftayiKur, haftaNo, ondeOlunan };

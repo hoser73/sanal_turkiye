@@ -104,8 +104,9 @@ function aliciUygunlukHatasi(userId, ilan, p) {
   if (!u || u.status !== 'ACTIVE') return 'Hesap işlem yapamaz durumda';
   const kosul = PAZAR.aliciKosullari[ilan.buyer_condition] || PAZAR.aliciKosullari.HERKES;
   if (kosul.yasMs && simdi() - sqlZamani(u.created_at) < kosul.yasMs) return `Satıcının alıcı koşulu: ${kosul.ad.toLocaleLowerCase('tr-TR')}`;
-  if (q.parselSayisi.get(userId).c >= HESAP.maxParsel) return `Hesap başına en fazla ${HESAP.maxParsel} parsel`;
-  if (q.mahalleParselSayisi.get(userId, p.region_id).c >= HESAP.maxParselMahalle) return `Bir mahallede en fazla ${HESAP.maxParselMahalle} parsel`;
+  const onde = (bolge) => require('./ihale').ondeOlunan(userId, { regionId: bolge });   // önde olunan açık ihaleler de sayılır
+  if (q.parselSayisi.get(userId).c + onde(null) >= HESAP.maxParsel) return `Hesap başına en fazla ${HESAP.maxParsel} parsel (önde olduğun ihaleler dahil)`;
+  if (q.mahalleParselSayisi.get(userId, p.region_id).c + onde(p.region_id) >= HESAP.maxParselMahalle) return `Bir mahallede en fazla ${HESAP.maxParselMahalle} parsel (önde olduğun ihaleler dahil)`;
   return null;
 }
 function aliciUygunMu(userId, ilan, p) {

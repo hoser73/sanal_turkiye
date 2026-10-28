@@ -52,6 +52,7 @@ test('kazanınca ilerler ve ödül alır; hızlı ya da fazla hamleli bitiş red
   assert.equal((await A('/api/bulmaca/bitir', { oyunId: o.oyunId, kazandi: true, hamle: 5 })).durum, 409, 'çok hızlı');
   eskit(o.oyunId);
   assert.equal((await A('/api/bulmaca/bitir', { oyunId: o.oyunId, kazandi: true, hamle: o.bolum.hamle + 1 })).durum, 400, 'hamle sınırı');
+  assert.equal((await A('/api/bulmaca/bitir', { oyunId: o.oyunId, kazandi: true, hamle: 1 })).veri.kod, 'AZ_HAMLE', '18 hedef taş tek hamlede toplanmaz');
   const once = L.bakiye(id);
   const r = await A('/api/bulmaca/bitir', { oyunId: o.oyunId, kazandi: true, hamle: 4 });
   assert.equal(r.durum, 200, JSON.stringify(r.veri));

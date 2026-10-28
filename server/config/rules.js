@@ -398,6 +398,7 @@ const SIYASI_EYLEMLER = ['ELECTION_ANNOUNCED', 'CANDIDACY_OPENED', 'CANDIDATE_RE
 // süreyi (taban + kullanılan hamle × hamleMs) ve hamle sınırını denetler. Günde en çok gunlukOdul bölüm ödül verir.
 const BULMACA = {
   gunlukOdul: 5, minSureMs: 12_000, hamleMs: 450, maksSureMs: 45 * 60_000,
+  hamleBasinaAzami: 15,   // bir hamlede toplanabilecek hedef taşın makul üst sınırı (en az hamle denetimi; bulmaca.js)
   satir: 8, sutun: 7,
   taslar: { NAR: 'Nar', LALE: 'Lale', CINI: 'Çini', BUGDAY: 'Başak', NAZAR: 'Nazar', FINDIK: 'Fındık' },
   // Bölüm ödülü: her 10. bölüm kalıp seti (inşaatı hızlandırır), her 5. gübre, kalanlar akçe; yıldız başına +2 akçe

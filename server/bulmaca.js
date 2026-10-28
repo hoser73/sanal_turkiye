@@ -69,6 +69,10 @@ function bolum(n) {
   return { seviye: n, satir: B.satir, sutun: B.sutun, turler, ot, hedefler, hamle, tohum: (n * 7919) >>> 0 };
 }
 
+// Bölümü kazanmak için gereken en az hamle: hedeflerin toplamı (ot katları dahil) ÷ BULMACA.hamleBasinaAzami. Zincirleme ve
+// özel taşlarla tek hamlede çok taş toplanabildiğinden sınır cömerttir; yalnızca "1 hamlede bitirdim" gibi açık hileyi keser.
+const enAzHamle = (b) => Math.max(1, Math.ceil(b.hedefler.reduce((t, h) => t + h.adet, 0) / B.hamleBasinaAzami));
+
 // Kalan hamle oranına göre 1–3 yıldız
 const yildizHesapla = (hamle, sinir) => { const kalan = (sinir - hamle) / sinir; return kalan >= 0.3 ? 3 : kalan >= 0.12 ? 2 : 1; };
 function odulYazisi(n) {
@@ -123,6 +127,7 @@ const bitir = db.transaction((userId, govde = {}) => {
   }
   const hamle = Number(govde.hamle);
   if (!Number.isInteger(hamle) || hamle < 1 || hamle > b.hamle) throw new OyunHatasi(400, 'Geçersiz hamle sayısı');
+  if (hamle < enAzHamle(b)) throw new OyunHatasi(409, 'Bu bölüm bu kadar az hamlede bitmez', 'AZ_HAMLE');
   if (gecen > B.maksSureMs) { q.bitir.run('KAYBETTI', t, hamle, null, o.id); throw new OyunHatasi(409, 'Bölümün süresi doldu', 'SURE'); }
   if (gecen < B.minSureMs + hamle * B.hamleMs) throw new OyunHatasi(409, 'Bölüm bu kadar kısa sürede bitmez', 'HIZLI');
   const yildiz = yildizHesapla(hamle, b.hamle);

@@ -305,10 +305,12 @@ const parselEdin = db.transaction((userId, id, ihale = null) => {
   if (imar.parselDegil) throw new OyunHatasi(409, `${imar.ad}: bu hücre parsel değildir`);
   if (!imar.satilik) throw new OyunHatasi(409, `${imar.ad} parselleri oyuncu tahsisine kapalıdır`);
   if (p.owner_user_id) throw new OyunHatasi(409, 'Bu parsel zaten tahsis edilmiş', 'TAHSISLI');
-  if (q.parselSayisi.get(userId).c >= HESAP.maxParsel) {
-    throw new OyunHatasi(409, `Hesap başına en fazla ${HESAP.maxParsel} parsel (arsa kapama önlemi)`);
+  // Önde olunan açık ihaleler de sayılır (ihaleyle tahsiste o ihalenin kendisi hariç)
+  const onde = (bolge) => require('./ihale').ondeOlunan(userId, { haric: ihale?.id ?? null, regionId: bolge });
+  if (q.parselSayisi.get(userId).c + onde(null) >= HESAP.maxParsel) {
+    throw new OyunHatasi(409, `Hesap başına en fazla ${HESAP.maxParsel} parsel (arsa kapama önlemi; önde olduğun ihaleler dahil)`);
   }
-  if (q.mahalleParselSayisi.get(userId, p.region_id).c >= HESAP.maxParselMahalle) {
+  if (q.mahalleParselSayisi.get(userId, p.region_id).c + onde(p.region_id) >= HESAP.maxParselMahalle) {
     throw new OyunHatasi(409, `Bir mahallede en fazla ${HESAP.maxParselMahalle} parsel`);
   }
   const bedel = ihale ? ihale.fiyat : tahsisFiyati(p);
