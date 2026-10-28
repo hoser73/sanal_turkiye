@@ -13,7 +13,7 @@ const PANO_METIN = {
   PROJECT_REJECTED: (a) => `✖ Meclis reddetti: ${esc(a.after?.ad)} — ${esc(a.after?.sebep)}`,
   PROJECT_COMPLETED: (a) => `🏁 Tamamlandı: ${esc(a.after?.ad)}`,
   MUHTAR_REQUEST: (a) => `📨 Muhtar ${esc(a.aktor)} talep etti: ${esc(a.after?.ad)}`,
-  REQUEST_CLOSED: (a) => `🗂 Talep kapatıldı: ${esc(a.after?.gerekce)}`,
+  REQUEST_CLOSED: (a) => `🗂️ Talep kapatıldı: ${esc(a.after?.gerekce)}`,
   ELECTION_CLOSED: (a) => (a.after?.tur === 'BELEDIYE' ? `🏅 ${esc(a.after?.kazanan)} belediye başkanı seçildi` : `🏅 ${esc(a.after?.kazanan)} muhtar seçildi`),
   ELECTION_ANNULLED: () => '⚠️ Seçim iptal edildi',
 };

@@ -60,7 +60,7 @@ function bekleyenleriIsle() {
     for (const s of biten) {
       if (q.yapiTamamla.run(t, s.id).changes !== 1) continue;
       L.denetim({
-        anahtar: `STRUCTURE_COMPLETED:${s.id}`, aktor: s.owner_user_id, eylem: 'STRUCTURE_COMPLETED',
+        anahtar: `STRUCTURE_COMPLETED:${s.id}:${s.started_at}`, aktor: s.owner_user_id, eylem: 'STRUCTURE_COMPLETED',
         varlik: s.parcel_id, sonra: { tip: s.type }, bolge: s.region_id, herkese: true,
       });
     }
@@ -266,6 +266,8 @@ function parselKarti(id, userId, komsuImar = {}, { hafif = false } = {}) {
     hava: require('./dunya').ilHavasi(p.plaka),
     iklim: require('./iklim').parselIklimi(p.plaka, t),
     mevsim: (({ kod, ad, ikon }) => ({ kod, ad, ikon }))(require('./dunya').mevsim(t)),
+    // Sihirbazdaki ilk ekim kısa sürer; tohum kartı bu süreyi gösterir
+    ilkEkinMs: userId && p.owner_user_id === userId && require('./sihirbaz').hizliIlkEkin(userId) ? SIHIRBAZ_ILK_EKIN() : null,
     urunSecenekleri: p.zoning_type === 'TARIM' ? Object.entries(URUNLER).filter(([, u]) => !u.mamul).map(([kod, u]) => ({
       kod, uygun: !u.bolgeler || u.bolgeler.includes(p.plaka), bolgeAd: u.bolgeAd || null,
       buyume: require('./dunya').buyumeKati(kod, aktifYapiVar(yapilar, 'SERA', t), t, p.plaka) })) : null,
@@ -346,7 +348,8 @@ const insaatBaslat = db.transaction((userId, id, tip) => {
   const sure = Math.round(y.sureMs * (belediye.mahalleHizmetleri(p.region_id).has('YOL_BAKIMI') ? 1 - BELEDIYE.etki.insaatKisalma : 1)
     * (1 - require('./uretim').meslekBonusu(userId, 'MIMAR')) * (kalip ? 1 - CARSI.etki.kalipKisalma : 1));
   const yapiId = yapiEkle.run(id, userId, tip, y.taban, y.taban * y.kat, t, t + sure).lastInsertRowid;
-  L.denetim({ anahtar: `STRUCTURE_STARTED:${yapiId}`, aktor: userId, eylem: 'STRUCTURE_STARTED', varlik: id,
+  // Yapı kimliği tek başına benzersiz değil: parsel boşaltılınca yapılar silinir ve SQLite en büyük kimliği yeniden verir
+  L.denetim({ anahtar: `STRUCTURE_STARTED:${yapiId}:${t}`, aktor: userId, eylem: 'STRUCTURE_STARTED', varlik: id,
     sonra: { tip, maliyet: y.maliyet }, bolge: p.region_id, herkese: true });
   const gorev = gorevTamamla(userId, 'ILK_YAPI', tx);
   return { tamam: true, yapiId, bitis: t + sure, gorev, kalip };

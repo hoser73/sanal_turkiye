@@ -192,7 +192,7 @@ function oyunAyarlari(h) {
     <section><h3>🧑‍🌾 Avatar</h3>
       <div class="avatar-yapici kucuk-yapici"><div class="avatar-onizleme">${avatarSVG(avatarKod(av), 80)}</div><div class="avatar-secenekler">
         ${satir('Ten', 't', TENLER.map((r, i) => [i, `<span class="renk" style="background:${r}"></span>`]))}
-        ${satir('Saç', 's', SACLAR.map((x, i) => [i, x.renk ? `<span class="renk" style="background:${x.renk}"></span>` : '∅']))}
+        ${satir('Saç', 's', SACLAR.map((x, i) => [i, `<span class="renk${x.renk ? '' : ' renk-yok'}" style="background:${x.renk || 'transparent'}" title="${x.ad}"></span>`]))}
         ${satir('Başlık', 'p', BASLIKLAR.map((x, i) => [i, x]))}
         ${satir('Giysi', 'g', GIYSILER.map((r, i) => [i, `<span class="renk" style="background:${r}"></span>`]))}
       </div></div>

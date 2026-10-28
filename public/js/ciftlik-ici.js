@@ -552,7 +552,7 @@ export function ciftlikIciKur({ durum, eylemDagit, sunucuSimdi, ayrintiAc, dunya
     dugmeler.push(`<button type="button" class="ci-d" data-ci="meydan">🏛️<span>Meydan</span></button>`);
     dugmeler.push(`<button type="button" class="ci-d" data-ci="bulmaca">🧩<span>Bulmaca</span></button>`);
     dugmeler.push(`<button type="button" class="ci-d${isci?.aktif ? ' yesil' : ''}" data-ci="isci">👷<span>İşçi</span></button>`);
-    dugmeler.push(`<button type="button" class="ci-d" data-ci="ayrinti">📋<span>Kart</span></button>`);
+    dugmeler.push(`<button type="button" class="ci-d" data-ci="ayrinti">📜<span>Kart</span></button>`);
     alt.innerHTML = dugmeler.join('');
   }
 
@@ -592,7 +592,7 @@ export function ciftlikIciKur({ durum, eylemDagit, sunucuSimdi, ayrintiAc, dunya
         const sec = secenek.get(kod) || { uygun: true, buyume: 1 }, fiyat = u.tohum * katToplam, kapali = !sec.uygun || (durum.ben?.bakiye ?? 0) < fiyat;
         const dugme = tekAna ? `data-eylem="ek" data-urun="${kod}" data-hedef="toprak"` : `data-ci="ciftlik-ek" data-urun="${kod}" data-parseller="${esc(bos.map((p) => p.id).join(','))}"`;
         return `<button type="button" class="ci-tohum" ${dugme} ${kapali ? 'disabled' : ''}>
-          <span>${u.ikon}</span><b>${esc(u.ad)}</b><small>${akce(fiyat)} · ${sure(Math.round(u.sureMs * (sec.buyume || 1)))}</small>${!sec.uygun ? `<em>${esc(u.bolgeAd || 'bölge dışı')}</em>` : ''}</button>`;
+          <span>${u.ikon}</span><b>${esc(u.ad)}</b><small>${akce(fiyat)} · ${sure(k.ilkEkinMs ? Math.min(k.ilkEkinMs, Math.round(u.sureMs * (sec.buyume || 1))) : Math.round(u.sureMs * (sec.buyume || 1)))}</small>${!sec.uygun ? `<em>${esc(u.bolgeAd || 'bölge dışı')}</em>` : ''}</button>`;
       }).join('')}</div>`, 'toprak');
   }
   async function topluEk(urun, kimlikler, dugme) {
@@ -671,7 +671,7 @@ export function ciftlikIciKur({ durum, eylemDagit, sunucuSimdi, ayrintiAc, dunya
   async function sandikSayfasi() {
     const d = await api('/api/sandik').catch(() => null);
     if (!d) return;
-    const oranlar = `<div class="ci-sandik-oran">${d.oranlar.map((o) => `<span>${esc(o.ikon)} ${esc(o.metin)} <b>%${Math.round(o.oran * 100)}</b></span>`).join('')}</div>`;
+    const oranlar = `<div class="ci-sandik-oran">${d.oranlar.map((o) => `<span><i>${esc(o.ikon)} ${esc(o.metin)}</i><b>%${Math.round(o.oran * 100)}</b></span>`).join('')}</div>`;
     sayfaAc(`${ust2('🎁', 'Günlük sandık', d.hazir ? 'Hazır! Aç bakalım' : `Yeni sandık ${sure(d.kalanMs)} sonra`)}
       <div class="ci-sandik ${d.hazir ? 'hazir' : ''}"><span class="ci-sandik-ikon">🎁</span>
         ${d.hazir ? `<button type="button" class="ci-b altin" data-ci="sandik-ac">Sandığı aç${d.hak > 1 ? ' (2 sandık birikti)' : ''}</button>` : `<p class="ci-not">Her 8 saatte bir yeni sandık dolar; en çok iki sandık birikir.</p>`}</div>

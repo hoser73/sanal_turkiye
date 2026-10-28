@@ -69,6 +69,8 @@ button:disabled { cursor: not-allowed; }
 .dugme.ince { padding: 6px 12px; }
 .dugme.genis { width: 100%; }
 .dugme:disabled { opacity: .5; }
+.dugme.yukleniyor { opacity: .85; cursor: progress; }
+.dugme.yukleniyor::after { content: ''; display: inline-block; width: 14px; height: 14px; margin-left: 10px; border: 2.5px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: don .8s linear infinite; vertical-align: -2px; }
 .bag { background: none; border: 0; color: var(--birincil); text-decoration: underline; padding: 2px; font-weight: 500; }
 
 /* ---------- Sahne ---------- */

@@ -85,7 +85,7 @@ export function rehberKur({ durum, harita, parselSec, sekmeSec, ciftlikAlt, tarl
     const acik = !kart.hidden;
     if (kutlama) {
       serit.className = 'gs kutlama';
-      serit.innerHTML = `<div class="gs-ana"><span class="gs-ikon">✓</span><span class="gs-yazi"><small>Adım tamam</small><b>${esc(kutlama.baslik)}</b></span>
+      serit.innerHTML = `<div class="gs-ana"><span class="gs-ikon">✓</span><span class="gs-yazi"><small>Görev tamam</small><b>${esc(kutlama.baslik)}</b></span>
         ${kutlama.odul ? `<span class="gs-odul">+${kutlama.odul} ₳</span>` : ''}</div>${ilerlemeCiz()}`;
       return;
     }
@@ -100,7 +100,7 @@ export function rehberKur({ durum, harita, parselSec, sekmeSec, ciftlikAlt, tarl
       return;
     }
     const g = adim && gorev(adim.kod);
-    const ust = adim ? `Adım ${ADIMLAR.findIndex((x) => x.kod === adim.kod) + 1}/${ADIMLAR.length}` : 'İpucu';
+    const ust = adim ? `Görev ${ADIMLAR.findIndex((x) => x.kod === adim.kod) + 1}/${ADIMLAR.length}` : 'İpucu';
     serit.innerHTML = `<button type="button" class="gs-ana" data-rehber="${acik ? 'kapat-kart' : 'kart'}" aria-expanded="${acik}">
         <span class="gs-ikon">${h.ikon}</span><span class="gs-yazi"><small>${ust}${g?.odul ? ` · <em>+${g.odul} ₳</em>` : ''}</small><b>${esc(h.baslik)}</b></span>
         <span class="gs-ok" aria-hidden="true">${acik ? '▴' : '▾'}</span></button>

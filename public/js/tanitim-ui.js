@@ -84,7 +84,7 @@ function manzara() {
   <span class="tn-traktor" aria-hidden="true">🚜</span>`;
 }
 
-export function tanitimKur({ api, girisli, kayitAc, epostaKayit, girisAc, kapat, kartKapat, ilOner }) {
+export function tanitimKur({ api, girisli, kayitAc, epostaKayit, girisAc, kapat, kartKapat, disariTik, ilOner }) {
   const kok = document.getElementById('acilis');
   if (!kok) return { yenile() {} };
   const az = hareketAz();
@@ -138,7 +138,7 @@ export function tanitimKur({ api, girisli, kayitAc, epostaKayit, girisAc, kapat,
   kok.addEventListener('click', (e) => {
     const a = e.target.closest('a[href^="#tn"]');
     if (a) { e.preventDefault(); kok.querySelector(a.getAttribute('href'))?.scrollIntoView({ behavior: az ? 'auto' : 'smooth', block: 'start' }); return; }
-    if (e.target.id === 'tnGirisModal') { kartKapat(); return; }   // pencerenin dışına tık
+    if (e.target.id === 'tnGirisModal') { (disariTik || kartKapat)(); return; }   // pencerenin dışına tık
     const b = e.target.closest('[data-tn]');
     if (!b) return;
     const t = b.dataset.tn;

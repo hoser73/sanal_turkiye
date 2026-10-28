@@ -49,7 +49,7 @@ export function girisKur({ api, tost, girisSonrasi, iller, rehberBaslat, sihirba
       <div class="ayirici"><span>ya da e-postayla</span></div>
       <form class="form" data-f="giris">
         <label>E-posta<input name="email" type="email" aria-label="E-posta" autocomplete="username webauthn" required></label>
-        <label>Parola<span class="sifre-alan"><input name="sifre" type="password" aria-label="Parola" autocomplete="current-password" required><button type="button" class="goster" data-a="goster" aria-label="Parolayı göster">👁</button></span></label>
+        <label>Parola<span class="sifre-alan"><input name="sifre" type="password" aria-label="Parola" autocomplete="current-password" required><button type="button" class="goster" data-a="goster" aria-label="Parolayı göster">👁️</button></span></label>
         <button class="dugme birincil genis">Giriş yap</button>
       </form>
       <p class="acilis-alt"><button type="button" class="bag" data-a="ekran" data-e="unuttum">Parolamı unuttum</button> · Hesabın yok mu? <button type="button" class="bag" data-a="ekran" data-e="karsilama">Kayıt ol</button></p>`,
@@ -76,7 +76,7 @@ export function girisKur({ api, tost, girisSonrasi, iller, rehberBaslat, sihirba
       ${yollar.google || yollar.apple ? `<div class="sosyal-liste yatay">${yollar.google ? `<a class="dugme sosyal google" href="/api/oauth/google/basla">${GOOGLE_G}<span>Google</span></a>` : ''}${yollar.apple ? `<a class="dugme sosyal apple" href="/api/oauth/apple/basla">${APPLE}<span>Apple</span></a>` : ''}</div><div class="ayirici"><span>ya da</span></div>` : ''}
       <form class="form" data-f="hesap">
         <label>E-posta<input name="email" type="email" aria-label="E-posta" autocomplete="email" required value="${esc(kayitBilgi?.email || '')}"></label>
-        <label>Parola<span class="sifre-alan"><input name="sifre" type="password" aria-label="Parola" autocomplete="new-password" minlength="8" required><button type="button" class="goster" data-a="goster" aria-label="Parolayı göster">👁</button></span></label>
+        <label>Parola<span class="sifre-alan"><input name="sifre" type="password" aria-label="Parola" autocomplete="new-password" minlength="8" required><button type="button" class="goster" data-a="goster" aria-label="Parolayı göster">👁️</button></span></label>
         ${sifreGucu('')}
         <button class="dugme birincil genis">Devam →</button>
       </form>
@@ -93,7 +93,7 @@ export function girisKur({ api, tost, girisSonrasi, iller, rehberBaslat, sihirba
         <div class="avatar-onizleme">${avatarSVG(a, 112, { baslik: 'Avatarın' })}<button type="button" class="bag" data-a="avatar-rastgele">🎲 Rastgele</button></div>
         <div class="avatar-secenekler">
           ${secenekSatiri('Ten', 't', TENLER.map((r, i) => [i, `<span class="renk" style="background:${r}"></span>`]))}
-          ${secenekSatiri('Saç', 's', SACLAR.map((x, i) => [i, `<span class="renk" style="background:${x.renk || 'transparent'}" title="${x.ad}">${x.renk ? '' : '∅'}</span>`]))}
+          ${secenekSatiri('Saç', 's', SACLAR.map((x, i) => [i, `<span class="renk${x.renk ? '' : ' renk-yok'}" style="background:${x.renk || 'transparent'}" title="${x.ad}"></span>`]))}
           ${secenekSatiri('Başlık', 'p', BASLIKLAR.map((x, i) => [i, `<span class="yazi">${x}</span>`]))}
           ${secenekSatiri('Giysi', 'g', GIYSILER.map((r, i) => [i, `<span class="renk" style="background:${r}"></span>`]))}
         </div>
@@ -160,7 +160,17 @@ export function girisKur({ api, tost, girisSonrasi, iller, rehberBaslat, sihirba
   function kapat() { kok.hidden = true; kok.classList.remove('kart-acik'); document.body.classList.remove('acilis-acik'); }
   // Pencereyi kapat: oyunun içinden açıldıysa oyuna döner, yoksa açılış ekranında kalır
   function kartKapat() { if (oyundan) kapat(); else kok.classList.remove('kart-acik'); }
-  const yuklen = (d, f) => async (...a) => { if (d) d.disabled = true; try { return await f(...a); } catch (e) { hata = e.message; bilgi = ''; ciz(); return null; } finally { if (d && d.isConnected) d.disabled = false; } };
+  // Pencere dışına dokunuş: forma bir şey yazılmışsa yanlışlıkla kapanıp girilenler kaybolmasın (X düğmesi yine kapatır).
+  // Telefonda klavye ya da tarayıcı çubuğu açılınca kartın alt kenarı kayar; alana dokunmak isterken dışarı dokunulabiliyor.
+  function disariTik() {
+    const dolu = [...kart.querySelectorAll('input:not([type=checkbox]):not([type=hidden]), select')].some((i) => i.value);
+    if (!dolu && !['profil', 'telefon', 'memleket'].includes(ekran)) kartKapat();
+  }
+  // İstek sürerken düğme kilitlenir ve dönen bir gösterge alır (kayıt 1–3 sn sürebilir)
+  const yuklen = (d, f) => async (...a) => {
+    if (d) { d.disabled = true; d.classList.add('yukleniyor'); d.setAttribute('aria-busy', 'true'); }
+    try { return await f(...a); } catch (e) { hata = e.message; bilgi = ''; ciz(); return null; } finally { if (d && d.isConnected) { d.disabled = false; d.classList.remove('yukleniyor'); d.removeAttribute('aria-busy'); } }
+  };
 
   // ---------- Akışlar
   async function kayitBitti() {
@@ -299,5 +309,5 @@ export function girisKur({ api, tost, girisSonrasi, iller, rehberBaslat, sihirba
     return null;
   }
 
-  return { ac, kapat, kartKapat, adresIsle, acikMi: () => !kok.hidden, ilOner: (p) => { onerilenIl = p; } };
+  return { ac, kapat, kartKapat, disariTik, adresIsle, acikMi: () => !kok.hidden, ilOner: (p) => { onerilenIl = p; } };
 }

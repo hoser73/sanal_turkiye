@@ -94,7 +94,7 @@ const uretimTopla = db.transaction((userId, uretimId) => {
   const tx = L.yeniTx();
   L.envanterDegis(userId, u.recete, u.cikti, `Üretim: ${URUNLER[u.recete].ad}`, tx);
   const p = db.prepare(`SELECT region_id FROM parcels WHERE id = ?`).get(u.parcel_id);
-  L.denetim({ anahtar: `PRODUCTION_COLLECTED:${u.id}`, aktor: userId, eylem: 'PRODUCTION_COLLECTED', varlik: u.parcel_id,
+  L.denetim({ anahtar: `PRODUCTION_COLLECTED:${u.id}:${u.baslangic}`, aktor: userId, eylem: 'PRODUCTION_COLLECTED', varlik: u.parcel_id,
     sonra: { urun: u.recete, miktar: u.cikti }, bolge: p.region_id, herkese: true });
   return { tamam: true, urun: u.recete, miktar: u.cikti };
 });

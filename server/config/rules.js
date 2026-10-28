@@ -36,7 +36,7 @@ const YERLESIM_CEKICILIK = { city: 1.25, town: 1.1, suburb: 1.15, quarter: 1.15,
 // §4.1 geliştirme kategorileri. taban: taban alanı (m²), kat: kat sayısı.
 // emsal=false olanlar (çit, sulama, panel, peyzaj) TAKS/KAKS hesabına girmez.
 const YAPILAR = {
-  TEL_CIT:      { ad: 'Tel çit',        ikon: '🧱', kategori: 'Sınır ve güvenlik', maliyet: 30,  sure: 1, taban: 0,   kat: 0, emsal: false, izin: ['KONUT','TICARET','TARIM','SANAYI','TURIZM','KARMA'], tekil: true, etki: 'Dayanıklılık, görünüm' },
+  TEL_CIT:      { ad: 'Tel çit',        ikon: '🪵', kategori: 'Sınır ve güvenlik', maliyet: 30,  sure: 1, taban: 0,   kat: 0, emsal: false, izin: ['KONUT','TICARET','TARIM','SANAYI','TURIZM','KARMA'], tekil: true, etki: 'Dayanıklılık, görünüm' },
   SULAMA_HATTI: { ad: 'Sulama hattı',   ikon: '💧', kategori: 'Su ve tarım',       maliyet: 40,  sure: 2, taban: 0,   kat: 0, emsal: false, izin: ['TARIM'], tekil: true, etki: 'Ekin otomatik sulanır, verim +%15' },
   SU_DEPOSU:    { ad: 'Su deposu',      ikon: '🛢️', kategori: 'Su ve tarım',       maliyet: 60,  sure: 2, taban: 10,  kat: 1, emsal: true,  izin: ['TARIM','SANAYI'], tekil: true, etki: 'Sulama maliyeti yarıya iner' },
   SERA:         { ad: 'Sera',           ikon: '🌱', kategori: 'Yapı',              maliyet: 120, sure: 4, taban: 40,  kat: 1, emsal: true,  izin: ['TARIM'], tekil: true, minAlan: 800, etki: 'Verim +%25, kuraklık riski yok' },

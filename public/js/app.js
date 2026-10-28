@@ -1788,7 +1788,7 @@ async function girisSonrasi(mesaj) {
 const giris = girisKur({ api, tost, girisSonrasi, iller: () => durum.bolgeler.filter((b) => b.type === 'IL'),
   rehberBaslat: () => { durum.rehber?.guncelle(); sekmeSec('parsel'); }, sihirbazda: () => !!durum.sihirbaz?.aktif() });
 tanitimKur({ api, girisli, kayitAc: () => giris.ac('karsilama'), epostaKayit: () => giris.ac('hesap'), girisAc: () => giris.ac('giris'),
-  kapat: () => giris.kapat(), kartKapat: () => giris.kartKapat(), ilOner: (p) => giris.ilOner(p) });
+  kapat: () => giris.kapat(), kartKapat: () => giris.kartKapat(), disariTik: () => giris.disariTik(), ilOner: (p) => giris.ilOner(p) });
 $('#girisDugme').addEventListener('click', () => authAc('giris'));
 
 async function cikisSonrasi() {

@@ -105,6 +105,28 @@ test('yapı süresi dolunca tamamlanır', async () => {
   assert.ok(kart.veri.yapilar.every((y) => y.durum === 'ACTIVE'));
 });
 
+// Parsel boşaltılınca (hesap silme, demo sakin taşınması) yapılar silinir; SQLite en büyük kimliği yeniden verebilir.
+// Yeni yapının başlangıç/tamamlanma denetim kaydı eskisininkiyle çakışmamalı (çakışınca hiç kimse yapı kuramıyordu).
+test('silinen yapının kimliği yeniden verilse de yeni yapı kurulur ve tamamlanır', async () => {
+  const d = istemci();
+  assert.equal((await d('/api/kayit', { email: 'yeniden@test.local', sifre: 'parola123', dogumYili: 1990, kosullarOnay: true, kvkkOnay: true, ad: 'Yeniden' })).durum, 201);
+  const ilk = hucreBul('TARIM'), ikinci = hucreBul('TARIM');
+  assert.equal((await d(`/api/parsel/${ilk}/edin`, {})).durum, 200);
+  assert.equal((await d(`/api/parsel/${ilk}/insaat`, { tip: 'TEL_CIT' })).durum, 200);
+  const eski = db.prepare(`SELECT id FROM structures WHERE parcel_id = ?`).get(ilk).id;
+  assert.equal(eski, db.prepare(`SELECT MAX(id) m FROM structures`).get().m, 'en son kurulan yapı');
+  await bekle(YAPILAR.TEL_CIT.sureMs + 50);
+  await d(`/api/parsel/${ilk}`);   // tamamlanma işlenir
+  require('../server/oyun').parseliBosalt(ilk);
+  assert.equal((await d(`/api/parsel/${ikinci}/edin`, {})).durum, 200);
+  const r = await d(`/api/parsel/${ikinci}/insaat`, { tip: 'TEL_CIT' });
+  assert.equal(r.durum, 200, JSON.stringify(r.veri));
+  assert.equal(r.veri.yapiId, eski, 'SQLite kimliği yeniden verdi (senaryo gerçekleşti)');
+  await bekle(YAPILAR.TEL_CIT.sureMs + 50);
+  assert.equal((await d(`/api/parsel/${ikinci}`)).durum, 200);
+  assert.equal(db.prepare(`SELECT status FROM structures WHERE id = ?`).get(eski).status, 'ACTIVE');
+});
+
 test('tarla döngüsü: ek → sula → hasat; çift hasat yok', async () => {
   const once = (await a('/api/ben')).veri.bakiye;
   assert.equal((await a(`/api/parsel/${tarla}/ek`, { urun: 'DOMATES' })).durum, 200);
