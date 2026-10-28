@@ -289,7 +289,7 @@ app.post('/api/talep/:id/kapat', auth.dogrulanmisGerekli, h((req) => belediye.ta
 
 // ---- Oyuncu eylemleri
 // Misafir için 200 + null: istemci oturum durumunu hata üretmeden öğrenir
-app.get('/api/ben', h((req) => (req.kullanici ? { ...oyun.oyuncuOzeti(uid(req)), pazar: pazar.pazarOzeti(uid(req)), hesap: auth.hesapDurumu(uid(req)), yol: require('./mevsim-yolu').ozet(uid(req)), sandik: require('./sandik').ozet(uid(req)), miniEtkinlik: require('./mini-etkinlik').aktif() }
+app.get('/api/ben', h((req) => (req.kullanici ? { ...oyun.oyuncuOzeti(uid(req)), pazar: pazar.pazarOzeti(uid(req)), hesap: auth.hesapDurumu(uid(req)), yol: require('./mevsim-yolu').ozet(uid(req)), sandik: require('./sandik').ozet(uid(req)), siparis: ciftlik.siparisOzeti(uid(req)), miniEtkinlik: require('./mini-etkinlik').aktif() }
   : req.ikinciAdimBekleyen ? { ikinciAdimBekleniyor: true } : null)));
 app.get('/api/cuzdan', auth.girisGerekli, h((req) => oyun.cuzdanHareketleri(uid(req))));
 app.post('/api/parsel/:id/edin', auth.girisGerekli, hazir((req) => oyun.parselEdin(uid(req), parselId(req))));
@@ -331,7 +331,11 @@ app.get('/api/saglik', h(() => ({ durum: 'iyi', surum: require('../package.json'
 
 app.use('/api', (_req, _res, next) => next(new OyunHatasi(404, 'Uç bulunamadı')));
 
-// ---- Statik dosyalar
+// ---- Statik dosyalar (metin dosyaları önce sıkıştırılmış olarak denenir: lib/sikistir.js)
+const { sikistirilmisStatik } = require('./lib/sikistir');
+const HAFTA_SN = 7 * 24 * 3600;
+app.use('/vendor/maplibre', sikistirilmisStatik(path.join(__dirname, '..', 'node_modules', 'maplibre-gl', 'dist'), { maxAge: HAFTA_SN }));
+app.use('/vendor/three', sikistirilmisStatik(path.join(__dirname, '..', 'node_modules', 'three', 'build'), { maxAge: HAFTA_SN }));
 app.use('/vendor/maplibre', express.static(path.join(__dirname, '..', 'node_modules', 'maplibre-gl', 'dist'), { maxAge: '7d' }));
 app.use('/vendor/three', express.static(path.join(__dirname, '..', 'node_modules', 'three', 'build'), { maxAge: '7d' }));
 // three.js ekleri (son işleme, HDR yükleyici): yalın 'three' içe aktarımı tarayıcı için mutlak yola çevrilir (içe aktarma haritası gerekmez)
@@ -348,6 +352,7 @@ app.get(/^\/vendor\/three-ek\/(.+\.js)$/, (req, res, next) => {
   }
   res.type('application/javascript').set('Cache-Control', 'public, max-age=604800').send(kod);
 });
+app.use(sikistirilmisStatik(path.join(__dirname, '..', 'public')));
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // ---- Hata yöneticisi (yığın izi sızdırmaz)

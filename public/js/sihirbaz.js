@@ -262,7 +262,9 @@ export function sihirbazKur({ durum, tost, ses, benYenile, haritaYenile, ciftlig
       bitti: () => !kart().ekin || kart().ekin.otomatikSulama || (kart().ekin.sulama || 0) >= 1 },
     { kod: 'BEKLE', ikon: '⏳', baslik: 'Büyümesini bekle', serbest: true,
       metin: () => { const e = kart().ekin; const kalan = e ? Math.max(0, Math.ceil((e.hazir - sunucuSimdi()) / 1000)) : 0;
-        return `${ekinAdi()} büyüyor… <b class="shz-sayac">${Math.floor(kalan / 60)}:${String(kalan % 60).padStart(2, '0')}</b><br>Bu arada ekranı parmağınla çevirip çiftliğine bakabilirsin.`; },
+        const sandik = document.querySelector('.ci-alt [data-ci="sandik"].altin');
+        return `${ekinAdi()} büyüyor… <b class="shz-sayac">${Math.floor(kalan / 60)}:${String(kalan % 60).padStart(2, '0')}</b><br>${sandik
+          ? 'Beklerken <b>🎁 Sandık</b>\'ı aç: sana hoş geldin hediyesi birikti.' : 'Bu arada ekranı parmağınla çevirip çiftliğine bakabilirsin.'}`; },
       hedef: () => null,
       bitti: () => !kart().ekin || sunucuSimdi() >= kart().ekin.hazir },
     { kod: 'HASAT', ikon: '🧺', baslik: 'Hasat zamanı!', metin: () => `${ekinAdi()} olgunlaştı. <b>Hasat</b> düğmesine dokun, ürünler ambarına girsin.`,
@@ -271,8 +273,8 @@ export function sihirbazKur({ durum, tost, ses, benYenile, haritaYenile, ciftlig
       metin: () => { const u = satilacak(); return u ? `Ambarında <b>${sayi(u.miktar)} ${esc(u.ad)}</b> var. Bir kısmını pazardaki tüccara satalım, akçe kazan. (Sonra <b>Pazar</b> sekmesinden istediğin zaman satabilirsin.)` : 'Ürünlerin pazarda satılır. Aşağıdan sat.'; },
       hedef: () => document.querySelector('.shz-kilit [data-shz-tur="sat"]'), bitti: () => false },
     { kod: 'YAPI', ikon: '🔨', baslik: 'İlk yapını kur',
-      metin: () => (sayfaBasligi().includes('İnşaat atölyesi') ? 'En ucuzu <b>tel çit</b>: tarlanı korur. Fiyatına dokun, inşaat başlasın.' : 'Kazancınla çiftliğini geliştirelim. <b>İnşa et</b> düğmesine dokun.'),
-      hedef: () => (sayfaBasligi().includes('İnşaat atölyesi') ? ilk('.ci-sayfa [data-eylem="insaat"][data-tip="TEL_CIT"]:not([disabled])', '.ci-sayfa [data-eylem="insaat"]:not([disabled])') : ilk('.ci-alt [data-ci="insaat"]')),
+      metin: () => (sayfaBasligi().includes('İnşaat atölyesi') ? '<b>Sulama hattı</b> tarlanı kendiliğinden sular ve verimi %15 artırır. Fiyatına dokun, inşaat başlasın.' : 'Kazancınla çiftliğini geliştirelim. <b>İnşa et</b> düğmesine dokun.'),
+      hedef: () => (sayfaBasligi().includes('İnşaat atölyesi') ? ilk('.ci-sayfa [data-eylem="insaat"][data-tip="SULAMA_HATTI"]:not([disabled])', '.ci-sayfa [data-eylem="insaat"][data-tip="TEL_CIT"]:not([disabled])', '.ci-sayfa [data-eylem="insaat"]:not([disabled])') : ilk('.ci-alt [data-ci="insaat"]')),
       bitti: () => (kart().yapilar || []).length > (tur?.yapiBas ?? 0) },
     { kod: 'GUNLUK', ikon: '🎯', baslik: 'Günlük görevler', metin: () => 'Her gün yeni görevler ve ödüller var. <b>Günlük</b> düğmesine dokun, bugünkü görevlerine bak.',
       hedef: () => ilk('.ci-alt [data-ci="gunluk"]'), bitti: () => sayfaBasligi().includes('Günlük görevler') && !sayfaBasligi().includes('yükleniyor') },
@@ -420,8 +422,8 @@ export function sihirbazKur({ durum, tost, ses, benYenile, haritaYenile, ciftlig
       ${a.ozel === 'satis' ? `<button type="button" class="shz-b ana genis" data-shz-tur="sat">${satilacak() ? `Yarısını sat 💰` : 'Devam'}</button>` : ''}`;
     // Satış sürerken (düğme "Satılıyor…") aynı adımın kartı yeniden çizilmez
     if (kartEl.dataset.html !== html && !(tur.satiliyor && a.kod === 'SATIS')) { kartEl.innerHTML = html; kartEl.dataset.html = html; }
-    // Kart, hedefin karşı tarafında dursun
-    kartEl.classList.toggle('ustte', !!r && r.top > H * 0.45);
+    // Kart, hedefin karşı tarafında dursun; hedefsiz adımda çiftlik sayfası açıksa (ör. beklerken sandık) üste çıkar, sayfayı örtmesin
+    kartEl.classList.toggle('ustte', r ? r.top > H * 0.45 : !!document.querySelector('.ci-sayfa:not([hidden])'));
   }
 
   function turBitir(tamamlandi) {
@@ -440,7 +442,8 @@ export function sihirbazKur({ durum, tost, ses, benYenile, haritaYenile, ciftlig
       <p class="shz-giris">Tarlanı ektin, suladın, hasat ettin, ürününü sattın ve ilk yapını kurdun. Bundan sonrası senin elinde.</p>
       <ul class="shz-ipuclari">
         <li><span>🏘️</span><div><b>Köy</b> düğmesiyle haritaya çık; komşularını ve yeni arsaları gör.</div></li>
-        <li><span>💰</span><div><b>Pazar</b> sekmesinde ürün sat, ilan ver, teklif al.</div></li>
+        <li><span>📋</span><div><b>Sipariş</b> panosundaki köylülere ürün teslim et: tüccardan çok daha iyi öder.</div></li>
+        <li><span>🎁</span><div><b>Sandık</b> her 8 saatte bir dolar; sık uğra.</div></li>
         <li><span>🎯</span><div><b>Günlük</b> görevleri bitir, her gün ödül kazan.</div></li>
         <li><span>📜</span><div>Takıldığında üstteki görev şeridi sıradaki adımı gösterir.</div></li>
       </ul>

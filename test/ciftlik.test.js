@@ -37,6 +37,9 @@ test('kayıt ve tarla: eylemler TP kazandırır', async () => {
 
 test('seviye formülü ve seviye kilidi', async () => {
   assert.deepEqual([0, 39, 40, 119, 120, 240].map(ciftlik.seviyeHesap), [1, 1, 2, 2, 3, 4]);
+  // 5'ten sonra eğri dikleşir: eşik × max(1, n / 5)
+  assert.equal(ciftlik.seviyeEsigi(10), 3600);
+  assert.deepEqual([3599, 3600, 30399, 30400].map(ciftlik.seviyeHesap), [9, 10, 19, 20]);
   const kart = (await c(`/api/parsel/${parsel}`)).veri;
   const kumes = kart.insaatSecenekleri.find((s) => s.tip === 'KUMES');
   assert.equal(kumes.kilitli, true);

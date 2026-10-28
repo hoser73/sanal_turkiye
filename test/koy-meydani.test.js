@@ -19,7 +19,7 @@ before(async () => {
 });
 after(() => { sunucu.close(); fs.rmSync(VERI, { recursive: true, force: true }); });
 const istemci = istemciUret(() => taban);
-const seviyeTp = (n) => SEVIYE.katsayi * n * (n - 1);
+const seviyeTp = (n) => require('../server/ciftlik').seviyeEsigi(n);
 
 let A, id, parsel;
 test('kilit, malzeme ve akçe; inşaat bitince bonus; ikinci kez kurulmaz', async () => {

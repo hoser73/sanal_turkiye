@@ -641,6 +641,12 @@ function degerKutusu(k) {
 
 function parselPaneli() {
   const k = durum.kart;
+  // Tarlası olan oyuncuya "parsel seç" yerine çiftliğine dönüş (açılışta çiftlik yüklenirken de bu görünür)
+  if (!k && anaParsel()) {
+    return `<div class="bos-durum"><div class="buyuk-ikon">🏡</div><h3>Çiftliğin seni bekliyor</h3>
+      <p>Haritada gezinebilir ya da başka bir parsele dokunabilirsin.</p>
+      <button type="button" class="dugme altin" data-eylem="ciftlige-gir">Çiftliğime git</button></div>`;
+  }
   if (!k) {
     return `<div class="bos-durum"><div class="buyuk-ikon">🗺️</div><h3>Bir parsel seç</h3>
       <p>Haritada bir parsele dokun. Yeşil parseller tarım; ilk tarlan için iyi bir başlangıç.</p>
@@ -1100,7 +1106,8 @@ async function parselSec(id, { haritadan = false } = {}) {
 }
 
 function gorevTostu(r) {
-  if (r?.gorev) setTimeout(() => tost(`🎯 Görev tamamlandı: ${r.gorev.ad} (+${r.gorev.odul} ₳)`, 'gorev'), 500);
+  // Tur sürerken başlangıç görevleri ödül vermez (tur verir): "+0 ₳" bildirimi gösterilmez
+  if (r?.gorev?.odul > 0) setTimeout(() => tost(`🎯 Görev tamamlandı: ${r.gorev.ad} (+${r.gorev.odul} ₳)`, 'gorev'), 500);
 }
 
 async function eylem(yol, govde, basariMesaji) {
@@ -1425,6 +1432,8 @@ async function eylemDagit(b, e = null) {
     case 'gunluk-odul':
       b.disabled = true;
       return eylem('/api/gunluk-odul', null, (r) => `🎁 ${r.seri}. gün ödülü: ${akce(r.akce)} + ${r.tp} TP`).then((r) => { if (r?.tamam) ses('para'); });
+    case 'ciftlige-gir':
+      return ciftligeGir();
     case 'siparis-teslim':
       b.disabled = true;
       return eylem(`/api/siparis/${b.dataset.id}/teslim`, null, (r) => `📦 ${r.musteri} siparişini aldı: ${akce(r.odul)} + ${r.tp} TP`).then((r) => { if (r?.tamam) ses('para'); });

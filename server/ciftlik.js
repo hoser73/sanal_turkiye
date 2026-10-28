@@ -62,8 +62,12 @@ kolonEkle('users', 'siparis_sonraki', 'INTEGER');
 
 // ---------- Seviye ve TP
 // Seviye n için toplam TP = katsayı × n × (n − 1)  ⇒  n = ⌊(1 + √(1 + 4·TP/katsayı)) / 2⌋
-const seviyeHesap = (tp) => Math.min(SEVIYE.maks, Math.floor((1 + Math.sqrt(1 + (4 * Math.max(0, tp)) / SEVIYE.katsayi)) / 2));
-const seviyeEsigi = (n) => SEVIYE.katsayi * n * (n - 1);
+const seviyeEsigi = (n) => Math.round(SEVIYE.katsayi * n * (n - 1) * Math.max(1, n / SEVIYE.dikles));
+function seviyeHesap(tp) {
+  let n = 1;
+  while (n < SEVIYE.maks && seviyeEsigi(n + 1) <= tp) n++;
+  return n;
+}
 function oyuncuSeviyesi(userId) {
   const u = db.prepare(`SELECT tp FROM users WHERE id = ?`).get(userId);
   return seviyeHesap(u?.tp || 0);
@@ -227,7 +231,7 @@ function siparisUret(userId, t) {
   for (const kod of secilen) {
     const u = URUNLER[kod];
     const taban = u.hayvansal ? 3 : u.mamul ? 1 : 6;
-    const adet = taban + Math.floor(Math.random() * (taban * (1 + sv * 0.25)));
+    const adet = taban + Math.floor(Math.random() * (taban * (1 + Math.min(sv, SIPARIS.seviyeTavan) * SIPARIS.seviyeKat)));
     kalemler[kod] = adet;
     deger += u.tabanFiyat * adet;
     adetToplam += adet;
@@ -265,6 +269,11 @@ function siparisler(userId) {
   const u = db.prepare(`SELECT siparis_sonraki FROM users WHERE id = ?`).get(userId);
   const maks = SIPARIS.acikMaks + require('./koy-meydani').ek(userId, 'PTT');
   return { liste, sonrakiMs: liste.length < maks ? Math.max(0, (u.siparis_sonraki || t) - t) : null, maks };
+}
+// Çiftlik alt çubuğu için: açık ve teslime hazır sipariş sayısı
+function siparisOzeti(userId) {
+  const l = siparisler(userId).liste;
+  return { acik: l.length, hazir: l.filter((s) => s.hazir).length };
 }
 const siparisTeslim = db.transaction((userId, siparisId) => {
   require('./ekonomi').envanterBozulmasi(userId);
@@ -339,7 +348,7 @@ module.exports = {
   seviyeHesap, seviyeEsigi, oyuncuSeviyesi, seviyeBilgisi, seviyeOdulAl, seviyeKontrol, tpEkle,
   gunlukDurum, gunlukAl,
   hayvanDurumu, besle, topla, parselHayvanHazir,
-  siparisler, siparisTeslim, siparisReddet,
+  siparisler, siparisOzeti, siparisTeslim, siparisReddet,
   parselSusleri, susKodu, susEkle, susKaldir, susSecenekleri,
   ozet,
 };

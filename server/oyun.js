@@ -247,7 +247,7 @@ function parselKarti(id, userId, komsuImar = {}, { hafif = false } = {}) {
         hazine: benim ? piyasa.hazineTeklifi(userId, p, t) : null };
     })(),
     yapilar: yapilar.map((s) => ({ id: s.id, tip: s.type, ad: YAPILAR[s.type]?.ad, ikon: YAPILAR[s.type]?.ikon,
-      seviye: s.seviye || 1, yukseltBedeli: benim && s.status === 'ACTIVE' ? require('./gelisim').yukseltmeBedeli(s) : null,
+      seviye: s.seviye || 1, maxSeviye: require('./gelisim').GELISIM.maxSeviye, yukseltBedeli: benim && s.status === 'ACTIVE' ? require('./gelisim').yukseltmeBedeli(s) : null,
       durum: s.status, bitis: s.completes_at, kalanMs: Math.max(0, s.completes_at - t),
       saglik: saglik(s, t), bakimMaliyeti: bakimMaliyeti(s, t), etkisiz: s.status === 'ACTIVE' && saglik(s, t) < BAKIM.etkisizEsik,
       hayvan: require('./ciftlik').hayvanDurumu(s, t), kira: require('./gelisim').kiraDurumu(s, yapilar, t) })),

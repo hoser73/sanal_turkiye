@@ -44,11 +44,14 @@ test('yapı yükseltme: bedel ödenir, seviye artar, en üstte durur; barınak f
   assert.equal(r.durum, 200, JSON.stringify(r.veri));
   assert.equal(r.veri.seviye, 2);
   assert.equal(Math.round(bakiye - L.bakiye(A.id)), Math.round(YAPILAR.KUMES.maliyet * 2 * gelisim.GELISIM.yukseltKat));
-  assert.equal((await A.c(`/api/yapi/${y.id}/yukselt`, {})).durum, 200);
+  L.odul(A.id, 3000, 'test');
+  const maks = gelisim.GELISIM.maxSeviye;
+  for (let sv = 3; sv <= maks; sv++) assert.equal((await A.c(`/api/yapi/${y.id}/yukselt`, {})).durum, 200);
   assert.equal((await A.c(`/api/yapi/${y.id}/yukselt`, {})).durum, 409, 'en üst seviye');
   kart = (await A.c(`/api/parsel/${p}`)).veri;
-  const h = kart.yapilar.find((x) => x.tip === 'KUMES').hayvan;
-  assert.equal(h.miktar, HAYVANLAR.KUMES.miktar + Math.ceil(HAYVANLAR.KUMES.miktar / 2) * 2);
+  const ky = kart.yapilar.find((x) => x.tip === 'KUMES');
+  assert.equal(ky.maxSeviye, maks);
+  assert.equal(ky.hayvan.miktar, HAYVANLAR.KUMES.miktar + Math.ceil(HAYVANLAR.KUMES.miktar / 2) * (maks - 1));
   // Başkası yükseltemez
   const B = await kayit('baskasi');
   assert.notEqual((await B.c(`/api/yapi/${y.id}/yukselt`, {})).durum, 200);

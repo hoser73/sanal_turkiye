@@ -155,7 +155,8 @@ const HAYVANLAR = {
 for (const h of Object.values(HAYVANLAR)) h.sureMs = dk(h.sure);
 const YEM_FIYATI = 1.2;   // envanterde yem yoksa birim başına
 
-// Oyuncu seviyesi: eylemler tecrübe puanı (TP) kazandırır. Seviye n için toplam TP = 20 × n × (n − 1) (açık formül)
+// Oyuncu seviyesi: eylemler tecrübe puanı (TP) kazandırır. Seviye n için toplam TP = 20 × n × (n − 1) × max(1, n / 5):
+// ilk beş seviye hızlı (öğrenme), sonrası dikleşir (v0.45 ekonomi simülasyonu: aktif oyuncu 30 günde 38'e çıkıyordu)
 // Seviyeyle açılan bölümler (istemcide ACILIMLAR ile aynı); sunucu da denetler
 const SEVIYE_KILIDI = { balik: { seviye: 3, ad: 'Balık tutma' }, carsi: { seviye: 4, ad: 'Çarşı' } };
 const SEVIYE = {
@@ -163,15 +164,15 @@ const SEVIYE = {
     ANIMAL_PRODUCE_COLLECTED: 4, PARCEL_VISITED: 1, COMMODITY_TRADE: 2, TRADE_SETTLED: 5, DECORATION_PLACED: 2,
     NEIGHBOR_HELPED: 3, GI_PRODUCED: 5, FISH_CAUGHT: 2, COOP_HELPED: 3 },
   gunlukEylemTavani: 20,   // aynı eylem türünden günde en çok bu kadar TP kaydı (tek tek satarak TP kasılmasın)
-  katsayi: 20, maks: 60,
+  katsayi: 20, dikles: 5, maks: 60,
   seviyeOdulu: (n) => 20 + n * 10,   // her yeni seviyede akçe
 };
 // Günlük giriş ödülü: art arda gelinen her gün artar (7. günden sonra sabit)
 const GUNLUK_ODUL = { akce: [10, 15, 20, 25, 30, 40, 60], tp: 5 };
 // Sipariş panosu: köylüler çiftlik ürünleri ister; teslim eden akçe ve TP kazanır
 const SIPARIS = {
-  acikMaks: 4, yenilemeMs: dk(20), sureMs: dk(24 * 60), reddetBeklemeMs: dk(5),
-  primOrani: 1.45, tpCarpani: 1.5, kalemMin: 1, kalemMaks: 3,
+  acikMaks: 4, yenilemeMs: dk(40), sureMs: dk(24 * 60), reddetBeklemeMs: dk(5),
+  primOrani: 1.45, tpCarpani: 1.5, kalemMin: 1, kalemMaks: 3, seviyeKat: 0.15, seviyeTavan: 10,   // sipariş büyüklüğü seviyeyle artar (tavana kadar)
   musteriler: ['Ayşe Teyze', 'Hasan Amca', 'Fadime Nine', 'Bakkal Mehmet', 'Fırıncı Rıza', 'Muhtar Kâzım', 'Öğretmen Zeynep', 'Lokantacı Yusuf',
     'Pazarcı Emine', 'Çoban Ali', 'Kahveci İsmail', 'Doktor Elif'],
 };
@@ -335,7 +336,7 @@ const KOY_MEYDANI = {
 // ---------- Günlük sandık (sandik.js): her aralikMs'de bir ücretsiz sandık. İçerik rastgeledir; oranlar oyuncuya açıkça
 // gösterilir (parayla satılmaz, şans kutusu değildir).
 const GUNLUK_SANDIK = {
-  aralikMs: 8 * 3600_000,
+  aralikMs: 8 * 3600_000, biriktir: 2,   // en çok 2 sandık birikir (seyrek giren oyuncu kaybetmesin)
   icerik: [
     { tur: 'akce', min: 15, max: 35, oran: 0.6 },
     { tur: 'esya', kod: 'GUBRE', adet: 1, oran: 0.2 },
@@ -396,14 +397,14 @@ const SIYASI_EYLEMLER = ['ELECTION_ANNOUNCED', 'CANDIDACY_OPENED', 'CANDIDATE_RE
 // tanımı (tahta, hamle, hedefler, ot kaplı kareler) bölüm numarasından türetilir. Oyun istemcide oynanır; sunucu en kısa
 // süreyi (taban + kullanılan hamle × hamleMs) ve hamle sınırını denetler. Günde en çok gunlukOdul bölüm ödül verir.
 const BULMACA = {
-  gunlukOdul: 8, minSureMs: 12_000, hamleMs: 450, maksSureMs: 45 * 60_000,
+  gunlukOdul: 5, minSureMs: 12_000, hamleMs: 450, maksSureMs: 45 * 60_000,
   satir: 8, sutun: 7,
   taslar: { NAR: 'Nar', LALE: 'Lale', CINI: 'Çini', BUGDAY: 'Başak', NAZAR: 'Nazar', FINDIK: 'Fındık' },
   // Bölüm ödülü: her 10. bölüm kalıp seti (inşaatı hızlandırır), her 5. gübre, kalanlar akçe; yıldız başına +2 akçe
   odul(n) {
-    if (n % 10 === 0) return { akce: 30 + n, esya: ['KALIP_SETI', 1] };
-    if (n % 5 === 0) return { akce: 15 + Math.floor(n / 2), esya: ['GUBRE', 2] };
-    return { akce: Math.min(40, 8 + Math.floor(n / 2)) };
+    if (n % 10 === 0) return { akce: 30 + Math.min(n, 30), esya: ['KALIP_SETI', 1] };
+    if (n % 5 === 0) return { akce: 15 + Math.min(Math.floor(n / 2), 10), esya: ['GUBRE', 2] };
+    return { akce: Math.min(20, 8 + Math.floor(n / 2)) };
   },
   yildizAkce: 2,
 };
@@ -537,7 +538,7 @@ BORSA.sureMs = (gun) => dk(gun * 24 * 60);
 // §5.2 NPC talebi: yalnızca sınırlı taban talep, sınırsız geri alım yok.
 const NPC_PAZAR = {
   gunlukTalep: 400,     // ürün başına, bütün oyuncular için günlük toplam NPC alım limiti
-  kisiselTaban: 25,     // ortak limit dolsa da her oyuncudan ürün başına günde bu kadar alınır (yeni oyuncu ilk satışını yapabilsin)
+  kisiselTaban: 60,     // ortak limit dolsa da her oyuncudan ürün başına günde bu kadar alınır (v0.45: 25 ilk satışı zararına bırakıyordu)
   fiyatAlt: 0.8,        // taban fiyat çarpanı alt sınırı
   fiyatUst: 1.2,
 };

@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS gunluk_gorev_odulleri (user_id INTEGER NOT NULL REFER
 `);
 
 const GELISIM = {
-  maxSeviye: 3, yukseltKat: 1.5,
+  maxSeviye: 5, yukseltKat: 1.5,
   isciGunluk: 60, isciMaxGun: 7, isciAralikMs: 60_000,
   gunlukOdul: 60, gunlukTp: 15,
 };
@@ -41,7 +41,7 @@ const yukselt = db.transaction((userId, structureId) => {
 const yukseltmeBedeli = (s) => ((s.seviye || 1) >= GELISIM.maxSeviye ? null : Math.round((YAPILAR[s.type]?.maliyet || 50) * ((s.seviye || 1) + 1) * GELISIM.yukseltKat));
 
 // ---------- Konut kira geliri (Ev ve keyif): günlük kira birikir, oyuncu çiftliğinden toplar
-const KIRA = { gunMs: Math.round(86_400_000 / OYUN_HIZI), birikmeGun: 2, havuzKat: 1.5, seviyeKat: 0.5 };
+const KIRA = { gunMs: Math.round(86_400_000 / OYUN_HIZI), birikmeGun: 3, havuzKat: 1.5, seviyeKat: 0.5 };
 // Yapının birikmiş kirası. yapilar: aynı parseldeki yapılar (havuz bonusu için)
 function kiraDurumu(s, yapilar, t = simdi()) {
   const y = YAPILAR[s.type];

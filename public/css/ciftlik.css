@@ -976,3 +976,13 @@ body .panel .sekmeler .rozet { top: -5px; left: auto; right: 4px; box-shadow: 0 
 .ihale-rakam { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: #6a5a3a; }
 .alarm-form { margin: 8px 0; gap: 6px; flex-wrap: wrap; }
 .alarm-form input { width: 76px; }
+
+/* v0.45 çiftlik içi sipariş panosu */
+.ci-siparis { background: #fff8e8; border: 2px solid #ecdcb4; border-radius: 16px; padding: 10px 12px; display: grid; gap: 6px; }
+.ci-siparis.hazir { border-color: #f0c24a; background: #fff3cf; }
+.ci-siparis-ust { display: flex; justify-content: space-between; gap: 8px; font-size: 15px; }
+.ci-siparis-ust span { color: #8a6418; font-weight: 700; white-space: nowrap; }
+.ci-siparis-kalem { display: flex; flex-wrap: wrap; gap: 6px; }
+.ci-siparis-kalem span { font-size: 13px; padding: 3px 8px; border-radius: 999px; background: #f1ead8; color: #6b5a3a; }
+.ci-siparis-kalem span.var { background: #dff2d2; color: #2f6b1e; }
+.ci-siparis .ci-b { justify-self: end; }

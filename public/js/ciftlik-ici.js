@@ -544,7 +544,10 @@ export function ciftlikIciKur({ durum, eylemDagit, sunucuSimdi, ayrintiAc, dunya
     if (k.insaatSecenekleri?.length) dugmeler.push(`<button type="button" class="ci-d" data-ci="insaat">🔨<span>İnşa et</span></button>`);
     if (k.susSecenekleri) dugmeler.push(`<button type="button" class="ci-d" data-ci="sus">🌷<span>Süsle</span></button>`);
     const sd = b?.sandik;
-    if (sd) dugmeler.push(`<button type="button" class="ci-d${sd.hazir ? ' altin' : ''}" data-ci="sandik">🎁<span>${sd.hazir ? 'Sandık' : kisaSure(sd.kalanMs)}</span></button>`);
+    if (sd) dugmeler.push(`<button type="button" class="ci-d${sd.hazir ? ' altin' : ''}" data-ci="sandik">🎁<span>${sd.hazir ? (sd.hak > 1 ? 'Sandık ×2' : 'Sandık') : kisaSure(sd.kalanMs)}</span></button>`);
+    // Siparişler oyunun asıl kazancı: teslime hazır olan varsa altın düğme ve sayı
+    const so = b?.siparis;
+    if (so) dugmeler.push(`<button type="button" class="ci-d${so.hazir ? ' altin' : ''}" data-ci="siparis">📋<span>${so.hazir ? `Sipariş (${so.hazir})` : 'Sipariş'}</span></button>`);
     dugmeler.push(`<button type="button" class="ci-d" data-ci="gunluk">🎯<span>Günlük</span></button>`);
     dugmeler.push(`<button type="button" class="ci-d" data-ci="meydan">🏛️<span>Meydan</span></button>`);
     dugmeler.push(`<button type="button" class="ci-d" data-ci="bulmaca">🧩<span>Bulmaca</span></button>`);
@@ -647,7 +650,7 @@ export function ciftlikIciKur({ durum, eylemDagit, sunucuSimdi, ayrintiAc, dunya
         ${y.etkisiz || (y.saglik ?? 100) < 90 ? `<button type="button" class="ci-b" data-eylem="bakim" data-hedef="yapi:${y.id}">🔧 Bakım</button>` : ''}
       </div>
       ${uretimHTML(y)}
-      ${y.durum === 'ACTIVE' && !ziyaret ? `<div class="ci-yukselt"><span>Seviye <b>${'★'.repeat(y.seviye || 1)}${'☆'.repeat(Math.max(0, 3 - (y.seviye || 1)))}</b>${h ? ` · her seviye +%50 ürün` : y.kira ? ' · her seviye +%50 kira' : ''}</span>
+      ${y.durum === 'ACTIVE' && !ziyaret ? `<div class="ci-yukselt"><span>Seviye <b>${'★'.repeat(y.seviye || 1)}${'☆'.repeat(Math.max(0, (y.maxSeviye || 5) - (y.seviye || 1)))}</b>${h ? ` · her seviye +%50 ürün` : y.kira ? ' · her seviye +%50 kira' : ''}</span>
         ${y.yukseltBedeli ? `<button type="button" class="ci-b altin kucuk" data-eylem="yapi-yukselt" data-id="${y.id}" data-hedef="yapi:${y.id}" ${(durum.ben?.bakiye ?? 0) < y.yukseltBedeli ? 'disabled' : ''}>⬆️ Yükselt ${akce(y.yukseltBedeli)}</button>` : '<em>En üst seviye</em>'}</div>` : ''}`, `yapi:${y.id}`);
   }
   // Tesisin (değirmen, fırın, fabrika…) üretimi: süren partiler (topla) ve yapılabilecek reçeteler (üret)
@@ -671,8 +674,23 @@ export function ciftlikIciKur({ durum, eylemDagit, sunucuSimdi, ayrintiAc, dunya
     const oranlar = `<div class="ci-sandik-oran">${d.oranlar.map((o) => `<span>${esc(o.ikon)} ${esc(o.metin)} <b>%${Math.round(o.oran * 100)}</b></span>`).join('')}</div>`;
     sayfaAc(`${ust2('🎁', 'Günlük sandık', d.hazir ? 'Hazır! Aç bakalım' : `Yeni sandık ${sure(d.kalanMs)} sonra`)}
       <div class="ci-sandik ${d.hazir ? 'hazir' : ''}"><span class="ci-sandik-ikon">🎁</span>
-        ${d.hazir ? '<button type="button" class="ci-b altin" data-ci="sandik-ac">Sandığı aç</button>' : `<p class="ci-not">Her 8 saatte bir yeni sandık dolar.</p>`}</div>
+        ${d.hazir ? `<button type="button" class="ci-b altin" data-ci="sandik-ac">Sandığı aç${d.hak > 1 ? ' (2 sandık birikti)' : ''}</button>` : `<p class="ci-not">Her 8 saatte bir yeni sandık dolar; en çok iki sandık birikir.</p>`}</div>
       <p class="ci-alt-baslik">Sandıktan ne çıkabilir?</p>${oranlar}`);
+  }
+  // Sipariş panosu: köylülerin istekleri; envanterde yetiyorsa çiftlikten çıkmadan teslim edilir
+  async function siparisSayfasi() {
+    const c = await api('/api/ciftlik').catch(() => null);
+    if (!c) return;
+    const s = c.siparisler;
+    // Çubuktaki sayı en çok 2 dk eski olabilir (süresi dolan sipariş): sayfa açılınca eşitle
+    if (durum.ben?.siparis && durum.ben.siparis.hazir !== s.liste.filter((o) => o.hazir).length) yenileDis?.();
+    sayfaAc(`${ust2('📋', 'Siparişler', `${s.liste.length}/${s.maks} müşteri · tüccardan iyi öder`)}
+      <div class="ci-liste">${s.liste.map((o) => `<div class="ci-siparis ${o.hazir ? 'hazir' : ''}">
+        <div class="ci-siparis-ust"><b>${esc(o.musteri)}</b><span>${akce(o.odul)} · ${o.tp} TP</span></div>
+        <div class="ci-siparis-kalem">${o.kalemler.map((k) => `<span class="${k.eldeki >= k.adet ? 'var' : 'yok'}">${esc(k.ikon)} ${sayi(Math.min(k.eldeki, k.adet))}/${sayi(k.adet)} ${esc(k.ad)}</span>`).join('')}</div>
+        ${o.hazir ? `<button type="button" class="ci-b altin" data-ci="siparis-teslim" data-id="${o.id}">Teslim et</button>` : ''}
+      </div>`).join('') || '<p class="ci-not">Şu an sipariş yok.</p>'}</div>
+      ${s.sonrakiMs != null ? `<p class="ci-not">Yeni müşteri ${sure(s.sonrakiMs)} sonra gelir.</p>` : ''}`);
   }
   async function gunlukSayfasi() {
     sayfaAc(`${ust2('🎯', 'Günlük görevler', 'yükleniyor…')}`);
@@ -846,13 +864,24 @@ export function ciftlikIciKur({ durum, eylemDagit, sunucuSimdi, ayrintiAc, dunya
       if (c === 'gunluk') return gunlukSayfasi();
       if (c === 'meydan') return meydanSayfasi();
       if (c === 'sandik') return sandikSayfasi();
+      if (c === 'siparis') return siparisSayfasi();
+      if (c === 'siparis-teslim') {
+        const b = e.target.closest('button'); b.disabled = true;
+        try {
+          const r = await api(`/api/siparis/${b.dataset.id}/teslim`, {});
+          ses('para');
+          tostDis?.(`📦 ${r.musteri} siparişini aldı: ${akce(r.odul)} + ${r.tp} TP`);
+          await yenileDis?.();
+        } catch (err) { tostDis?.(err.message, 'hata'); }
+        return siparisSayfasi();
+      }
       if (c === 'sandik-ac') {
         const b = e.target.closest('button'); b.disabled = true;
         try {
           const r = await api('/api/sandik/ac', {});
           ses('sandik');
           sayfaAc(`${ust2('🎁', 'Günlük sandık', 'Açıldı!')}<div class="ci-sandik acildi"><span class="ci-sandik-ikon">✨</span>
-            <div class="ci-sandik-odul"><i>${esc(r.odul.ikon)}</i><b>${esc(r.odul.metin)}</b></div><p class="ci-not">Bir sonraki sandık 8 saat sonra.</p></div>`);
+            <div class="ci-sandik-odul"><i>${esc(r.odul.ikon)}</i><b>${esc(r.odul.metin)}</b></div>${r.kalanHak ? '<button type="button" class="ci-b altin" data-ci="sandik-ac">Birikmiş sandığı da aç</button>' : '<p class="ci-not">Bir sonraki sandık 8 saat sonra.</p>'}</div>`);
           await yenileDis?.();
         } catch (err) { tostDis?.(err.message, 'hata'); sandikSayfasi(); }
         return;
