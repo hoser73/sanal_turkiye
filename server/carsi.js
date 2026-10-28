@@ -152,7 +152,8 @@ const satinAl = db.transaction((userId, kod, adet = 1) => {
   if (!u) throw new OyunHatasi(400, 'Bu ürün satılmıyor');
   adet = Number(adet);
   if (!Number.isInteger(adet) || adet < 1 || adet > 20) throw new OyunHatasi(400, 'Adet 1–20 olmalı');
-  if (u.kalici && (adet > 1 || L.envanterMiktar(userId, kod) > 0)) throw new OyunHatasi(409, `${u.ad} zaten sende; kalıcı ürünler bir kez alınır`);
+  if (u.kalici && L.envanterMiktar(userId, kod) > 0) throw new OyunHatasi(409, `${u.ad} zaten sende; kalıcı ürünler bir kez alınır`);
+  if (u.kalici && adet > 1) throw new OyunHatasi(400, `${u.ad} kalıcıdır; yalnızca 1 adet alınır`);
   const m = marka(u.dukkan), tutar = u.fiyat * adet, tx = L.yeniTx();
   L.aktar({ kaynak: L.hesap(userId), hedef: `ISLETME:${u.dukkan}`, tutar, sebep: `${m.ad}: ${adet} × ${u.ad}`, tx });
   if (u.verir) for (const [k, n] of Object.entries(u.verir)) L.envanterDegis(userId, k, n * adet, `${m.ad}: ${u.ad}`, tx);

@@ -54,6 +54,25 @@ test('ihale: hafta kurulur, ihaledeki tarla edinilemez, teklif emanete geçer, g
   assert.equal(db.prepare('SELECT durum, fiyat FROM ihaleler WHERE id = ?').get(i.id).durum, 'SATILDI');
 });
 
+test('ihale: kendi teklifini yükseltmek yalnızca son teklifi kilitler; geçilen teklif hemen iade edilir', async () => {
+  const l = (await (await oyuncu('ihc'))('/api/ihale')).veri;
+  const i = l.ihaleler.find((x) => x.durum === 'ACIK');
+  assert.ok(i, 'açık ihale');
+  const a = await oyuncu('iha2'), b = await oyuncu('ihb2');
+  const onceA = L.bakiye(a.id), onceB = L.bakiye(b.id);
+  assert.equal((await b(`/api/ihale/${i.id}/teklif`, { tutar: i.taban })).durum, 200);
+  const asgari = Math.ceil(i.taban * (1 + I.artis));
+  assert.equal((await a(`/api/ihale/${i.id}/teklif`, { tutar: asgari })).durum, 200);
+  assert.equal(Math.round(L.bakiye(b.id)), Math.round(onceB), 'geçilen teklif iade');
+  // A kendi teklifini yükseltir: eski teklif iade, yenisi kilitlenir (kilitli toplam = yeni teklif)
+  const yeni = Math.ceil(asgari * (1 + I.artis));
+  assert.equal((await a(`/api/ihale/${i.id}/teklif`, { tutar: yeni })).durum, 200);
+  assert.equal(Math.round(onceA - L.bakiye(a.id)), yeni, 'yalnızca son teklif emanette');
+  assert.equal(db.prepare(`SELECT COUNT(*) c FROM ihale_teklifleri WHERE ihale_id = ? AND durum = 'AKTIF'`).get(i.id).c, 1, 'tek aktif teklif');
+  assert.equal(Math.round(L.hesapBakiye(`IHALE:${i.id}`)), yeni);
+  assert.equal(db.prepare(`SELECT COUNT(*) c FROM (SELECT tx_group FROM wallet_ledger GROUP BY tx_group HAVING ROUND(SUM(debit) - SUM(credit), 2) <> 0)`).get().c, 0);
+});
+
 test('fiyat alarmı: hedef yönü kendiliğinden; endeks hedefe ulaşınca bir kez bildirim; sınır', async () => {
   const c = await oyuncu('alarmci');
   const h = hucreBul('TARIM');

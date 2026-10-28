@@ -688,7 +688,8 @@ export function ciftlikIciKur({ durum, eylemDagit, sunucuSimdi, ayrintiAc, dunya
       <div class="ci-liste">${s.liste.map((o) => `<div class="ci-siparis ${o.hazir ? 'hazir' : ''}">
         <div class="ci-siparis-ust"><b>${esc(o.musteri)}</b><span>${akce(o.odul)} · ${o.tp} TP</span></div>
         <div class="ci-siparis-kalem">${o.kalemler.map((k) => `<span class="${k.eldeki >= k.adet ? 'var' : 'yok'}">${esc(k.ikon)} ${sayi(Math.min(k.eldeki, k.adet))}/${sayi(k.adet)} ${esc(k.ad)}</span>`).join('')}</div>
-        ${o.hazir ? `<button type="button" class="ci-b altin" data-ci="siparis-teslim" data-id="${o.id}">Teslim et</button>` : ''}
+        <div class="ci-dugmeler">${o.hazir ? `<button type="button" class="ci-b altin" data-ci="siparis-teslim" data-id="${o.id}">Teslim et</button>` : ''}
+          <button type="button" class="ci-b kucuk sade" data-ci="siparis-reddet" data-id="${o.id}" aria-label="${esc(o.musteri)} siparişini reddet">Reddet</button></div>
       </div>`).join('') || '<p class="ci-not">Şu an sipariş yok.</p>'}</div>
       ${s.sonrakiMs != null ? `<p class="ci-not">Yeni müşteri ${sure(s.sonrakiMs)} sonra gelir.</p>` : ''}`);
   }
@@ -871,6 +872,15 @@ export function ciftlikIciKur({ durum, eylemDagit, sunucuSimdi, ayrintiAc, dunya
           const r = await api(`/api/siparis/${b.dataset.id}/teslim`, {});
           ses('para');
           tostDis?.(`📦 ${r.musteri} siparişini aldı: ${akce(r.odul)} + ${r.tp} TP`);
+          await yenileDis?.();
+        } catch (err) { tostDis?.(err.message, 'hata'); }
+        return siparisSayfasi();
+      }
+      if (c === 'siparis-reddet') {
+        const b = e.target.closest('button'); b.disabled = true;
+        try {
+          await api(`/api/siparis/${b.dataset.id}/reddet`, {});
+          tostDis?.('Sipariş reddedildi; yakında yeni müşteri gelir');
           await yenileDis?.();
         } catch (err) { tostDis?.(err.message, 'hata'); }
         return siparisSayfasi();

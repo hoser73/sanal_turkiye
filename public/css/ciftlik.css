@@ -520,6 +520,8 @@ body.acilis-acik { overflow: hidden; }
 .ci-b:disabled { background: #e3e9de; color: #8a968d; box-shadow: 0 4px 0 #cfd8c8; cursor: default; }
 .ci-b:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 1px 0 #2b7a37; }
 .ci-b.kucuk { flex: none; min-height: 40px; font-size: 14px; }
+/* İkincil, geri alınamaz eylem (ör. siparişi reddet): sade, ana eylemle karışmaz */
+.ci-b.sade { background: #f1ece0; color: #7a5a3a; box-shadow: 0 3px 0 #d9ccb0; }
 .ci-tohumlar { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
 .ci-tohum { display: grid; justify-items: center; gap: 1px; padding: 10px 6px 8px; border: 2px solid #e6ece2; border-radius: 16px; background: #fbfcfa; cursor: pointer; color: inherit; font: inherit; }
 .ci-tohum span { font-size: 30px; line-height: 1.1; }
@@ -564,6 +566,9 @@ body.ciftlik-ici .ciftlik-dugme { display: none; }
 @media (max-width: 820px) {
   .ciftlik-dugme { right: 10px; bottom: calc(46vh + 14px); height: 50px; font-size: 16px; padding: 0 14px 0 8px; }
   .ciftlik-dugme span { width: 34px; height: 34px; font-size: 20px; }
+  /* Düğme panelin üst kenarını izler: büyük panelde içeriği örtmesin (gizlenir), küçük panelde aşağı iner */
+  .sahne:has(.panel.buyuk) .ciftlik-dugme { display: none; }
+  .sahne:has(.panel.kucuk) .ciftlik-dugme { bottom: 106px; }
 }
 .ciftlik-dugme[hidden] { display: none; }
 
