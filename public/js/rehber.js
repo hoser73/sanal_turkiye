@@ -14,12 +14,12 @@ const ADIMLAR = [
     dugme: 'Göster', hedef: '[data-eylem="ek"]', is: 'tarlamaGit' },
   { kod: 'ILK_SULAMA', ikon: '💧', baslik: 'Tarlanı sula', metin: 'Ekinler suyu sever. <b>Sula</b> düğmesine bas; her sulama hasadı bereketlendirir.',
     dugme: 'Göster', hedef: '[data-eylem="sula"]', is: 'tarlamaGit' },
-  { kod: 'ILK_YAPI', ikon: '🔨', baslik: 'Çit ya da sulama hattı kur', metin: 'İnşaat atölyesinden bir tel çit ya da sulama hattı kur. Sulama hattı ekinini kendiliğinden sular.',
-    dugme: 'Göster', hedef: '[data-eylem="insaat"]:not([disabled])', is: 'tarlamaGit' },
   { kod: 'ILK_HASAT', ikon: '🧺', baslik: 'İlk hasadını yap', metin: 'Ekinin olgunlaşınca tarlanın üstünde 🧺 balonu belirir. O zaman <b>Hasat et</b>. Beklerken komşulara göz atabilirsin.',
     dugme: 'Tarlama git', hedef: '[data-eylem="hasat"]', is: 'tarlamaGit' },
-  { kod: 'ILK_SATIS', ikon: '💰', baslik: 'Ürününü pazarda sat', metin: 'Ürünlerin <b>Ben → Arazilerim</b> bölümündeki envanterde. Bir kısmını pazara sat, akçe kazan; geri kalanı siparişler için sakla.',
-    dugme: 'Göster', hedef: '.sat-form button', is: 'arazilerim' },
+  { kod: 'ILK_SATIS', ikon: '💰', baslik: 'Ürününü pazarda sat', metin: 'Ürünlerini <b>Pazar → Tüccara sat</b> bölümünde sat, akçe kazan; bir kısmını siparişler için sakla.',
+    dugme: 'Göster', hedef: '.sat-form button', is: 'pazar' },
+  { kod: 'ILK_YAPI', ikon: '🔨', baslik: 'Çit ya da sulama hattı kur', metin: 'İnşaat atölyesinden bir tel çit ya da sulama hattı kur. Sulama hattı ekinini kendiliğinden sular.',
+    dugme: 'Göster', hedef: '[data-eylem="insaat"]:not([disabled])', is: 'tarlamaGit' },
   { kod: 'KOMSU_ZIYARET', ikon: '🤝', baslik: 'Bir komşuyu ziyaret et', metin: 'Yakındaki bir oyuncunun tarlasına dokun ve <b>👋 Ziyaret et</b>. Seviye 3\'te komşu olup birbirinizin tarlasını sulayabilir, hediye gönderebilirsiniz.',
     dugme: 'Komşu bul', hedef: '[data-eylem="ziyaret"]', is: 'komsuBul' },
   { kod: 'CIFTLIK', ikon: '🐔', baslik: 'Çiftliğini keşfet', metin: '<b>Çiftlik</b> sekmesinde günlük ödülün, köylülerin siparişleri, komşuların ve yöresel ürünlerin var.',
@@ -35,6 +35,7 @@ function ipucuBul(b) {
   if (susuz) return { kod: `sula:${susuz.id}:${susuz.ekin.id}:${susuz.ekin.sulama}`, ikon: '💧', baslik: 'Toprak susadı', metin: `<b>${esc(susuz.ekin.ad)}</b> tarlan sulanmayı bekliyor (${susuz.ekin.sulama}/${susuz.ekin.gerekenSulama}). Sulanan tarla daha bereketli olur.`, dugme: 'Sulamaya git', hedef: '[data-eylem="sula"]', is: 'parseleGit', parsel: susuz.id };
   const bos = portfoy.find((p) => p.imarAd === 'Tarım' && !p.ekin);
   if (b?.gunlukOdul) return { onemli: true, kod: `gunluk:${new Date().toDateString()}`, ikon: '🎁', baslik: 'Günlük ödülün hazır', metin: 'Bugünkü hediyen <b>Çiftlik</b> sekmesinde seni bekliyor. Her gün gelirsen ödül büyür!', dugme: 'Ödülü al', hedef: '#gorevler-cift', is: 'ciftlik' };
+  if (b?.sandik?.hazir) return { onemli: true, kod: `sandik:${Math.floor(Date.now() / 28_800_000)}`, ikon: '🎁', baslik: 'Sandığın hazır', metin: 'Günlük sandığın doldu. Çiftliğinde <b>🎁 Sandık</b> düğmesine dokun.', dugme: 'Çiftliğim', hedef: '[data-ci="sandik"]', is: 'tarlamaGit' };
   if (b?.seviye?.odulBekleyen) return { onemli: true, kod: `seviye:${b.seviye.seviye}`, ikon: '⭐', baslik: 'Seviye ödülü', metin: `Seviye ${b.seviye.seviye} oldun, aferin! Ödülün <b>Çiftlik</b> sekmesinde.`, dugme: 'Ödülü al', hedef: '#gorevler-cift', is: 'ciftlik' };
   if (b?.yol?.alinabilir) return { onemli: true, kod: `yol:${b.yol.ulasilan}`, ikon: '🛤️', baslik: 'Sezon yolu ödülün hazır', metin: `Sezon yolunda <b>${b.yol.alinabilir}</b> kademe ödülü seni bekliyor.`, dugme: 'Ödülü al', hedef: '[data-eylem="yol-al"]', is: 'yol' };
   if (bos) return { kod: `bos:${bos.id}`, ikon: '🌱', baslik: 'Tarla boş kalmasın', metin: `${esc(bos.mahalle)} tarlan boş duruyor. Bir şey ek, toprak çalışsın.`, dugme: 'Tarlama git', hedef: '[data-eylem="ek"]', is: 'parseleGit', parsel: bos.id };
@@ -190,6 +191,7 @@ export function rehberKur({ durum, harita, parselSec, sekmeSec, ciftlikAlt, tarl
     parseleGit(i) { harita.parseleGit(i.parsel, { zoom: 17.6 }); parselSec(i.parsel); },
     async baslangic() { await tarlaAl?.(); },
     arazilerim() { sekmeSec('arazilerim'); },
+    pazar() { durum.pazarAlt = 'urun'; sekmeSec('pazar'); },
     komsular() { ciftlikAlt('komsular'); },
     yol() { ciftlikAlt('yol'); },
     // Ziyaret görevi: oyuncunun tarlasının çevresinde başka bir oyuncuya ait parseli haritada aç

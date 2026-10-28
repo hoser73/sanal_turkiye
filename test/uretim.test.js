@@ -145,3 +145,34 @@ test('simge parsel edinilemez; kart toplanır, ödül ve bölge rozeti verilir',
   assert.equal((await c('/api/simge/MARDIN/topla', {})).durum, 429, 'günlük sınır');
   assert.equal((await c('/api/simgeler')).veri.features.length, simge.SIMGELER.length);
 });
+
+test('v0.44 zincirler: arı kovanı bal verir; zeytin sıkma evi tarım arazisinde zeytinyağı yapar; lokma fırında baldan', async () => {
+  const { HAYVANLAR, YAPILAR } = require('../server/config/rules');
+  assert.ok(YAPILAR.ZEYTIN_SIKMA.izin.includes('TARIM') && YAPILAR.CAY_ATOLYESI.izin.includes('TARIM'));
+  const c = await oyuncu('arici');
+  const h = hucreBul('TARIM');
+  await c(`/api/parsel/${h}/edin`, {});
+  // Arı kovanı: yemlenince (şerbet) belli sürede bal
+  tesisKur(h, c.id, 'ARI_KOVANI');
+  let kart = (await c(`/api/parsel/${h}`)).veri;
+  const kovan = kart.yapilar.find((y) => y.tip === 'ARI_KOVANI');
+  assert.equal(kovan.hayvan.durum, 'AC');
+  assert.equal((await c(`/api/yapi/${kovan.id}/besle`, {})).durum, 200);
+  db.prepare(`UPDATE hayvan_bakim SET hazir_at = ? WHERE structure_id = ?`).run(Date.now() - 1, kovan.id);
+  const t = await c(`/api/yapi/${kovan.id}/topla`, {});
+  assert.equal(t.durum, 200, JSON.stringify(t.veri));
+  assert.equal(L.envanterMiktar(c.id, 'BAL'), HAYVANLAR.ARI_KOVANI.miktar);
+  // Zeytin sıkma evi: fabrika olmadan zeytinyağı
+  tesisKur(h, c.id, 'ZEYTIN_SIKMA');
+  urunVer(c.id, 'ZEYTIN', 8);
+  const u = await c(`/api/parsel/${h}/uretim`, { recete: 'ZEYTINYAGI' });
+  assert.equal(u.durum, 200, JSON.stringify(u.veri));
+  kart = (await c(`/api/parsel/${h}`)).veri;
+  assert.equal(kart.uretim.surenler[0].tesis, 'ZEYTIN_SIKMA');
+  assert.ok(kart.uretim.receteler.some((r) => r.kod === 'ZEYTINYAGI' && r.tesis === 'ZEYTIN_SIKMA'));
+  // Lokma: fırın + un + bal
+  tesisKur(h, c.id, 'FIRIN');
+  urunVer(c.id, 'UN', 3);
+  assert.equal((await c(`/api/parsel/${h}/uretim`, { recete: 'LOKMA' })).durum, 200);
+  assert.equal(L.envanterMiktar(c.id, 'BAL'), HAYVANLAR.ARI_KOVANI.miktar - 2);
+});

@@ -28,6 +28,7 @@ for (const [k, tanim] of [['takildi_at', 'INTEGER'], ['agirlik', 'REAL'], ['yem'
   if (!db.prepare(`PRAGMA table_info(balik_atislari)`).all().some((c) => c.name === k)) db.exec(`ALTER TABLE balik_atislari ADD COLUMN ${k} ${tanim}`);
 }
 const mucadeleMinMs = (tur) => BALIK.mucadele.tabanMs + (BALIK.turler[tur]?.guc || 1) * BALIK.mucadele.gucMs;
+const gunlukHak = () => BALIK.gunlukAtis + require('./mini-etkinlik').balikEk();   // hafta sonu balık bolluğunda fazladan
 const gun = (t = Date.now()) => new Date(t + 3 * 3600_000).toISOString().slice(0, 10);
 
 // Nokta su mu? İç su (göl, nehir): imar karosunda SU ve bir ilçe içinde. Deniz: ilçe dışı ama ~2 km içinde kıyı ilçesi var.
@@ -126,7 +127,7 @@ async function ortam(userId, { lon, lat } = {}) {
     su: { tip: su.tip, plaka: su.plaka },
     turler: Object.entries(yore).map(([kod, w]) => ({ kod, ad: BALIK.turler[kod].ad, w, yem: BALIK.turler[kod].yem, derinlik: BALIK.turler[kod].derinlik })),
     aktivite: aktivite(su.plaka),
-    kalan: Math.max(0, BALIK.gunlukAtis - db.prepare(`SELECT COUNT(*) c FROM balik_atislari WHERE user_id = ? AND gun = ?`).get(userId, gun()).c),
+    kalan: Math.max(0, gunlukHak() - db.prepare(`SELECT COUNT(*) c FROM balik_atislari WHERE user_id = ? AND gun = ?`).get(userId, gun()).c),
     // Çarşıdan alınmış yem stoku (varsa atış ücretsiz)
     stok: { KARIDES: L.envanterMiktar(userId, 'YEM_KARIDES'), MISIR: L.envanterMiktar(userId, 'YEM_MISIR'), SAHTE: L.envanterMiktar(userId, 'SAHTE_YEM_TAKIMI') > 0 ? 1 : 0 },
   };
@@ -138,12 +139,12 @@ async function at(userId, govde = {}) {
   const tk = takim(govde);
   const g = gun();
   const say = () => db.prepare(`SELECT COUNT(*) c FROM balik_atislari WHERE user_id = ? AND gun = ?`).get(userId, g).c;
-  if (say() >= BALIK.gunlukAtis) throw new OyunHatasi(429, `Bugün ${BALIK.gunlukAtis} kez olta attın; balıklar yarın yine burada`);
+  if (say() >= gunlukHak()) throw new OyunHatasi(429, `Bugün ${gunlukHak()} kez olta attın; balıklar yarın yine burada`);
   const su = await suVeyaBolge(userId, lon, lat);
   // Su denetimi beklenirken başka istekler gelmiş olabilir: sayım ve kayıt beklemeden sonra, tek işlemde
   const sonuc = db.transaction(() => {
     const bugun = say();
-    if (bugun >= BALIK.gunlukAtis) throw new OyunHatasi(429, `Bugün ${BALIK.gunlukAtis} kez olta attın; balıklar yarın yine burada`);
+    if (bugun >= gunlukHak()) throw new OyunHatasi(429, `Bugün ${gunlukHak()} kez olta attın; balıklar yarın yine burada`);
     const t = Date.now();
     // Yem: marketten alınmış paket ya da nalburdan sahte yem takımı varsa stoktan, yoksa akçe
     const yem = BALIK.yemler[tk.yem], carsi = require('./carsi');
@@ -161,7 +162,7 @@ async function at(userId, govde = {}) {
     const isirma = t + bekleme;
     const id = db.prepare(`INSERT INTO balik_atislari (user_id, plaka, tur, isirma, gun, at, yem, derinlik, misina, yem_stok) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(userId, su.plaka, turSec(su, tk.yem, tk.derinlik), isirma, g, t, tk.yem, tk.derinlik, tk.misina, yemStok).lastInsertRowid;
-    return { id, isirmaMs: isirma - t, pencereMs: BALIK.pencere, tip: su.tip, plaka: su.plaka, kalan: BALIK.gunlukAtis - bugun - 1, aktivite: akt, ...tk,
+    return { id, isirmaMs: isirma - t, pencereMs: BALIK.pencere, tip: su.tip, plaka: su.plaka, kalan: gunlukHak() - bugun - 1, aktivite: akt, ...tk,
       yemFiyat: yemStok ? 0 : yem.fiyat, yemStok: !!yemStok };
   })();
   return sonuc;
@@ -216,7 +217,7 @@ const cikar = db.transaction((userId, atisId, { basari, neden } = {}) => {
 
 function rotalar(app, { h, auth }) {
   app.get('/api/balik/ortam', auth.girisGerekli, h((req) => ortam(req.kullanici.id, req.query)));
-  app.get('/api/balik/takim', h(() => ({ yemler: BALIK.yemler, derinlikler: BALIK.derinlikler, misinalar: BALIK.misinalar, gunlukAtis: BALIK.gunlukAtis })));
+  app.get('/api/balik/takim', h(() => ({ yemler: BALIK.yemler, derinlikler: BALIK.derinlikler, misinalar: BALIK.misinalar, gunlukAtis: gunlukHak() })));
   app.post('/api/balik/at', auth.girisGerekli, h((req) => at(req.kullanici.id, req.body || {})));
   app.post('/api/balik/:id/cek', auth.girisGerekli, h((req) => cek(req.kullanici.id, req.params.id)));
   app.post('/api/balik/:id/cikar', auth.girisGerekli, h((req) => cikar(req.kullanici.id, req.params.id, req.body || {})));

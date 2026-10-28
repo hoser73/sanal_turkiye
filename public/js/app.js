@@ -631,6 +631,9 @@ function degerKutusu(k) {
     ${hazineKutusu(k.hazine, g)}
     <div class="kucuk grafik-baslik">${esc(k.mahalle)} arsa endeksi${pi.seri.length > 1 ? ` · son ${pi.seri.length} gün` : ''}</div>
     ${endeksGrafigi(pi.seri, { yukseklik: 104 })}
+    ${girisli() && pi.endeks != null ? `<form class="alarm-form satir" data-bolge="${k.mahalleId}"><label class="kucuk">🔔 Endeks
+        <input type="number" name="hedef" step="1" min="1" value="${Math.round(pi.endeks * 1.1)}" aria-label="Hedef endeks"></label>
+        <button class="dugme ince">olunca haber ver</button></form>` : ''}
     <details class="acilir"><summary>Fiyat geçmişi (${pi.fiyatGecmisi.length})</summary>
       <ul class="zaman-cizgisi">${gecmis.slice().reverse().map((x) => `<li><span>${x.ikon} ${esc(x.ad)}${x.fiyat != null ? ` · <b>${akce(x.fiyat)}</b>` : ''}${x.kim ? ` · ${esc(x.kim)}` : ''}</span><time>${kisaTarih(x.tarih)}</time></li>`).join('')}</ul></details>
     <p class="kucuk">Arsa = taban bedel × mahalle endeksi. Endeks mahalledeki talep, yatırımlar ve gerçek satışlarla değişir; yapılar bakım durumuyla değerlenir. Oyun içi göstergedir.</p></div>`;
@@ -992,7 +995,7 @@ async function gorevlerPaneli() {
     if (alt === 'yol') return segment + yolBolumu(await api('/api/yol'), { simdi: sunucuSimdi });
   } catch (e) { return `${segment}<p class="kucuk">${esc(e.message)}</p>`; }
   let ciftlik = '';
-  try { ciftlik = ciftlikBolumu(await api('/api/ciftlik'), { simdi: sunucuSimdi }); } catch { /* bağlantı yoksa yalnızca görevler */ }
+  try { ciftlik = ciftlikBolumu(await api('/api/ciftlik'), { simdi: sunucuSimdi, mini: durum.ben?.miniEtkinlik }); } catch { /* bağlantı yoksa yalnızca görevler */ }
   ciftlik = segment + gunlukGorevKarti(await api('/api/gunluk-gorevler').catch(() => null)) + ciftlik;
   const g = durum.ben.gorevler;
   const biten = g.filter((x) => x.tamam).length;
@@ -1317,6 +1320,8 @@ async function eylemDagit(b, e = null) {
       durum.carsiAlt = b.dataset.kategori; $('#panelIcerik').scrollTop = 0; return panelCiz();
     case 'carsi-geri':
       durum.carsiAlt = null; return panelCiz();
+    case 'alarm-sil':
+      return eylem(`/api/alarm/${b.dataset.id}/sil`, {}, 'Alarm silindi');
     case 'yardim-gonder':
       b.disabled = true;
       return eylem(`/api/yardim/${b.dataset.id}/gonder`, { adet: Number(b.dataset.adet) }, (r) => `🤝 ${r.adet} ürün gönderildi${r.istekTamam ? '; istek tamamlandı' : ''}`);
@@ -1492,6 +1497,15 @@ $('#panelIcerik').addEventListener('submit', (e) => {
     e.preventDefault();
     const adet = Number(v(e.target).adet || 1);
     return eylem('/api/carsi/satin-al', { urun: e.target.dataset.urun, adet }, (r) => `🛍️ ${r.marka}: ${adet > 1 ? `${adet} × ` : ''}${durum.kurallar.urunler[r.urun]?.ad || r.urun} alındı (${akce(r.tutar)})`);
+  }
+  if (e.target.matches('.alarm-form')) {
+    e.preventDefault();
+    return eylem('/api/alarm', { bolgeId: Number(e.target.dataset.bolge), hedef: Number(v(e.target).hedef) },
+      (r) => `🔔 Alarm kuruldu: ${r.mahalle} endeksi ${r.yon === 'YUKARI' ? 'yükselip' : 'düşüp'} ${v(e.target).hedef} olunca haber vereceğiz`);
+  }
+  if (e.target.matches('.ihale-form')) {
+    e.preventDefault();
+    return eylem(`/api/ihale/${e.target.dataset.id}/teklif`, { tutar: Number(v(e.target).tutar) }, (r) => `🔨 Teklifin ₳${r.tutar}; ihalede şu an öndesin`);
   }
   if (e.target.matches('.yardim-form')) {
     e.preventDefault();

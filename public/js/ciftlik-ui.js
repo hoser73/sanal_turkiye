@@ -29,8 +29,10 @@ export function susBolumu(k) {
 }
 
 // Görevler sekmesinin çiftlik bölümü
-export function ciftlikBolumu(c, { simdi }) {
+export function ciftlikBolumu(c, { simdi, mini = null }) {
   const sv = c.seviye;
+  // Hafta sonu mini etkinliği (mini-etkinlik.js)
+  const miniKart = mini ? `<div class="mini-etkinlik"><span>${mini.ikon}</span><div><b>${esc(mini.ad)}</b><small>${esc(mini.aciklama)} · bitişe ${sure(mini.bitis - simdi())}</small></div></div>` : '';
   const ilerleme = sv.sonraki ? Math.min(100, ((sv.tp - sv.esik) / (sv.sonraki - sv.esik)) * 100) : 100;
   const seviye = `<div class="kutu seviye-kutu">
       <div class="satir"><span class="seviye-yildiz">⭐ ${sv.seviye}</span><div style="flex:1"><b>Seviye ${sv.seviye}</b>
@@ -60,5 +62,5 @@ export function ciftlikBolumu(c, { simdi }) {
   const yaris = y ? `<button type="button" class="yaris-ozet" data-eylem="yaris-ac"><span class="yaris-ikon">🏁</span>
       <span><b>Hasat yarışı</b><small>${y.il ? `${esc(y.il)}${y.sira ? ` Türkiye ${y.sira}.` : ''} · katkın ${sayi(y.katkim)}${y.katkim < y.minKatki ? `/${y.minKatki}` : ' ✓'}` : 'Tarla edinince ilin adına yarışırsın'} · bitişe ${sure(y.kalanMs)}</small></span><i>›</i></button>` : '';
   const hava = '<button type="button" class="bag hava-bag" data-eylem="hava-ac">🌦️ Çiftliğinin havası ve uyarılar</button>';
-  return seviye + gunluk + siparis + yaris + hava;
+  return miniKart + seviye + gunluk + siparis + yaris + hava;
 }

@@ -112,7 +112,7 @@ const BAKIM_ISLERI = [
   ['belediye', () => belediye.belediyeBakim()], ['görevden alma', () => moderasyon.gorevdenAlmaBakim()], ['borsa', () => ekonomi.borsaBakim()],
   ['hava', () => dunya.havaBakim()],
   ['lojistik', () => lojistik.lojistikBakim()], ['kira', () => kira.kiraBakim()], ['referandum', () => referandum.referandumBakim()],
-  ['endeks', () => piyasa.endeksBakim()], ['hazine', () => piyasa.hazineBakim()], ['hasat yarışı', () => require('./hasat-yarisi').yarisBakim()],
+  ['endeks', () => piyasa.endeksBakim()], ['hazine', () => piyasa.hazineBakim()], ['hasat yarışı', () => require('./hasat-yarisi').yarisBakim()], ['ihale', () => require('./ihale').ihaleBakim()], ['fiyat alarmı', () => require('./alarm').alarmBakim()],
 ].filter(([ad]) => OZELLIK.siyaset || !['seçim', 'belediye', 'görevden alma', 'referandum'].includes(ad));   // siyaset kapalıyken döngüler durur
 let sonBakim = 0;
 function bakim() {
@@ -165,7 +165,7 @@ dunya.rotalar(app, { h, auth });
 kooperatif.rotalar(app, { h, auth });
 simge.rotalar(app, { h, auth });
 // Komşuluk, yöresel ürünler, etkinlikler, balık tutma, hatırlatmalar
-for (const m of ['./komsuluk', './yoresel', './etkinlik', './balik', './hatirlatma', './iklim', './carsi', './giris-yollari', './tanitim', './baslangic', './gelisim', './sihirbaz', './mevsim-yolu', './hasat-yarisi', './koy-meydani', './bulmaca', './koleksiyon', './yardim', './gazete', './imece']) require(m).rotalar(app, { h, auth, hazir });
+for (const m of ['./komsuluk', './yoresel', './etkinlik', './balik', './hatirlatma', './iklim', './carsi', './giris-yollari', './tanitim', './baslangic', './gelisim', './sihirbaz', './mevsim-yolu', './hasat-yarisi', './koy-meydani', './bulmaca', './koleksiyon', './yardim', './gazete', './imece', './sandik', './ihale', './alarm']) require(m).rotalar(app, { h, auth, hazir });
 require('./db').indeksleriKur();   // tüm modüllerin tabloları kurulduktan sonra
 yz.rotalar(app, { h, auth });
 kozmetik.rotalar(app, { h, auth });
@@ -289,7 +289,7 @@ app.post('/api/talep/:id/kapat', auth.dogrulanmisGerekli, h((req) => belediye.ta
 
 // ---- Oyuncu eylemleri
 // Misafir için 200 + null: istemci oturum durumunu hata üretmeden öğrenir
-app.get('/api/ben', h((req) => (req.kullanici ? { ...oyun.oyuncuOzeti(uid(req)), pazar: pazar.pazarOzeti(uid(req)), hesap: auth.hesapDurumu(uid(req)), yol: require('./mevsim-yolu').ozet(uid(req)) }
+app.get('/api/ben', h((req) => (req.kullanici ? { ...oyun.oyuncuOzeti(uid(req)), pazar: pazar.pazarOzeti(uid(req)), hesap: auth.hesapDurumu(uid(req)), yol: require('./mevsim-yolu').ozet(uid(req)), sandik: require('./sandik').ozet(uid(req)), miniEtkinlik: require('./mini-etkinlik').aktif() }
   : req.ikinciAdimBekleyen ? { ikinciAdimBekleniyor: true } : null)));
 app.get('/api/cuzdan', auth.girisGerekli, h((req) => oyun.cuzdanHareketleri(uid(req))));
 app.post('/api/parsel/:id/edin', auth.girisGerekli, hazir((req) => oyun.parselEdin(uid(req), parselId(req))));

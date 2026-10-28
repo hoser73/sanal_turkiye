@@ -23,6 +23,9 @@ function tohumlu(s) {
   return () => { h = Math.imul(h ^ (h >>> 15), 2246822507); h = Math.imul(h ^ (h >>> 13), 3266489909); return ((h ^= h >>> 16) >>> 0) / 4294967296; };
 }
 
+// Düğme altı için kısa süre: "3 sa", "25 dk"
+const kisaSure = (ms) => (ms >= 3600_000 ? `${Math.floor(ms / 3600_000)} sa` : `${Math.max(1, Math.ceil(ms / 60_000))} dk`);
+
 export function ciftlikIciKur({ durum, eylemDagit, sunucuSimdi, ayrintiAc, dunyayaCik, yenileDis, tostDis, tarlayaGec, ziyaretEt }) {
   const kok = document.createElement('div');
   kok.className = 'ci';
@@ -101,7 +104,9 @@ export function ciftlikIciKur({ durum, eylemDagit, sunucuSimdi, ayrintiAc, dunya
     const k = durum.kart, g = gunesKonumu(k.konum.lon, k.konum.lat, gunZamani());
     evre = g.yukseklik > 12 ? 'gunduz' : g.yukseklik > 0 ? 'altin' : g.yukseklik > -7 ? 'alaca' : 'gece';
     const e = EVRE[evre];
+    const oncekiGece = gece;
     gece = evre === 'gece' || evre === 'alaca' ? 1 : 0;   // pencereler alacakaranlıkta yanar
+    if (acik && oncekiGece !== gece) ortamSesi(true, { gece: !!gece });   // gece cırcır böceği, gündüz kuşlar
     const az = (g.azimut * Math.PI) / 180;
     if (evre === 'gece') {
       // Ay ışığı: güneşin karşı yönünden, yüksekten; soğuk mavi
@@ -538,6 +543,8 @@ export function ciftlikIciKur({ durum, eylemDagit, sunucuSimdi, ayrintiAc, dunya
     if (kiralik.length) dugmeler.push(`<button type="button" class="ci-d altin" data-eylem="kira-topla" data-id="${kiralik.map((y) => y.id).join(',')}">💰<span>Kira ${akce(kiralik.reduce((t, y) => t + y.kira.birikmis, 0))}</span></button>`);
     if (k.insaatSecenekleri?.length) dugmeler.push(`<button type="button" class="ci-d" data-ci="insaat">🔨<span>İnşa et</span></button>`);
     if (k.susSecenekleri) dugmeler.push(`<button type="button" class="ci-d" data-ci="sus">🌷<span>Süsle</span></button>`);
+    const sd = b?.sandik;
+    if (sd) dugmeler.push(`<button type="button" class="ci-d${sd.hazir ? ' altin' : ''}" data-ci="sandik">🎁<span>${sd.hazir ? 'Sandık' : kisaSure(sd.kalanMs)}</span></button>`);
     dugmeler.push(`<button type="button" class="ci-d" data-ci="gunluk">🎯<span>Günlük</span></button>`);
     dugmeler.push(`<button type="button" class="ci-d" data-ci="meydan">🏛️<span>Meydan</span></button>`);
     dugmeler.push(`<button type="button" class="ci-d" data-ci="bulmaca">🧩<span>Bulmaca</span></button>`);
@@ -657,6 +664,16 @@ export function ciftlikIciKur({ durum, eylemDagit, sunucuSimdi, ayrintiAc, dunya
         <button type="button" class="ci-b kucuk" data-eylem="uretim-basla" data-recete="${r.kod}" data-parti="1" data-hedef="yapi:${y.id}" ${yeter < 1 ? 'disabled' : ''}>Üret</button></div>`; }).join('')}</div>`;
   }
   // Günlük görevler: bugünün 3 görevi ve ödül
+  // Günlük sandık: 8 saatte bir ücretsiz; hazırsa açılır, değilse kalan süre ve içerik oranları gösterilir (sandik.js)
+  async function sandikSayfasi() {
+    const d = await api('/api/sandik').catch(() => null);
+    if (!d) return;
+    const oranlar = `<div class="ci-sandik-oran">${d.oranlar.map((o) => `<span>${esc(o.ikon)} ${esc(o.metin)} <b>%${Math.round(o.oran * 100)}</b></span>`).join('')}</div>`;
+    sayfaAc(`${ust2('🎁', 'Günlük sandık', d.hazir ? 'Hazır! Aç bakalım' : `Yeni sandık ${sure(d.kalanMs)} sonra`)}
+      <div class="ci-sandik ${d.hazir ? 'hazir' : ''}"><span class="ci-sandik-ikon">🎁</span>
+        ${d.hazir ? '<button type="button" class="ci-b altin" data-ci="sandik-ac">Sandığı aç</button>' : `<p class="ci-not">Her 8 saatte bir yeni sandık dolar.</p>`}</div>
+      <p class="ci-alt-baslik">Sandıktan ne çıkabilir?</p>${oranlar}`);
+  }
   async function gunlukSayfasi() {
     sayfaAc(`${ust2('🎯', 'Günlük görevler', 'yükleniyor…')}`);
     const d = await api('/api/gunluk-gorevler').catch(() => null);
@@ -828,6 +845,18 @@ export function ciftlikIciKur({ durum, eylemDagit, sunucuSimdi, ayrintiAc, dunya
       if (c === 'yeniden-ek') return;
       if (c === 'gunluk') return gunlukSayfasi();
       if (c === 'meydan') return meydanSayfasi();
+      if (c === 'sandik') return sandikSayfasi();
+      if (c === 'sandik-ac') {
+        const b = e.target.closest('button'); b.disabled = true;
+        try {
+          const r = await api('/api/sandik/ac', {});
+          ses('sandik');
+          sayfaAc(`${ust2('🎁', 'Günlük sandık', 'Açıldı!')}<div class="ci-sandik acildi"><span class="ci-sandik-ikon">✨</span>
+            <div class="ci-sandik-odul"><i>${esc(r.odul.ikon)}</i><b>${esc(r.odul.metin)}</b></div><p class="ci-not">Bir sonraki sandık 8 saat sonra.</p></div>`);
+          await yenileDis?.();
+        } catch (err) { tostDis?.(err.message, 'hata'); sandikSayfasi(); }
+        return;
+      }
       if (c === 'bulmaca') return bulmacaAc({ yenile: yenileDis });
       if (c === 'meydan-insa') {
         const b = e.target.closest('[data-kod]'); b.disabled = true;
@@ -944,7 +973,7 @@ export function ciftlikIciKur({ durum, eylemDagit, sunucuSimdi, ayrintiAc, dunya
       api('/api/meydan').then((d) => { const degisti = d.kurulu + d.binalar.filter((b) => b.durum === 'INSAATTA').length !== (meydanVeri ? meydanVeri.kurulu + meydanVeri.binalar.filter((b) => b.durum === 'INSAATTA').length : 0); meydanVeri = d; if (degisti) sahneKurgula(); }).catch(() => {}); }
     if (!history.state?.ciftlik) history.pushState({ ...(history.state || {}), ciftlik: true }, '');
     etkilesim(); cancelAnimationFrame(kare); kare = requestAnimationFrame(dongu);
-    ses('tik'); ortamSesi(true);
+    ses('tik'); ortamSesi(true, { gece: !!gece });
     durum.harita?.duraklat?.(true);
     setTimeout(() => { ipucu.hidden = true; }, 6000);
     return true;

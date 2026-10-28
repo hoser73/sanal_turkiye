@@ -948,3 +948,31 @@ body .panel .sekmeler .rozet { top: -5px; left: auto; right: 4px; box-shadow: 0 
   body .panel .sekmeler button { font-size: 11.5px; padding: 5px 1px 4px; }
   body .panel .sekmeler .sekme-ikon { width: 30px; height: 30px; font-size: 18px; }
 }
+
+/* Günlük sandık sayfası */
+.ci-sandik { display: grid; justify-items: center; gap: 10px; padding: 14px 0 6px; }
+.ci-sandik-ikon { font-size: 64px; line-height: 1; filter: grayscale(.4); }
+.ci-sandik.hazir .ci-sandik-ikon { filter: none; animation: ciNabiz 1.2s ease-in-out infinite; }
+.ci-sandik.acildi .ci-sandik-ikon { filter: none; animation: bmYildiz .5s cubic-bezier(.2, 1.6, .4, 1); }
+.ci-sandik-odul { display: flex; align-items: center; gap: 8px; padding: 10px 16px; border-radius: 16px; background: #fff3cf; box-shadow: inset 0 0 0 2px #ecd08a; font-size: 18px; }
+.ci-sandik-odul i { font-style: normal; font-size: 26px; }
+.ci-sandik-oran { display: grid; gap: 4px; }
+.ci-sandik-oran span { display: flex; justify-content: space-between; padding: 6px 10px; border-radius: 10px; background: #f6f3ea; font-size: 13.5px; }
+/* Hafta sonu mini etkinliği (Çiftlik sekmesi) */
+.mini-etkinlik { display: flex; align-items: center; gap: 10px; margin: 6px 0 10px; padding: 10px 12px; border-radius: 16px; background: linear-gradient(120deg, #fff1c9, #ffe2a8); box-shadow: inset 0 0 0 1.5px #f0c86a; }
+.mini-etkinlik > span { font-size: 28px; }
+.mini-etkinlik div { display: grid; line-height: 1.2; }
+.mini-etkinlik b { font: 400 17px 'Lilita One', 'Baloo 2', system-ui; color: #7a4b00; }
+.mini-etkinlik small { font-size: 12.5px; color: #8a6a2a; font-weight: 600; }
+
+/* Haftalık arazi ihalesi (Pazar → İhale) */
+.ihale-bas { background: linear-gradient(120deg, #fff6df, #fff); }
+.ihale-liste { list-style: none; margin: 10px 0; padding: 0; display: grid; gap: 10px; }
+.ihale-kart { display: grid; gap: 8px; padding: 12px; border-radius: 16px; background: #fff; box-shadow: 0 2px 0 #e6dfcc, inset 0 0 0 1.5px #efe8d6; }
+.ihale-kart.lider { box-shadow: 0 2px 0 #9fd27f, inset 0 0 0 2px #9fd27f; }
+.ihale-ust { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ihale-ust > div { display: grid; line-height: 1.2; min-width: 0; }
+.ihale-ust small { color: #7a7060; font-size: 12.5px; }
+.ihale-rakam { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: #6a5a3a; }
+.alarm-form { margin: 8px 0; gap: 6px; flex-wrap: wrap; }
+.alarm-form input { width: 76px; }

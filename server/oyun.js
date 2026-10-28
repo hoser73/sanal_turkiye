@@ -36,10 +36,13 @@ const bugun = () => new Date().toISOString().slice(0, 10);
 
 // ---------- Görevler ----------
 const gorevEkle = db.prepare(`INSERT OR IGNORE INTO quest_progress (user_id, quest_code) VALUES (?, ?)`);
+// İlk giriş turunun da ödüllendirdiği görevler: tur sürerken tamamlanırsa ödülü tur verir (aynı iş iki kez ödenmesin)
+const TUR_GOREVLERI = new Set(['ILK_EKIM', 'ILK_SULAMA', 'ILK_HASAT', 'ILK_SATIS', 'ILK_YAPI']);
 function gorevTamamla(userId, kod, tx) {
   const g = GOREVLER.find((x) => x.kod === kod);
   if (!g) return null;
   if (gorevEkle.run(userId, kod).changes !== 1) return null;   // zaten tamamlanmış
+  if (TUR_GOREVLERI.has(kod) && require('./sihirbaz').aktifMi(userId)) return { kod: g.kod, ad: g.ad, odul: 0 };
   L.odul(userId, g.odul, `Görev: ${g.ad}`, tx);
   return { kod: g.kod, ad: g.ad, odul: g.odul };
 }
@@ -291,9 +294,11 @@ const sahiplikAc = db.prepare(`INSERT INTO parcel_ownership (parcel_id, user_id,
 const sahipAta = db.prepare(`UPDATE parcels SET owner_user_id = ?, acquired_at = datetime('now'), version = version + 1
                              WHERE id = ? AND owner_user_id IS NULL AND status = 'ACTIVE' AND version = ?`);
 
-const parselEdin = db.transaction((userId, id) => {
+// ihale verilirse (ihale.js sonuçlandırma): bedel kazanan teklif, ödeme ihale emanetinden
+const parselEdin = db.transaction((userId, id, ihale = null) => {
   const p = parselGetir(id);
   if (require('./simge').parselSimgesi(id)) throw new OyunHatasi(409, 'Simge parsel: kamu mirasıdır, edinilemez', 'SIMGE');
+  if (!ihale && require('./ihale').ihaledeMi(id)) throw new OyunHatasi(409, 'Bu tarla bu hafta ihalede; Pazar → İhale\'den teklif ver', 'IHALEDE');
   const imar = IMAR[p.zoning_type];
   if (imar.parselDegil) throw new OyunHatasi(409, `${imar.ad}: bu hücre parsel değildir`);
   if (!imar.satilik) throw new OyunHatasi(409, `${imar.ad} parselleri oyuncu tahsisine kapalıdır`);
@@ -304,14 +309,15 @@ const parselEdin = db.transaction((userId, id) => {
   if (q.mahalleParselSayisi.get(userId, p.region_id).c >= HESAP.maxParselMahalle) {
     throw new OyunHatasi(409, `Bir mahallede en fazla ${HESAP.maxParselMahalle} parsel`);
   }
-  const bedel = tahsisFiyati(p);
+  const bedel = ihale ? ihale.fiyat : tahsisFiyati(p);
   // Optimistik kilit: okuduğumuz sürüm hâlâ geçerliyse ve parsel boşsa ata
   if (sahipAta.run(userId, id, p.version).changes !== 1) {
     throw new OyunHatasi(409, 'Parsel az önce başka bir oyuncuya tahsis edildi', 'TAHSISLI');
   }
   sahiplikAc.run(id, userId, bedel);
   const tx = L.yeniTx();
-  L.harca(userId, bedel, `Birincil tahsis ${id}`, tx);
+  if (ihale) L.aktar({ kaynak: ihale.kaynak, hedef: 'SYS:SINK', tutar: bedel, sebep: `İhale ile tahsis ${id}`, tx });
+  else L.harca(userId, bedel, `Birincil tahsis ${id}`, tx);
   belediye.belediyePayi(p.ilce_id, bedel, 'tahsisPayi', 'tahsis payı', tx);
   L.denetim({ anahtar: `PARCEL_ACQUIRED:${tx}`, aktor: userId, eylem: 'PARCEL_ACQUIRED', varlik: id,
     sonra: { bedel, imar: p.zoning_type }, bolge: p.region_id, herkese: true });
@@ -410,7 +416,7 @@ const ek = db.transaction((userId, id, urun) => {
   L.harca(userId, u.tohum * kat, `Tohum: ${u.ad} ×${kat} (${id})`, tx);
   const t = simdi();
   const dunya = require('./dunya');
-  const buyume = dunya.buyumeKati(urun, aktifYapiVar(q.yapilar.all(id), 'SERA', t), t, p.plaka);
+  const buyume = dunya.buyumeKati(urun, aktifYapiVar(q.yapilar.all(id), 'SERA', t), t, p.plaka) * require('./mini-etkinlik').buyumeKat(t);
   const ilkEkin = require('./sihirbaz').hizliIlkEkin(userId);   // ilk giriş sihirbazında ilk ekin 1 dakikada olur
   const m = dunya.mevsim(t);
   db.prepare(`INSERT INTO crops (parcel_id, user_id, crop_type, planted_at, ready_at, mevsim) VALUES (?, ?, ?, ?, ?, ?)`)
@@ -536,7 +542,7 @@ const npcSat = db.transaction((userId, urun, miktar) => {
   const ort = (birimFiyat(urun, satilan) + birimFiyat(urun, satilan + adet)) / 2;
   const pazarYeri = belediye.pazarBonusu(userId);   // belediyenin semt pazarı olan mahallede parseli varsa
   const koopPrimi = require('./kooperatif').satisPrimi(userId);
-  const tutar = Math.floor(ort * adet * (pazarYeri ? 1 + BELEDIYE.etki.pazarBonus : 1) * (1 + koopPrimi) * require('./koy-meydani').oran(userId, 'PAZAR_YERI'));   // akçe tam sayı tutulur
+  const tutar = Math.floor(ort * adet * (pazarYeri ? 1 + BELEDIYE.etki.pazarBonus : 1) * (1 + koopPrimi) * require('./koy-meydani').oran(userId, 'PAZAR_YERI') * require('./mini-etkinlik').tuccarKat());   // akçe tam sayı tutulur
   const tx = L.yeniTx();
   L.envanterDegis(userId, urun, -adet, 'NPC pazar satışı', tx);
   if (tutar > 0) L.aktar({ kaynak: 'SYS:NPC', hedef: L.hesap(userId), tutar, sebep: `${adet} ${URUNLER[urun].ad} satışı`, tx });

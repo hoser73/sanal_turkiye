@@ -91,6 +91,9 @@ function yapiEkle(g, { tip, tamam, yuva }, { gece, catiRenk }, r, sonuc) {
     case 'CARDAK': return yuvayaKoy(g, Y.cardak(), yuva);
     case 'OYUN_PARKI': return yuvayaKoy(g, Y.oyunParki(), yuva);
     case 'KUMES': { const o = Y.kumes(r); yuvayaKoy(g, o, yuva); for (const t of o.userData.tavuklar) t.userData.tepki = { tur: 'hayvan' }; for (const t of o.userData.tavuklar) sonuc.hayvanlar.push({ o: t, merkez: new THREE.Vector3(0, 0, 1.6), yaricap: 1.4, tur: 'tavuk' }); return; }
+    case 'ARI_KOVANI': return yuvayaKoy(g, Y.kovanlar(r), yuva);
+    case 'ZEYTIN_SIKMA': return yuvayaKoy(g, Y.sikmaEvi({ gece }), yuva);
+    case 'CAY_ATOLYESI': return yuvayaKoy(g, Y.cayAtolyesi({ gece }), yuva);
     case 'MANDIRA': { yuvayaKoy(g, K.ambar(), [u0, v0, u0 + (u1 - u0) * 0.7, v1]); const k = Y.suKulesi(); yuvayaKoy(g, k, [u0 + (u1 - u0) * 0.72, v0, u1, v0 + (v1 - v0) * 0.5], 1.4); return; }
     case 'INEK_AHIRI': {
       yuvayaKoy(g, K.ambar(), [u0, v0, u0 + (u1 - u0) * 0.7, v0 + (v1 - v0) * 0.6]);

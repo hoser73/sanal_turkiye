@@ -257,6 +257,37 @@ export function kumes(r) {
   return golgeli(g);
 }
 
+// Arı kovanları: ayaklı üç beyaz-sarı kat kutu, kiremit renkli kapak, uçuşma deliği; çevresinde çiçekler (v0.44)
+export function kovanlar(r) {
+  const g = new THREE.Group();
+  [[-1.6, 0], [0, -0.4], [1.6, 0]].forEach(([x, z], i) => {
+    const k = new THREE.Group();
+    for (const [dx, dz] of [[-0.45, -0.35], [0.45, -0.35], [-0.45, 0.35], [0.45, 0.35]]) k.add(kutuP(0.1, 0.45, 0.1, RENK.tahtaKoyu, dx, 0.22, dz, 0.03));
+    ['#fff6dc', '#f5d66b', '#fff6dc'].forEach((renk, j) => k.add(kutuP(1.15, 0.42, 0.95, renk, 0, 0.66 + j * 0.44, 0, 0.06)));
+    k.add(kutuP(1.35, 0.14, 1.15, '#d9574a', 0, 1.98, 0, 0.05));
+    k.add(kutuP(0.4, 0.07, 0.04, '#3a2a20', 0, 0.55, 0.49, 0.02));
+    k.position.set(x, 0, z); k.rotation.y = (r() - 0.5) * 0.4 + (i - 1) * 0.15; g.add(k);
+  });
+  ['#f07ab0', '#ffffff', '#f2c230', '#a77de0'].forEach((renk, i) => { for (let j = 0; j < 3; j++) { const m = parca(kureGeo, renk, -2.4 + r() * 4.8, 0.15, 1.1 + r() * 0.8); m.scale.setScalar(0.18); g.add(m); } });
+  return golgeli(g);
+}
+// Zeytin sıkma evi: taş duvarlı küçük ev, önünde zeytinyağı fıçıları ve sıkma taşı
+export function sikmaEvi({ gece = 0 } = {}) {
+  const g = ev({ catiRenk: '#8e6a3a', duvar: '#e8dcc2', gece });
+  for (const [x, z] of [[2.9, 1.4], [3.6, 0.6]]) g.add(parca(new THREE.CylinderGeometry(0.42, 0.42, 0.9, 14), '#9a6a3c', x, 0.45, z));
+  g.add(parca(new THREE.CylinderGeometry(0.9, 0.9, 0.35, 18), '#bdb6a6', -3.4, 0.18, 1.2), parca(new THREE.CylinderGeometry(0.45, 0.45, 0.7, 14), '#a8a090', -3.4, 0.7, 1.2));
+  return golgeli(g);
+}
+// Çay atölyesi: yeşil çatılı ahşap ev, önünde serilmiş çay yaprağı tezgâhı ve çay sepetleri
+export function cayAtolyesi({ gece = 0 } = {}) {
+  const g = ev({ catiRenk: '#3f8f4a', duvar: '#f4ead2', gece });
+  g.add(kutuP(2.6, 0.12, 1.4, RENK.tahta, -3.3, 0.7, 1.0, 0.04));
+  for (const [x, z] of [[-4.3, 0.5], [-2.3, 0.5], [-4.3, 1.5], [-2.3, 1.5]]) g.add(kutuP(0.1, 0.7, 0.1, RENK.tahtaKoyu, x, 0.35, z, 0.03));
+  g.add(kutuP(2.4, 0.08, 1.2, '#5aa14a', -3.3, 0.8, 1.0, 0.04));
+  for (const x of [2.9, 3.6]) g.add(parca(new THREE.CylinderGeometry(0.38, 0.3, 0.6, 12), '#c9a46a', x, 0.3, 1.3));
+  return golgeli(g);
+}
+
 // ---------- Ek ekinler (örnekli). noktalar: [[x, z]]; b: büyüme 0..1
 export function bugdayTarhi(noktalar, r, b = 1) {
   // Gür başak tarlası: her noktada eğik duran 8-9 sap, uçta uzun başak (iki ton), dipte örtü tutamı ve birkaç yaprak.

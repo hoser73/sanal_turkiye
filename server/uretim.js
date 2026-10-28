@@ -45,13 +45,16 @@ yol.on('eylem', ({ eylem, aktor }) => {
 });
 
 // ---------- Üretim
+// Reçetenin yapılabildiği tesis türleri (tek tür ya da liste)
+const tesisleri = (r) => [].concat(r.tesis);
 function tesisSec(p, userId, recete) {
   const oyun = require('./oyun');
   const t = simdi();
-  const yapilar = db.prepare(`SELECT * FROM structures WHERE parcel_id = ? AND type = ? AND status = 'ACTIVE'`).all(p.id, recete.tesis);
+  const tipler = tesisleri(recete);
+  const yapilar = db.prepare(`SELECT * FROM structures WHERE parcel_id = ? AND type IN (${tipler.map(() => '?').join(',')}) AND status = 'ACTIVE'`).all(p.id, ...tipler);
   const s = yapilar.find((y) => oyun.saglik(y, t) >= require('./config/rules').BAKIM.etkisizEsik);
-  if (!yapilar.length) throw new OyunHatasi(409, `Bu üretim için parselde ${YAPILAR[recete.tesis].ad} olmalı`);
-  if (!s) throw new OyunHatasi(409, `${YAPILAR[recete.tesis].ad} bakımsız; önce bakım yap`);
+  if (!yapilar.length) throw new OyunHatasi(409, `Bu üretim için parselde ${tipler.map((x) => YAPILAR[x].ad).join(' ya da ')} olmalı`);
+  if (!s) throw new OyunHatasi(409, `${YAPILAR[yapilar[0].type].ad} bakımsız; önce bakım yap`);
   return s;
 }
 
@@ -74,7 +77,7 @@ const uretimBaslat = db.transaction((userId, parcelId, govde = {}) => {
   if (enerji > 0) L.harca(userId, enerji, `Üretim enerjisi: ${URUNLER[kod].ad}`, tx);
   const t = simdi();
   // Rüzgârlı havada (ilin gerçek ölçümü) değirmen daha hızlı öğütür
-  const ruzgar = r.tesis === 'DEGIRMEN' ? require('./iklim').ruzgarKati(p.plaka, t) : 1;
+  const ruzgar = s.type === 'DEGIRMEN' ? require('./iklim').ruzgarKati(p.plaka, t) : 1;
   const sure = Math.round(r.sureMs * parti * (1 - meslekBonusu(userId, 'ZANAATKAR')) * ruzgar);
   const id = db.prepare(`INSERT INTO uretimler (user_id, parcel_id, structure_id, recete, parti, cikti, baslangic, bitis) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
     .run(userId, p.id, s.id, kod, parti, r.cikti * parti, t, t + sure).lastInsertRowid;
@@ -99,12 +102,13 @@ const uretimTopla = db.transaction((userId, uretimId) => {
 // Parsel kartı için: bu parseldeki tesislerin yapabileceği reçeteler ve süren üretimler
 function parselUretimi(parcelId, userId) {
   const tesisler = new Set(db.prepare(`SELECT type FROM structures WHERE parcel_id = ? AND status = 'ACTIVE'`).all(parcelId).map((s) => s.type));
-  const receteler = Object.entries(RECETELER).filter(([, r]) => tesisler.has(r.tesis)).map(([kod, r]) => ({
-    kod, ad: URUNLER[kod].ad, ikon: URUNLER[kod].ikon, tesis: r.tesis, tesisAd: YAPILAR[r.tesis].ad, cikti: r.cikti, sureMs: r.sureMs, enerji: r.enerji,
+  const receteler = Object.entries(RECETELER).map(([kod, r]) => [kod, r, tesisleri(r).find((x) => tesisler.has(x))]).filter(([, , tesis]) => tesis).map(([kod, r, tesis]) => ({
+    kod, ad: URUNLER[kod].ad, ikon: URUNLER[kod].ikon, tesis, tesisAd: YAPILAR[tesis].ad, cikti: r.cikti, sureMs: r.sureMs, enerji: r.enerji,
     girdi: Object.entries(r.girdi).map(([g, adet]) => ({ kod: g, ad: URUNLER[g].ad, ikon: URUNLER[g].ikon, adet, stok: userId ? L.envanterMiktar(userId, g) : 0 })),
   }));
-  const surenler = db.prepare(`SELECT id, recete, parti, cikti, baslangic, bitis, structure_id FROM uretimler WHERE parcel_id = ? AND durum = 'URETIMDE'`).all(parcelId)
-    .map((u) => ({ ...u, ad: URUNLER[u.recete].ad, ikon: URUNLER[u.recete].ikon, tesis: RECETELER[u.recete].tesis }));
+  const surenler = db.prepare(`SELECT u.id, u.recete, u.parti, u.cikti, u.baslangic, u.bitis, u.structure_id, s.type AS tesis FROM uretimler u
+      JOIN structures s ON s.id = u.structure_id WHERE u.parcel_id = ? AND u.durum = 'URETIMDE'`).all(parcelId)
+    .map((u) => ({ ...u, ad: URUNLER[u.recete].ad, ikon: URUNLER[u.recete].ikon }));
   return receteler.length || surenler.length ? { receteler, surenler, zanaatkarBonusu: meslekBonusu(userId, 'ZANAATKAR') } : null;
 }
 

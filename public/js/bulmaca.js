@@ -215,7 +215,7 @@ function tahtaKur(el, { oyunId, bolum: b }, { ust, bitti }) {
     const k = el.querySelector(`[data-h="${hedef.indexOf(h)}"]`);
     if (k) { k.querySelector('b').textContent = h.kalan || '✓'; k.classList.toggle('tamam', !h.kalan); k.classList.remove('sek'); void k.offsetWidth; k.classList.add('sek'); }
   }
-  async function patlat(kume, koru = new Map()) {
+  async function patlat(kume, koru = new Map(), zincir = 0) {
     // kume: "s,c" kümesi; koru: yerinde özel taşa dönüşecek hücreler (s,c → {tur, ozel})
     const kuyruk = [...kume], islenen = new Set();
     while (kuyruk.length) {
@@ -243,7 +243,7 @@ function tahtaKur(el, { oyunId, bolum: b }, { ust, bitti }) {
       elemanlar.delete(t.id);
       izgara[s][c] = null;
     }
-    ses('tik');
+    ses(koru.size ? 'ozel' : 'esles', zincir);   // zincirde perde yükselir
     await uyu(230);
   }
   // Yerçekimi: taşlar aşağı düşer, üstten yeni taş gelir
@@ -279,7 +279,7 @@ function tahtaKur(el, { oyunId, bolum: b }, { ust, bitti }) {
       }
       // Korunan karede zaten özel taş varsa önce onun etkisi çalışsın
       for (const [a] of koru) { const [s, c] = a.split(',').map(Number); if (izgara[s][c]?.ozel) koru.delete(a); }
-      await patlat(kume, koru);
+      await patlat(kume, koru, tur);
       await dusur();
       if (hedefTamam()) return;
     }
@@ -332,7 +332,7 @@ function tahtaKur(el, { oyunId, bolum: b }, { ust, bitti }) {
   async function bitir(kazandi) {
     if (bitti_) return;
     bitti_ = true; api_.bitti = true; mesgul = true;
-    if (kazandi) { ses('seviye'); tahta.classList.add('kutla'); await uyu(450); }
+    if (kazandi) { ses('kazandi'); tahta.classList.add('kutla'); await uyu(450); } else ses('kaybetti');
     bitti(kazandi, kullanilan);
   }
 

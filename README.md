@@ -35,6 +35,16 @@ Ortam değişkenleri (v0.6 eklemeleri): `TABAN_URL` (e-posta bağlantıları; ü
 
 > Not: v0.1–0.2'nin Meram ızgarası ulusal ızgarayla uyumsuz olduğundan eski `data/sanalturkiye.db` dosyası kullanılmaz (silinmedi).
 
+## v0.44 — ses, tek rehber, günlük sandık, hafta sonu etkinlikleri, yeni üretim, ihale ve fiyat alarmı
+
+- **Ses yeniden açık** (`ses.js`): yumuşak tınılar (sinüs/üçgen, marimba benzeri vuruşlar), tiz süzgeç, hafif yankı ve sıkıştırıcı; bütün efektler aynı pentatonik tonda. Çiftlikte gündüz kuş/horoz/inek, gece cırcır böceği ve baykuş. Motif bulmacasında eşleşme (zincirde perde yükselir), özel taş, kazanma/kaybetme sesleri; sandık sesi. ⚙️ menüsünden Ses/Müzik (müzik varsayılan kapalı); telefonda titreşim.
+- **Tek başlangıç rehberi:** görev şeridi turla aynı sırada (ek → sula → hasat → sat → yapı); satış adımı Pazar → Tüccara sat'ı gösterir. Tur sürerken ilk görevler ikinci kez akçe vermez (ödülü tur verir; turu atlayan görev ödülünü alır).
+- **Günlük sandık** (`sandik.js`): 8 saatte bir ücretsiz; çiftlikte 🎁 Sandık düğmesi, rehberde "Sandığın hazır". İçerik oranları açıkça gösterilir (parayla satılmaz).
+- **Hafta sonu mini etkinlikleri** (`mini-etkinlik.js`): cuma–pazar sırayla Bereket hafta sonu (2 kat TP), Pazar şenliği (tüccar %20 fazla), Bolluk günleri (ekin %25 hızlı), Balık bolluğu (+10 olta hakkı). Çiftlik sekmesinin başında kart. Testlerde `MINI_ETKINLIK=kapali`.
+- **Yeni üretim zincirleri** (tarım arazisinde): 🐝 arı kovanları (bal), 🫒 zeytin sıkma evi (zeytinyağı), 🍵 çay atölyesi (paket çay) ve fırında 🍩 lokma (un + bal). Reçete artık birden çok tesiste yapılabilir (`tesis: [...]`); 3B modelleri `sevimli3d-yapi.js`.
+- **Haftalık arazi ihalesi** (`ihale.js`, Pazar → 🔨 İhale): her hafta sıradaki yöre setinin illerinde il merkezine yakın birer tarla açık artırmada; taban tahsis bedelinin %70'i, teklif emanette, geçilen iade, pazar 21.00'de kazanan alır. İhaledeki tarla olağan yoldan edinilemez.
+- **Fiyat alarmı** (`alarm.js`): parsel kartında "🔔 Endeks … olunca haber ver"; Pazar → Endeksler'de Alarmlarım. Hedefe ulaşınca bildirim (oyuncu başına 5 açık alarm).
+
 ## v0.43 — sade harita, oyun düğmesi sekmeler, her yerden balık
 
 - **Harita sadeleşti:** üstteki hava şeridi ("Konya 18°") ve bayram/etkinlik şeridi kalktı. Hava penceresi Çiftlik sekmesindeki "🌦️ Çiftliğinin havası ve uyarılar"dan açılır; riskli hava yine bildirim olarak gelir. Etkinlikler Çiftlik → Etkinlik'te.
@@ -129,7 +139,7 @@ Ayrıntılar ve 100.000 oyuncu planı: `docs/olcekleme.md`. Yeni oyuncu yük tes
 - **Sunucu** (`server/sihirbaz.js`): `GET /api/sihirbaz`, `POST /api/sihirbaz/odul` (adım denetim kaydından doğrulanır, bir kez), `POST /api/sihirbaz/bitir`; `users.sihirbaz_bitti_at`, `sihirbaz_odulleri`. Sütun ilk eklendiğinde parseli olan eski oyuncular sihirbazı görmez. `GET /api/baslangic/adaylar?ilce=&yer=` (3 aday, oyuncu için 1 saat hatırlanır) ve `POST /api/baslangic/tarla {parsel}` yalnızca bu adaylardan birini hediye eder.
 - **Oyun içi Ada/Parsel no** (`server/harita/ada.js`): 16×16 hücrelik bloklar ada, bloktaki sıra parsel; kartta (`adaParsel`) ve portföyde. Gerçek tapu değildir.
 - **İmar haritası kaldırıldı**: haritadaki renkli imar hücreleri (`imar-karo`) ve "İmar haritası" lejant kartı yok; parselin imar türü kartında yazar. Sunucudaki imar sınıflandırması ve `/api/karo/imar` ucu oyun kuralları için durur.
-- **Sesler kapalı**: `public/js/ses.js` içinde `SESLER_KAPALI = true` — efektler, müzik ve ortam sesleri çalmaz, ses bağlamı kurulmaz, ayarlardaki Ses/Müzik seçenekleri gizli (yeni ses tasarımı gelene kadar). Telefondaki titreşim sürer; açmak için bayrak `false` yapılır ve `index.html`'deki `data-ses-ayari` satırlarından `hidden` kaldırılır.
+- **Ses** (v0.44): `public/js/ses.js` yeni ses tasarımıyla açık — yumuşak tınılar, tiz süzgeç ve hafif yankı; gündüz/gece ortam sesleri; ⚙️ menüsünden Ses/Müzik açılıp kapanır (müzik varsayılan kapalı). Telefonda efektler titreşim de verir.
 - **Telefonda hız**: çiftlik açıkken harita ve 3B köy katmanı duraklatılır (`harita.duraklat`); çiftliğe girerken harita uçmaz, parsel maketi çiftlikten çıkınca kurulur. Telefonda (dokunmatik + dar ekran) çiftlik 1,5× piksel yoğunluğu, yumuşak gölgelenme (GTAO) yok, 1024 gölge haritası ve %45 çevre süsüyle çizilir (`MOBIL`, `sevimli-efekt.js`); harita "Dengeli" ayarı telefonda daha az ağaç/bina/araç ve saniyede 10 kare canlandırma kullanır (`TELEFON_DENGELI`, `dunya3d.js`).
 - **Ana ekran Çiftliğim**: parseli olan oyuncu her girişte çiftliğinde açılır; çiftlikteki "Köy" düğmesi haritayı oyuncunun köyünde açar. Türkiye görünümü ana ekrandan kalktı (harita köy ölçeğinin altına, zoom 11'e, uzaklaşmaz); ileride ayrı bölüm olacak.
 

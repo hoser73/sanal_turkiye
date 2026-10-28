@@ -35,8 +35,10 @@ function setFirsatlari(userId) {
   });
 }
 
-function gazete(userId) {
+async function gazete(userId) {
   const v = { ...ortak(), tarih: Date.now(), hasatBonus: K.hasatBonus };
+  const ih = await require('./ihale').liste(null).catch(() => null);
+  if (ih) v.ihale = { ad: ih.set.ad, ikon: ih.set.ikon, adet: ih.ihaleler.filter((i) => i.durum === 'ACIK').length };
   if (userId) {
     v.setler = setFirsatlari(userId);
     const y = require('./yardim').durumu(userId);

@@ -73,7 +73,7 @@ function anaBolge(userId) {
 }
 function tpEkle(userId, tp, eylem, bolge = null) {
   if (!userId || !(tp > 0)) return;
-  tp = Math.round(tp * require('./koy-meydani').oran(userId, 'OKUL'));   // köy okulu
+  tp = Math.round(tp * require('./koy-meydani').oran(userId, 'OKUL') * require('./mini-etkinlik').tpKat());   // köy okulu, hafta sonu etkinliği
   const once = oyuncuSeviyesi(userId);
   db.prepare(`INSERT INTO tp_kayitlari (user_id, tp, eylem, region_id, at) VALUES (?, ?, ?, ?, ?)`).run(userId, tp, eylem, bolge ?? anaBolge(userId), simdi());
   db.prepare(`UPDATE users SET tp = tp + ? WHERE id = ?`).run(tp, userId);
@@ -214,7 +214,7 @@ function urunHavuzu(userId) {
   const yapilar = new Set(db.prepare(`SELECT DISTINCT s.type FROM structures s JOIN parcels p ON p.id = s.parcel_id
                                       WHERE p.owner_user_id = ? AND s.status = 'ACTIVE'`).all(userId).map((r) => r.type));
   for (const [tip, h] of Object.entries(HAYVANLAR)) if (yapilar.has(tip)) havuz.add(h.urun);
-  for (const [kod, r] of Object.entries(RECETELER)) if (yapilar.has(r.tesis) && kod !== 'YEM') havuz.add(kod);
+  for (const [kod, r] of Object.entries(RECETELER)) if ([].concat(r.tesis).some((x) => yapilar.has(x)) && kod !== 'YEM') havuz.add(kod);
   return [...havuz];
 }
 function siparisUret(userId, t) {

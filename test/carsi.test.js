@@ -132,11 +132,14 @@ test('zirai bayi: gübre hasadı %20 artırır; ilaç dondan korur; aşı barın
   assert.equal(m1, Math.round(m2 * (1 + CARSI.etki.gubreBonus)));
   // Aşı
   const h3 = hucreBul('TARIM');
-  await c(`/api/parsel/${h3}/edin`, {});
+  L.odul(c.id, 200, 'test');   // ilk görev ödülleri tur sürerken ödenmez (tur verir); bu oyuncu turu açmadı
+  const ed3 = await c(`/api/parsel/${h3}/edin`, {});
+  assert.equal(ed3.durum, 200, JSON.stringify(ed3.veri));
   const t = Date.now();
   const yid = db.prepare(`INSERT INTO structures (parcel_id, owner_user_id, type, status, started_at, completes_at, completed_at) VALUES (?, ?, 'KUMES', 'ACTIVE', ?, ?, ?)`).run(h3, c.id, t, t, t).lastInsertRowid;
   await c('/api/carsi/satin-al', { urun: 'ASI' });
-  assert.equal((await c('/api/carsi/kullan', { urun: 'ASI', yapiId: yid })).durum, 200);
+  const asi = await c('/api/carsi/kullan', { urun: 'ASI', yapiId: yid });   // aşı barınağa
+  assert.equal(asi.durum, 200, JSON.stringify(asi.veri));
   L.envanterDegis(c.id, 'YEM', 20, 'test');
   assert.equal((await c(`/api/yapi/${yid}/besle`, {})).durum, 200);
   db.prepare(`UPDATE hayvan_bakim SET hazir_at = ? WHERE structure_id = ?`).run(Date.now() - 1, yid);

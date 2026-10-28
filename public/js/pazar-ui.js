@@ -171,15 +171,36 @@ function gazeteHTML(g) {
         <button type="button" class="dugme ince" data-eylem="koop-ac">Gönder</button></li>`).join('')}</ul>`) : ''}
     ${blok('🧺 Tüccar bugün iyi fiyat veriyor', g.tuccar.length ? `<ul class="gz-liste">${g.tuccar.map((u) => `<li><span><b>${u.ikon} ${esc(u.ad)}</b></span><b>${akce(u.fiyat)}</b></li>`).join('')}</ul>
         <button type="button" class="dugme ince genis" data-eylem="pazar-alt" data-alt="urun">Tüccara sat</button>` : '')}
+    ${g.ihale?.adet ? blok('🔨 Haftanın ihalesi', `<ul class="gz-liste"><li><span><b>${g.ihale.ikon} ${esc(g.ihale.ad)}</b><small>${g.ihale.adet} tarla açık artırmada</small></span>
+        <button type="button" class="dugme ince" data-eylem="pazar-alt" data-alt="ihale">Teklif ver</button></li></ul>`) : ''}
     ${blok('🏷️ Yeni ilanlar', g.ilanlar.length ? `<ul class="gz-liste">${g.ilanlar.map((i) => `<li><button type="button" class="gz-ilan" data-eylem="git" data-id="${esc(i.parsel)}"><span><b>${esc(i.mahalle)}</b><small>${esc(i.il)} · ${sayi(i.alan)} m²</small></span><b>${akce(i.fiyat)}</b></button></li>`).join('')}</ul>` : '<p class="kucuk">Şu an satılık parsel yok.</p>')}
     ${blok('🤝 Son satışlar', g.satislar.length ? `<ul class="gz-liste">${g.satislar.map((x) => `<li><span><b>${esc(x.mahalle)}</b><small>${esc(x.il)} · alan ${esc(x.alici)}</small></span><b>${akce(x.fiyat)}</b></li>`).join('')}</ul>` : '')}
     <p class="kucuk gz-not">Oyun içi göstergelerdir; akçe nakde çevrilmez.</p>
   </div>`;
 }
 
+// ---------- Haftalık arazi ihalesi (ihale.js) ----------
+function ihaleHTML(d, ben) {
+  const kart = (i) => {
+    const bitti = i.durum !== 'ACIK' || i.kalanMs <= 0;
+    const durumYazi = i.durum === 'SATILDI' ? (i.kazandim ? '🏆 Sen kazandın' : `Satıldı · ${akce(i.fiyat)}`) : i.durum === 'SATILMADI' ? 'Teklif çıkmadı' : '';
+    return `<li class="ihale-kart${i.liderBen ? ' lider' : ''}">
+      <div class="ihale-ust"><div><b>${esc(i.mahalle)}</b><small>${esc(i.ilce)}, ${esc(i.il)} · ${sayi(i.alan)} m² tarla</small></div>
+        <button type="button" class="dugme ince" data-eylem="git" data-id="${esc(i.parsel)}">Haritada</button></div>
+      <div class="ihale-rakam"><span>Taban <b>${akce(i.taban)}</b></span><span>En yüksek <b>${i.enYuksek != null ? akce(i.enYuksek) : '—'}</b></span><span>${i.teklifSayisi} teklif</span></div>
+      ${bitti ? `<p class="kucuk"><b>${durumYazi}</b></p>`
+        : `<p class="kucuk">${i.liderBen ? '✅ Şu an en yüksek teklif senin' : i.benimTeklif ? '⚠️ Teklifin geçildi; akçen iade edildi' : ''} · bitişe <span data-bitis="${i.bitis}">${sure(i.kalanMs)}</span></p>
+          ${ben ? `<form class="ihale-form satir" data-id="${i.id}"><input type="number" name="tutar" min="${i.asgari}" step="1" value="${i.asgari}" aria-label="Teklif tutarı"><button class="dugme ince altin">Teklif ver</button></form>` : '<p class="kucuk">Teklif vermek için giriş yap.</p>'}`}
+    </li>`;
+  };
+  return `<div class="kutu ihale-bas"><b>${d.set.ikon} Bu haftanın ihalesi: ${esc(d.set.ad)}</b>
+      <p class="kucuk">Yöre setinin illerinden seçilmiş tarlalar. Taban fiyat olağan tahsis bedelinden %${Math.round((1 - d.tabanOrani) * 100)} ucuz; yeni teklif en az %${Math.round(d.artis * 100)} yüksek olmalı. Teklifin emanette durur, geçilirse iade edilir. Pazar akşamı 21.00'de biter; kazanan tarlayı alır.</p></div>
+    ${d.ihaleler.length ? `<ul class="ihale-liste">${d.ihaleler.map(kart).join('')}</ul>` : '<p class="kucuk">Bu hafta ihaleye uygun tarla bulunamadı.</p>'}`;
+}
+
 // ---------- Pazar sekmesi ----------
 export async function pazarPaneli({ ben, alt, filtre, bolgeler, kurallar, envanterHTML, sunucuSimdi }) {
-  const sekmeler = [['gazete', '📰 Bugün'], ['endeks', '📈 Endeksler'], ['ilanlar', 'Parsel ilanları'], ['benim', 'Benim pazarım'], ['borsa', 'Ürün borsası'], ['sevkiyat', 'Sevkiyat'], ['kiralik', 'Kiralık tarla'], ['islemler', 'Son işlemler'], ['urun', 'Tüccara sat']];
+  const sekmeler = [['gazete', '📰 Bugün'], ['ihale', '🔨 İhale'], ['endeks', '📈 Endeksler'], ['ilanlar', 'Parsel ilanları'], ['benim', 'Benim pazarım'], ['borsa', 'Ürün borsası'], ['sevkiyat', 'Sevkiyat'], ['kiralik', 'Kiralık tarla'], ['islemler', 'Son işlemler'], ['urun', 'Tüccara sat']];
   const gelen = ben?.pazar?.gelenTeklif || 0;
   const ust = `<h2 class="kart-baslik">Türkiye Pazarı</h2>
     <div class="segment" role="tablist">${sekmeler.map(([k, ad]) => `<button type="button" data-eylem="pazar-alt" data-alt="${k}" aria-selected="${alt === k}">
@@ -193,13 +214,14 @@ export async function pazarPaneli({ ben, alt, filtre, bolgeler, kurallar, envant
   else if (alt === 'kiralik') govde = await kiralikPaneli(ben);
   else if (alt === 'endeks') govde = await endeksPaneli(ben);
   else if (alt === 'gazete') govde = gazeteHTML(await api('/api/gazete'));
+  else if (alt === 'ihale') govde = ihaleHTML(await api('/api/ihale'), ben);
   else govde = await ilanListesi(filtre, bolgeler, kurallar, sunucuSimdi);
   return ust + govde;
 }
 
 // ---------- Endeksler: Türkiye arsa endeksi, yükselen ve değerli mahalleler, portföy özeti ----------
 async function endeksPaneli(ben) {
-  const [o, pf] = await Promise.all([api('/api/piyasa'), ben ? api('/api/portfoy').catch(() => null) : null]);
+  const [o, pf, alarmlar] = await Promise.all([api('/api/piyasa'), ben ? api('/api/portfoy').catch(() => null) : null, ben ? api('/api/alarm').catch(() => []) : []]);
   const mahalleSatiri = (m) => `<li><button type="button" class="liste-oge" data-eylem="mahalle-ac" data-id="${m.id}">
       <span class="govde"><b>${esc(m.ad)}</b><span class="kucuk">${esc(m.ilce)}${m.il ? `, ${esc(m.il)}` : ''} · ${m.parsel} sahipli parsel</span></span>
       <span class="sag"><b>${sayi(m.endeks)}</b>${degisimCipi(m.degisim7, ' 7g')}</span></button></li>`;
@@ -209,6 +231,10 @@ async function endeksPaneli(ben) {
       ${endeksGrafigi(o.tr.seri)}
       <div class="endeks-alt"><span>🤝 30 günde <b>${o.islem30.sayi}</b> satış</span><span>💰 Hacim <b>${akce(o.islem30.hacim)}</b></span></div>
     </div>`];
+  // Fiyat alarmları (alarm.js): parsel kartındaki "🔔 Endeks … olunca haber ver" ile kurulur
+  if (alarmlar?.length) parca.push(`<h3 class="bolum">🔔 Alarmlarım</h3><ul class="gz-liste">${alarmlar.map((a) => `<li><span><b>${esc(a.mahalle)}</b>
+      <small>${a.yon === 'YUKARI' ? '▲' : '▼'} ${sayi(a.hedef)} hedefi · şimdi ${a.simdiki != null ? sayi(Math.round(a.simdiki * 10) / 10) : '—'}${a.tetiklendi ? ' · ✅ ulaştı' : ''}</small></span>
+      <button type="button" class="bag" data-eylem="alarm-sil" data-id="${a.id}">sil</button></li>`).join('')}</ul>`);
   if (pf?.parseller.length) {
     const z = pf.ozet;
     parca.push(`<div class="kutu portfoy-kutu"><div class="satir"><div><div class="kucuk">Portföyüm · ${z.parsel} parsel</div><b class="fiyat">${akce(z.deger)}</b></div>
