@@ -43,13 +43,14 @@ async function aktar({ kaynak, hedef, tutar, sebep, tx = yeniTx() }) {
   if (!(tutar > 0)) throw new OyunHatasi(400, 'Geçersiz tutar');
   const kaynakUser = kaynak.startsWith('U:') ? Number(kaynak.slice(2)) : null;
   const hedefUser = hedef.startsWith('U:') ? Number(hedef.slice(2)) : null;
-  // Denetlenen (eksiye düşemeyen) hesaplar kilitlenir; sistem hesapları (SYS:MINT, SYS:SINK) denetlenmez
-  if (kaynakUser || kaynak.startsWith('ESCROW:')) await db.kilit(`hesap:${kaynak}`);
+  // Sistem dışı kaynak hesaplar (oyuncu, emanet, ihale, kooperatif, işletme kasası) bakiye denetiminden önce kilitlenir;
+  // sistem hesapları (SYS:MINT, SYS:SINK …) denetlenmez
+  if (!kaynak.startsWith('SYS:')) await db.kilit(`hesap:${kaynak}`);
   else if (!db.islemde()) throw new Error('Defter yazımı işlem dışında');
   if (kaynakUser && await bakiye(kaynakUser) < tutar) {
     throw new OyunHatasi(402, `Yetersiz bakiye: ${tutar} akçe gerekli`, 'YETERSIZ_BAKIYE');
   }
-  if (kaynak.startsWith('ESCROW:') && await hesapBakiye(kaynak) < tutar) {
+  if (/^(ESCROW|IHALE):/.test(kaynak) && await hesapBakiye(kaynak) < tutar) {
     throw new Error(`Emanet hesabı tutarsız: ${kaynak}`);   // olmamalı; işlemi geri alır
   }
   await stmt.ekle.run(kaynak, kaynakUser, tutar, 0, tx, sebep);
@@ -84,7 +85,7 @@ async function denetim({ anahtar = null, aktor = null, eylem, varlik = null, onc
     sonra == null ? null : JSON.stringify(sonra),
     bolge, herkese ? 1 : 0);
   const olaylar = require('./olaylar');
-  if (herkese) olaylar.yay('olay', { eylem, bolge, varlik });
+  if (herkese) olaylar.yay('olay', { eylem, bolge, varlik, aktor });   // aktor yalnızca sunucu içinde (canli.js 'ben' bayrağı için)
   if (aktor) olaylar.yay('eylem', { eylem, aktor, bolge, varlik });
 }
 

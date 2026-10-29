@@ -68,68 +68,70 @@ function odulYazisi(n) {
 }
 
 const q = {
-  durum: db.prepare('SELECT seviye, yildiz FROM bulmaca_durum WHERE user_id = ?'),
-  durumYaz: db.prepare(`INSERT INTO bulmaca_durum (user_id, seviye, yildiz) VALUES (?, ?, ?)
+  durum: db.sorgu('SELECT seviye, yildiz FROM bulmaca_durum WHERE user_id = ?'),
+  durumYaz: db.sorgu(`INSERT INTO bulmaca_durum (user_id, seviye, yildiz) VALUES (?, ?, ?)
     ON CONFLICT (user_id) DO UPDATE SET seviye = excluded.seviye, yildiz = bulmaca_durum.yildiz + excluded.yildiz`),
-  gunluk: db.prepare('SELECT odullu FROM bulmaca_gunluk WHERE user_id = ? AND gun = ?'),
-  gunlukArt: db.prepare(`INSERT INTO bulmaca_gunluk (user_id, gun, odullu) VALUES (?, ?, 1)
-    ON CONFLICT (user_id, gun) DO UPDATE SET odullu = odullu + 1 RETURNING odullu`),
-  birak: db.prepare(`UPDATE bulmaca_oyun SET durum = 'BIRAKTI', bitis_at = ? WHERE user_id = ? AND durum = 'OYNUYOR'`),
-  ekle: db.prepare('INSERT INTO bulmaca_oyun (user_id, seviye, basla_at) VALUES (?, ?, ?)'),
-  oyun: db.prepare('SELECT * FROM bulmaca_oyun WHERE id = ? AND user_id = ?'),
-  bitir: db.prepare(`UPDATE bulmaca_oyun SET durum = ?, bitis_at = ?, hamle = ?, yildiz = ? WHERE id = ? AND durum = 'OYNUYOR'`),
-  gecmis: db.prepare(`SELECT seviye, MAX(yildiz) AS yildiz FROM bulmaca_oyun WHERE user_id = ? AND durum = 'KAZANDI'
+  gunluk: db.sorgu('SELECT odullu FROM bulmaca_gunluk WHERE user_id = ? AND gun = ?'),
+  gunlukArt: db.sorgu(`INSERT INTO bulmaca_gunluk (user_id, gun, odullu) VALUES (?, ?, 1)
+    ON CONFLICT (user_id, gun) DO UPDATE SET odullu = bulmaca_gunluk.odullu + 1 RETURNING odullu`),   // tablo adıyla: Postgres'te yalın ad belirsiz
+  birak: db.sorgu(`UPDATE bulmaca_oyun SET durum = 'BIRAKTI', bitis_at = ? WHERE user_id = ? AND durum = 'OYNUYOR'`),
+  ekle: db.sorgu('INSERT INTO bulmaca_oyun (user_id, seviye, basla_at) VALUES (?, ?, ?)'),
+  oyun: db.sorgu('SELECT * FROM bulmaca_oyun WHERE id = ? AND user_id = ?'),
+  bitir: db.sorgu(`UPDATE bulmaca_oyun SET durum = ?, bitis_at = ?, hamle = ?, yildiz = ? WHERE id = ? AND durum = 'OYNUYOR'`),
+  gecmis: db.sorgu(`SELECT seviye, MAX(yildiz) AS yildiz FROM bulmaca_oyun WHERE user_id = ? AND durum = 'KAZANDI'
     GROUP BY seviye ORDER BY seviye DESC LIMIT 4`),
 };
-const seviyesi = (userId) => q.durum.get(userId)?.seviye || 1;
+const seviyesi = async (userId) => (await q.durum.get(userId))?.seviye || 1;
 
-function durumu(userId, t = Date.now()) {
-  const d = q.durum.get(userId) || { seviye: 1, yildiz: 0 };
-  const odullu = q.gunluk.get(userId, gunAnahtari(t))?.odullu || 0;
+async function durumu(userId, t = Date.now()) {
+  const d = (await q.durum.get(userId)) || { seviye: 1, yildiz: 0 };
+  const odullu = (await q.gunluk.get(userId, gunAnahtari(t)))?.odullu || 0;
   return {
     seviye: d.seviye, yildiz: d.yildiz, bolum: bolum(d.seviye), odul: odulYazisi(d.seviye),
     gunluk: { odullu, tavan: B.gunlukOdul, kalan: Math.max(0, B.gunlukOdul - odullu) },
-    gecmis: q.gecmis.all(userId).reverse(), taslar: B.taslar,
+    gecmis: (await q.gecmis.all(userId)).reverse(), taslar: B.taslar,
   };
 }
 
 // Sıradaki bölümü başlat (yarım kalan oyun bırakılmış sayılır)
-const basla = db.transaction((userId) => {
-  const t = Date.now(), n = seviyesi(userId);
-  q.birak.run(t, userId);
-  const id = Number(q.ekle.run(userId, n, t).lastInsertRowid);
+const basla = (userId) => db.tx(async () => {
+  await db.kilit(`bulmaca:${userId}`);
+  const t = Date.now(), n = await seviyesi(userId);
+  await q.birak.run(t, userId);
+  const id = Number((await q.ekle.run(userId, n, t)).lastInsertRowid);
   return { oyunId: id, bolum: bolum(n), odul: odulYazisi(n), enKisa: { tabanMs: B.minSureMs, hamleMs: B.hamleMs } };
 });
 
-const bitir = db.transaction((userId, govde = {}) => {
+const bitir = (userId, govde = {}) => db.tx(async () => {
+  await db.kilit(`bulmaca:${userId}`);   // seviye ilerlemesi ve günlük ödül sayacı eşzamanlı bitişlerde de tutarlı kalsın
   const t = Date.now();
-  const o = q.oyun.get(Number(govde.oyunId), userId);
+  const o = await q.oyun.get(Number(govde.oyunId), userId);
   if (!o) throw new OyunHatasi(404, 'Oyun bulunamadı');
   if (o.durum !== 'OYNUYOR') throw new OyunHatasi(409, 'Bu oyun zaten bitti', 'BITTI');
   const b = bolum(o.seviye), gecen = t - o.basla_at;
   if (govde.kazandi !== true) {
-    q.bitir.run('KAYBETTI', t, null, null, o.id);
+    await q.bitir.run('KAYBETTI', t, null, null, o.id);
     return { kazandi: false, seviye: o.seviye };
   }
   const hamle = Number(govde.hamle);
   if (!Number.isInteger(hamle) || hamle < 1 || hamle > b.hamle) throw new OyunHatasi(400, 'Geçersiz hamle sayısı');
   if (hamle < enAzHamle(b)) throw new OyunHatasi(409, 'Bu bölüm bu kadar az hamlede bitmez', 'AZ_HAMLE');
-  if (gecen > B.maksSureMs) { q.bitir.run('KAYBETTI', t, hamle, null, o.id); throw new OyunHatasi(409, 'Bölümün süresi doldu', 'SURE'); }
+  if (gecen > B.maksSureMs) { await q.bitir.run('KAYBETTI', t, hamle, null, o.id); throw new OyunHatasi(409, 'Bölümün süresi doldu', 'SURE'); }
   if (gecen < B.minSureMs + hamle * B.hamleMs) throw new OyunHatasi(409, 'Bölüm bu kadar kısa sürede bitmez', 'HIZLI');
   const yildiz = yildizHesapla(hamle, b.hamle);
-  q.bitir.run('KAZANDI', t, hamle, yildiz, o.id);
+  if ((await q.bitir.run('KAZANDI', t, hamle, yildiz, o.id)).changes !== 1) throw new OyunHatasi(409, 'Bu oyun zaten bitti', 'BITTI');
   // Yalnızca sıradaki bölüm ilerletir (eski bir oyun kimliğiyle ikinci kez ilerlenmez)
-  const ilerledi = o.seviye === seviyesi(userId);
-  if (ilerledi) q.durumYaz.run(userId, o.seviye + 1, yildiz);
+  const ilerledi = o.seviye === await seviyesi(userId);
+  if (ilerledi) await q.durumYaz.run(userId, o.seviye + 1, yildiz);
   let odul = null;
-  if (ilerledi && q.gunlukArt.get(userId, gunAnahtari(t)).odullu <= B.gunlukOdul) {
+  if (ilerledi && (await q.gunlukArt.get(userId, gunAnahtari(t))).odullu <= B.gunlukOdul) {
     const od = B.odul(o.seviye), akce = od.akce + (yildiz - 1) * B.yildizAkce, tx = L.yeniTx();
-    L.odul(userId, akce, `Motif bulmacası ${o.seviye}. bölüm`, tx);
-    if (od.esya) L.envanterDegis(userId, od.esya[0], od.esya[1], `Motif bulmacası ${o.seviye}. bölüm`, tx);
+    await L.odul(userId, akce, `Motif bulmacası ${o.seviye}. bölüm`, tx);
+    if (od.esya) await L.envanterDegis(userId, od.esya[0], od.esya[1], `Motif bulmacası ${o.seviye}. bölüm`, tx);
     odul = { akce, esya: od.esya ? { ikon: URUNLER[od.esya[0]]?.ikon, ad: URUNLER[od.esya[0]]?.ad, adet: od.esya[1] } : null };
   }
-  if (ilerledi) L.denetim({ aktor: userId, eylem: 'PUZZLE_WON', varlik: `BULMACA:${o.seviye}`, sonra: { hamle, yildiz, odul } });
-  return { kazandi: true, seviye: o.seviye, yildiz, odul, sonraki: seviyesi(userId), gunlukDoldu: ilerledi && !odul };
+  if (ilerledi) await L.denetim({ aktor: userId, eylem: 'PUZZLE_WON', varlik: `BULMACA:${o.seviye}`, sonra: { hamle, yildiz, odul } });
+  return { kazandi: true, seviye: o.seviye, yildiz, odul, sonraki: await seviyesi(userId), gunlukDoldu: ilerledi && !odul };
 });
 
 function rotalar(app, { h, auth }) {

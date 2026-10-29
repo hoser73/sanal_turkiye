@@ -20,7 +20,9 @@ before(async () => {
 after(() => { sunucu.close(); fs.rmSync(VERI, { recursive: true, force: true }); });
 const istemci = istemciUret(() => taban);
 // Oyunu geçmişte başlamış say (en kısa süre testte beklenmesin)
-const eskit = (oyunId, ms = 10 * 60_000) => db.prepare('UPDATE bulmaca_oyun SET basla_at = basla_at - ? WHERE id = ?').run(ms, oyunId);
+const eskit = (oyunId, ms = 10 * 60_000) => db.run('UPDATE bulmaca_oyun SET basla_at = basla_at - ? WHERE id = ?', ms, oyunId);
+// Olay yolu dinleyicileri işlem kaydedildikten sonra zaman uyumsuz çalışır: etkisini denetlemeden önce kısa bekle
+const olaylariBekle = () => new Promise((r) => setTimeout(r, 50));
 
 test('bölüm tanımı her seferinde aynı; zorluk bölümle artar', () => {
   assert.deepEqual(bulmaca.bolum(7), bulmaca.bolum(7));
@@ -51,34 +53,35 @@ test('kazanınca ilerler ve ödül alır; hızlı ya da fazla hamleli bitiş red
   assert.equal(o.bolum.seviye, 1);
   assert.deepEqual(o.enKisa, { tabanMs: B.minSureMs, hamleMs: B.hamleMs }, 'istemci HIZLI yanıtında ne kadar bekleyeceğini bilir');
   assert.equal((await A('/api/bulmaca/bitir', { oyunId: o.oyunId, kazandi: true, hamle: 5 })).durum, 409, 'çok hızlı');
-  eskit(o.oyunId);
+  await eskit(o.oyunId);
   assert.equal((await A('/api/bulmaca/bitir', { oyunId: o.oyunId, kazandi: true, hamle: o.bolum.hamle + 1 })).durum, 400, 'hamle sınırı');
   assert.equal((await A('/api/bulmaca/bitir', { oyunId: o.oyunId, kazandi: true, hamle: 1 })).veri.kod, 'AZ_HAMLE', '18 hedef taş tek hamlede toplanmaz');
-  const once = L.bakiye(id);
+  const once = await L.bakiye(id);
   const r = await A('/api/bulmaca/bitir', { oyunId: o.oyunId, kazandi: true, hamle: 4 });
   assert.equal(r.durum, 200, JSON.stringify(r.veri));
   assert.equal(r.veri.yildiz, 3);
   assert.equal(r.veri.sonraki, 2);
-  assert.equal(Math.round(L.bakiye(id) - once), B.odul(1).akce + 2 * B.yildizAkce);
+  assert.equal(Math.round(await L.bakiye(id) - once), B.odul(1).akce + 2 * B.yildizAkce);
   assert.equal((await A('/api/bulmaca/bitir', { oyunId: o.oyunId, kazandi: true, hamle: 4 })).durum, 409, 'ikinci kez bitmez');
 
   // Kaybetmek: ilerleme yok, ödül yok
   o = (await A('/api/bulmaca/basla', {})).veri;
-  const once2 = L.bakiye(id);
-  eskit(o.oyunId);
+  const once2 = await L.bakiye(id);
+  await eskit(o.oyunId);
   assert.equal((await A('/api/bulmaca/bitir', { oyunId: o.oyunId, kazandi: 'false', hamle: 5 })).veri.kazandi, false, 'yalnızca true kazanç sayılır');
-  assert.equal(L.bakiye(id), once2);
+  assert.equal(await L.bakiye(id), once2);
   assert.equal((await A('/api/bulmaca')).veri.seviye, 2);
 
   // Yeni oyun başlatınca yarım kalan bırakılır
   const y1 = (await A('/api/bulmaca/basla', {})).veri, y2 = (await A('/api/bulmaca/basla', {})).veri;
-  eskit(y1.oyunId);
+  await eskit(y1.oyunId);
   assert.equal((await A('/api/bulmaca/bitir', { oyunId: y1.oyunId, kazandi: true, hamle: 5 })).durum, 409);
-  eskit(y2.oyunId);
+  await eskit(y2.oyunId);
   assert.equal((await A('/api/bulmaca/bitir', { oyunId: y2.oyunId, kazandi: true, hamle: 5 })).durum, 200);
 
   // Sezon yolu puanı (olay yolu)
-  assert.equal(require('../server/mevsim-yolu').ozet(id).puan >= 2 * require('../server/config/rules').MEVSIM_YOLU.puanlar.PUZZLE_WON, true);
+  await olaylariBekle();
+  assert.equal((await require('../server/mevsim-yolu').ozet(id)).puan >= 2 * require('../server/config/rules').MEVSIM_YOLU.puanlar.PUZZLE_WON, true);
 });
 
 test('günlük ödül sınırından sonra bölümler ilerler ama ödül vermez', async () => {
@@ -88,13 +91,13 @@ test('günlük ödül sınırından sonra bölümler ilerler ama ödül vermez',
   let son;
   for (let i = 0; i <= B.gunlukOdul; i++) {
     const o = (await A('/api/bulmaca/basla', {})).veri;
-    eskit(o.oyunId);
-    const once = L.bakiye(id);
+    await eskit(o.oyunId);
+    const once = await L.bakiye(id);
     son = (await A('/api/bulmaca/bitir', { oyunId: o.oyunId, kazandi: true, hamle: o.bolum.hamle })).veri;
-    if (i < B.gunlukOdul) assert.ok(son.odul && L.bakiye(id) > once, `bölüm ${i + 1} ödül vermeli`);
+    if (i < B.gunlukOdul) assert.ok(son.odul && await L.bakiye(id) > once, `bölüm ${i + 1} ödül vermeli`);
   }
   assert.equal(son.odul, null);
   assert.equal(son.gunlukDoldu, true);
   assert.equal(son.sonraki, B.gunlukOdul + 2);
-  assert.equal(L.envanterMiktar(id, 'GUBRE'), 2, '5. bölümde gübre');
+  assert.equal(await L.envanterMiktar(id, 'GUBRE'), 2, '5. bölümde gübre');
 });

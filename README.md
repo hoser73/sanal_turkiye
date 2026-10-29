@@ -10,12 +10,13 @@ Yaşayan dijital ülke simülasyonu. **81 ilin tamamı açık**: gerçek Türkiy
 npm install
 npm start            # http://localhost:3400
 npm run dev          # geliştirme: dosya değişince yeniden başlar, seçim takvimi hızlı (aşağıya bakın)
-npm test             # kabul testleri (155; ağ ve gerçek yapay zekâ kullanmaz; PostgreSQL testi gömülü PGlite ile)
+npm test             # kabul testleri (248; SQLite; ağ ve gerçek yapay zekâ kullanmaz)
+npm run test:pg      # aynı takım PostgreSQL 18 + PostGIS üzerinde (gömülü PGlite; sunucu gerekmez)
 npm run rol -- e-posta ADMIN   # yetkili rolü ver (MODERATOR / DENETCI / ADMIN; panel için 2FA zorunlu)
 npm run yedek        # çevrimiçi yedek (data/yedekler, gzip, bütünlük denetimi, 14 yedek döndürme)
 npm run geri-yukle -- data/yedekler/<dosya>.db.gz [--onayla]   # sunucu durdurulmuşken
 npm run yuk-testi -- --taban http://localhost:3400 --es 20 --sure 20
-npm run postgres-aktar -- --sema | --disa-aktar <dizin>        # PostgreSQL + PostGIS geçişi (docs/postgres-gecisi.md)
+npm run postgres-aktar -- --sema | --disa-aktar <dizin>        # Postgres şemasını üret / SQLite verisini Postgres'e aktar
 npm run posta-dene -- adres@ornek.com   # SMTP ile HTML deneme e-postası
 npm run veri         # il/ilçe sınır verisini yeniden hazırla (server/veri/kaynak → server/veri, public/veri)
 npm run reset-db     # oyun veritabanını sıfırla (karo önbelleği korunur)
@@ -129,7 +130,7 @@ Parsel bir yatırım varlığı gibi oynanır: al, işle, değerlensin, sat. Ak�
 
 Ayrıntılar ve 100.000 oyuncu planı: `docs/olcekleme.md`. Yeni oyuncu yük testi: `npm run yuk-oyuncu -- <taban> <oyuncu> <sn>`.
 
-- **Sunucu:** bakım işleri her istekten çıktı (`BAKIM_ARALIGI_MS`, varsayılan 1 sn; her iş ayrı korunur); SQLite `synchronous=NORMAL` + 27 dizin (`db.indeksleriKur`); herkese aynı uçlar kısa önbellekte (`server/lib/onbellek.js`, testte `ONBELLEK=kapali`); oturum yalnızca `/api` isteklerinde okunur; giriş/kayıt parola özeti eşzamansız; seviye atlamada boş bildirim gitmiyor.
+- **Sunucu:** bakım işleri her istekten çıktı (`BAKIM_ARALIGI_MS`, varsayılan 1 sn; her iş ayrı korunur); SQLite `synchronous=NORMAL` + 27 dizin (`server/vt/sema-sqlite.js`); herkese aynı uçlar kısa önbellekte (`server/lib/onbellek.js`, testte `ONBELLEK=kapali`); oturum yalnızca `/api` isteklerinde okunur; giriş/kayıt parola özeti eşzamansız; seviye atlamada boş bildirim gitmiyor.
 - **Canlı kanal:** ileti bir kez metne çevrilir, bildirim yalnızca ilgili oyuncunun bağlantılarına, çevrimiçi sayıları toplu; istemci yalnızca ekrandaki olaylarda haritayı tazeler (4–6 sn birikimli); eski bağlantının kapanışı yenisini çevrimdışı göstermiyor.
 - **İstemci:** çiftlik açıkken harita veri yüklemez ve 3B köy kurulmaz; harita %50 taşan alanı yükler, küçük kaydırmada yeniden istemez, değişmeyen yanıtta yeniden kurmaz; 3B köy canlandırması 15 sn dokunulmazsa durur; çiftlik telefonda 30/15 kare, masaüstünde 60/30; telefonda bulanık cam paneller yok; rehber avatarı boştayken ~8 kare; WebGL bağlamları kapanınca serbest; ortak geometriler sahne yenilenirken atılmıyor; biten sayaç sonsuz tazeleme döngüsü başlatmıyor; `/api/ben` yoklaması 2 dk; ülke ölçeği verisi (il sınırları, maske) köy görünümünde indirilmiyor; güneş/ışık yalnızca belirgin kaydırmada güncellenir.
 - **Komşu arazi birleşimi:** parsel kartındaki komşular gerçek tarla hücrelerini (`tarla_hucreleri`) de hesaba katar: bir hücreyi oyuncunun gerçek tarlası kaplıyorsa orada "+" çıkmaz; tam sayfa çiftlikte o hücreler çiftliğin devamı olarak boşluksuz tarla çizilir (`cevre`: 5 × 5'in dış halkası). Çiftlik başlığına dokununca **Arazilerim** listesi açılır, araziler arasında geçilir.
@@ -399,7 +400,7 @@ Dokular ve modeller kendi çizimimizdir (tuvalde üretilir); hiçbir oyunun gör
 | Doldurma kipi | Gerçek sakin `SECIM_MIN_SECMEN` altındayken demo sakinler seçmen ve aday sayılır; böyle bir seçim `doldurma` olarak işaretlenir ve arayüzde açıkça yazılır. Her demo kendi cihaz izini kullanır (ortak cihaz şüphesi doğmaz). Demo muhtar duyuru yapar, demo başkan proje önerir, demo meclis üyesi oy verir | `server/secim.js`, `server/belediye.js` |
 | E-posta | nodemailer ile gerçek SMTP, düz metin + HTML şablon (kaçışlı), başarısız iletiler için kuyruk (1 dk / 5 dk / 30 dk / 2 sa, sonra HATA), `npm run posta-dene`, yönetim panelinde kuyruk durumu | `server/posta.js` |
 | Yayına alma | Üretim yapılandırma denetimi (https `TABAN_URL`, `SIFRELEME_ANAHTARI`, `SMTP_URL`, geliştirme kısayolları kapalı), SIGTERM ile düzgün kapanma, Dockerfile (root olmayan kullanıcı, sağlık denetimi), docker-compose + Caddy (otomatik HTTPS, WebSocket), systemd birimi, yedek cron | `Dockerfile`, `docker-compose.yml`, `deploy/*`, `docs/yayina-alma.md` |
-| PostgreSQL | Dışa aktarım gerçek PostgreSQL 18 + PostGIS 3.6 üzerinde (PGlite) test edilir: şema, yükleme, defter dengesi, değiştirilemez denetim kaydı, uzamsal sorgu. Para sütunları `NUMERIC(14,2)`, ikili veri `BYTEA`, yabancı anahtarlar ertelenebilir. Uygulamanın kendisi hâlâ SQLite'ta çalışır | `scripts/postgres-aktar.js`, `test/postgres.test.js` |
+| PostgreSQL | Uygulama SQLite ya da PostgreSQL 18 + PostGIS 3.6 üzerinde aynı kodla çalışır (`VERITABANI`, `DATABASE_URL`): zaman uyumsuz veri katmanı, gerçek işlemler (kayıt noktaları, kilitlenmede yeniden deneme), para/envanter/parsel/seçim için satır ve danışma kilitleri, çok sunuculu canlı olaylar (LISTEN/NOTIFY), bakım işleri tek örnekte, değiştirilemez denetim kaydı ve oylar, kapanan sandığın karıştırılması. Şemanın tek kaynağı `server/vt/sema-sqlite.js`; Postgres şeması ondan üretilir. Bütün test takımı iki motorda da koşar (Postgres: gömülü PGlite). SQLite verisi `postgres-aktar` ile taşınır | `server/db.js`, `server/vt/*`, `db/postgres/sema.sql`, `docs/postgres-gecisi.md` |
 | Hukuk | Koşullar ve KVKK taslak-2 (demo sakinler §4a, yurt dışı aktarım tablosu); sürüm değiştiği için oyunculardan yeniden onay istenir. Hukukçu için kontrol listesi | `public/yasal/*`, `docs/hukuk-kontrol-listesi.md` |
 
 > `npm run dev` `SECIM_MIN_SECMEN=1` kullandığından tek gerçek oyuncu eşiği zaten karşılar; doldurma kipini görmek için `SECIM_MIN_SECMEN=3` ile başlatın.
@@ -541,7 +542,7 @@ public/js/
 ## Sonraki adımlar
 
 1. **Hukuk**: yasal metinlerin hukukçu incelemesi (docs/hukuk-kontrol-listesi.md): veri sorumlusu bilgileri, VERBİS, yurt dışı aktarım dayanakları, demo sakinlerin bilgilendirmesi, OSM türetilmiş veri lisansı.
-2. **PostgreSQL'e geçiş (çalışma zamanı)**: şema ve veri aktarımı doğrulandı; kalan iş uygulama katmanının eşzamanlı better-sqlite3'ten `pg`'ye taşınması, çok sunuculu WebSocket köprüsü (LISTEN/NOTIFY), tembel bakım işleri için danışma kilidi (docs/postgres-gecisi.md).
+2. **PostgreSQL'i gerçek sunucuda sınamak**: test takımı gömülü PGlite'ta geçiyor (tek bağlantı); gerçek paralel kilit davranışı ve çok örnekli yük testi için takımı bir kez gerçek bir PostgreSQL sunucusuna karşı çalıştırmak (docs/postgres-gecisi.md).
 3. **İmar değişikliği önerileri** (§3.4) ve bağlayıcı referandum türleri; **parsel birleştirme**.
 4. Kendi karo sunucumuz (PMTiles, docs/karo-sunucusu.md) ve Open-Meteo ticari aboneliği.
 5. Dolu dünyada yük testi; yavaş sorgular için indeks gözden geçirmesi.

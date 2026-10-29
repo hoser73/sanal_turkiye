@@ -40,20 +40,20 @@ test('yöresel ürün yalnızca kendi bölgesinde ekilir; kart uygunluğu ve mev
 
   const trabzon = hucreBul('TARIM', TRABZON);
   assert.equal((await c(`/api/parsel/${trabzon}/edin`, {})).durum, 200);
-  assert.equal(db.prepare(`SELECT r.plaka FROM parcels p JOIN regions r ON r.id = p.il_id WHERE p.id = ?`).get(trabzon).plaka, '61');
+  assert.equal((await db.get(`SELECT r.plaka FROM parcels p JOIN regions r ON r.id = p.il_id WHERE p.id = ?`, trabzon)).plaka, '61');
   const ek = await c(`/api/parsel/${trabzon}/ek`, { urun: 'FINDIK' });
   assert.equal(ek.durum, 200);
-  const e = db.prepare(`SELECT * FROM crops WHERE parcel_id = ? AND status = 'GROWING'`).get(trabzon);
+  const e = await db.get(`SELECT * FROM crops WHERE parcel_id = ? AND status = 'GROWING'`, trabzon);
   assert.equal(e.ready_at - e.planted_at, Math.round(URUNLER.FINDIK.sureMs * ek.veri.buyume));
 });
 
-test('mevsim: kışın açık tarla yavaş büyür, sera mevsimden etkilenmez', () => {
+test('mevsim: kışın açık tarla yavaş büyür, sera mevsimden etkilenmez', async () => {
   const ocak = Date.UTC(2027, 0, 15, 12);
   assert.equal(dunya.mevsim(ocak).kod, 'KIS');
   assert.equal(dunya.mevsim(Date.UTC(2027, 6, 15)).kod, 'YAZ');
-  assert.ok(dunya.buyumeKati('DOMATES', false, ocak) > 1.5);
-  assert.equal(dunya.buyumeKati('DOMATES', true, ocak), 1);
-  assert.equal(dunya.buyumeKati('BUGDAY', false, ocak), 1, 'kışlık buğday');
+  assert.ok(await dunya.buyumeKati('DOMATES', false, ocak) > 1.5);
+  assert.equal(await dunya.buyumeKati('DOMATES', true, ocak), 1);
+  assert.equal(await dunya.buyumeKati('BUGDAY', false, ocak), 1, 'kışlık buğday');
 });
 
 test('gerçek hava: yağmur açık tarlayı sular, don hassas ürünün verimini düşürür, sera korur', async () => {
@@ -62,12 +62,12 @@ test('gerçek hava: yağmur açık tarlayı sular, don hassas ürünün verimini
   for (const h of [h1, h2]) { await c(`/api/parsel/${h}/edin`, {}); await c(`/api/parsel/${h}/ek`, { urun: 'DOMATES' }); }
   // h2'de sera var
   const t0 = Date.now();
-  db.prepare(`INSERT INTO structures (parcel_id, owner_user_id, type, status, started_at, completes_at, completed_at) VALUES (?, ?, 'SERA', 'ACTIVE', ?, ?, ?)`).run(h2, c.id, t0, t0, t0);
-  const plaka = db.prepare(`SELECT r.plaka FROM parcels p JOIN regions r ON r.id = p.il_id WHERE p.id = ?`).get(h1).plaka;
-  const sonuc = dunya.uygula({ plaka, sicaklik: -3, yagis: 2.5, kod: 63, ruzgar: 12, gunduz: 0 });
+  await db.run(`INSERT INTO structures (parcel_id, owner_user_id, type, status, started_at, completes_at, completed_at) VALUES (?, ?, 'SERA', 'ACTIVE', ?, ?, ?)`, h2, c.id, t0, t0, t0);
+  const plaka = (await db.get(`SELECT r.plaka FROM parcels p JOIN regions r ON r.id = p.il_id WHERE p.id = ?`, h1)).plaka;
+  const sonuc = await dunya.uygula({ plaka, sicaklik: -3, yagis: 2.5, kod: 63, ruzgar: 12, gunduz: 0 });
   assert.ok(sonuc.sulanan >= 1);
-  const e1 = db.prepare(`SELECT * FROM crops WHERE parcel_id = ? AND status = 'GROWING'`).get(h1);
-  const e2 = db.prepare(`SELECT * FROM crops WHERE parcel_id = ? AND status = 'GROWING'`).get(h2);
+  const e1 = await db.get(`SELECT * FROM crops WHERE parcel_id = ? AND status = 'GROWING'`, h1);
+  const e2 = await db.get(`SELECT * FROM crops WHERE parcel_id = ? AND status = 'GROWING'`, h2);
   assert.equal(e1.waterings, 1);
   assert.ok(e1.yagmur_at);
   assert.equal(e1.don, 1);
@@ -78,9 +78,9 @@ test('gerçek hava: yağmur açık tarlayı sular, don hassas ürünün verimini
   assert.equal(kart.ekin.don, true);
   assert.equal(kart.hava.ikon, '🌧️');
   // Hasat verimi don katsayısıyla düşer
-  db.prepare(`UPDATE crops SET ready_at = ?, waterings = 3 WHERE id IN (?, ?)`).run(Date.now() - 1000, e1.id, e2.id);
+  await db.run(`UPDATE crops SET ready_at = ?, waterings = 3 WHERE id IN (?, ?)`, Date.now() - 1000, e1.id, e2.id);
   const r1 = (await c(`/api/parsel/${h1}/hasat`, {})).veri;
-  db.prepare(`DELETE FROM structures WHERE parcel_id = ?`).run(h2);
+  await db.run(`DELETE FROM structures WHERE parcel_id = ?`, h2);
   const r2 = (await c(`/api/parsel/${h2}/hasat`, {})).veri;
   assert.equal(r1.miktar, Math.max(1, Math.round(r2.miktar * HAVA.donVerimKati)));
 });
@@ -108,19 +108,20 @@ test('memleket: seçilir, 30 gün değişmez; hemşehri ve gurbet sayılır', as
 
 test('aşırı sıcak: açık tarlanın sulaması gider; seralı tarla ve olgun ekin etkilenmez; bildirim afete göre', async () => {
   const c = await oyuncu('sicakci');
-  require('../server/lib/ledger').odul(c.id, 2000, 'test bakiyesi');
+  await db.tx(() => require('../server/lib/ledger').odul(c.id, 2000, 'test bakiyesi'));
   const [acik, seralı, olgun] = [hucreBul('TARIM'), hucreBul('TARIM'), hucreBul('TARIM')];
   for (const h of [acik, seralı, olgun]) { await c(`/api/parsel/${h}/edin`, {}); await c(`/api/parsel/${h}/ek`, { urun: 'DOMATES' }); }
   const t0 = Date.now();
-  db.prepare(`INSERT INTO structures (parcel_id, owner_user_id, type, status, started_at, completes_at, completed_at) VALUES (?, ?, 'SERA', 'ACTIVE', ?, ?, ?)`).run(seralı, c.id, t0, t0, t0);
-  db.prepare(`UPDATE crops SET waterings = 2 WHERE parcel_id IN (?, ?, ?) AND status = 'GROWING'`).run(acik, seralı, olgun);
-  db.prepare(`UPDATE crops SET ready_at = ? WHERE parcel_id = ? AND status = 'GROWING'`).run(t0 - 1000, olgun);
-  const plakalar = new Set([acik, seralı, olgun].map((h) => db.prepare(`SELECT r.plaka FROM parcels p JOIN regions r ON r.id = p.il_id WHERE p.id = ?`).get(h).plaka));
-  for (const plaka of plakalar) dunya.afetleriUygula({ plaka, sicaklik: 41, yagis: 0, kod: 0, ruzgar: 5 }, Date.now());
-  const sulama = (h) => db.prepare(`SELECT waterings FROM crops WHERE parcel_id = ? AND status = 'GROWING'`).get(h).waterings;
-  assert.equal(sulama(acik), 1);
-  assert.equal(sulama(seralı), 2, 'sera korur');
-  assert.equal(sulama(olgun), 2, 'olgun ekin etkilenmez');
+  await db.run(`INSERT INTO structures (parcel_id, owner_user_id, type, status, started_at, completes_at, completed_at) VALUES (?, ?, 'SERA', 'ACTIVE', ?, ?, ?)`, seralı, c.id, t0, t0, t0);
+  await db.run(`UPDATE crops SET waterings = 2 WHERE parcel_id IN (?, ?, ?) AND status = 'GROWING'`, acik, seralı, olgun);
+  await db.run(`UPDATE crops SET ready_at = ? WHERE parcel_id = ? AND status = 'GROWING'`, t0 - 1000, olgun);
+  const plakalar = new Set();
+  for (const h of [acik, seralı, olgun]) plakalar.add((await db.get(`SELECT r.plaka FROM parcels p JOIN regions r ON r.id = p.il_id WHERE p.id = ?`, h)).plaka);
+  for (const plaka of plakalar) await dunya.afetleriUygula({ plaka, sicaklik: 41, yagis: 0, kod: 0, ruzgar: 5 }, Date.now());
+  const sulama = async (h) => (await db.get(`SELECT waterings FROM crops WHERE parcel_id = ? AND status = 'GROWING'`, h)).waterings;
+  assert.equal(await sulama(acik), 1);
+  assert.equal(await sulama(seralı), 2, 'sera korur');
+  assert.equal(await sulama(olgun), 2, 'olgun ekin etkilenmez');
   const b = (await c('/api/bildirimler')).veri.find((x) => x.text.startsWith('🔥'));
   assert.ok(b && b.text.includes('Sera ve sulama hattı korur'), b?.text);
 });

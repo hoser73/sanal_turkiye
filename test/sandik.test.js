@@ -29,19 +29,20 @@ test('sandık: hazırken açılır, 8 saat bekler; oranlar gösterilir; içerik 
   assert.equal(d.hazir, true);
   assert.equal(d.hak, S.biriktir, 'yeni oyuncuda birikmiş sandıklar hazır');
   assert.equal(d.oranlar.reduce((t, x) => t + x.oran, 0).toFixed(2), '1.00');
-  const once = L.bakiye(id);
-  const r = sandik.ac(id, () => 0.1);   // ilk dilim: akçe
+  const once = await L.bakiye(id);
+  const r = await sandik.ac(id, () => 0.1);   // ilk dilim: akçe
   assert.ok(r.odul.akce >= S.icerik[0].min && r.odul.akce <= S.icerik[0].max);
-  assert.equal(Math.round(L.bakiye(id) - once), r.odul.akce);
+  assert.equal(Math.round(await L.bakiye(id) - once), r.odul.akce);
   assert.equal(r.kalanHak, S.biriktir - 1);
   for (let i = 1; i < S.biriktir; i++) assert.equal((await c('/api/sandik/ac', {})).durum, 200, 'birikmiş sandık');
   assert.equal((await c('/api/sandik/ac', {})).veri.kod, 'BEKLE');
   assert.equal((await c('/api/ben')).veri.sandik.hazir, false);
-  db.prepare('UPDATE gunluk_sandik SET son_at = son_at - ? WHERE user_id = ?').run(S.aralikMs * 5, id);
-  assert.equal(sandik.ozet(id).hak, S.biriktir, 'uzun aradan sonra en çok biriktir kadar');
-  sandik.ac(id, () => 0.1);
-  sandik.ac(id, () => 0.99);   // son dilim: kalıp seti
-  assert.equal(L.envanterMiktar(id, 'KALIP_SETI'), 1);
+  await db.run('UPDATE gunluk_sandik SET son_at = son_at - ? WHERE user_id = ?', S.aralikMs * 5, id);
+  assert.equal((await sandik.ozet(id)).hak, S.biriktir, 'uzun aradan sonra en çok biriktir kadar');
+  await sandik.ac(id, () => 0.1);
+  const kalip = await L.envanterMiktar(id, 'KALIP_SETI');   // aradaki açılışlar rastgele; onlardan da kalıp çıkmış olabilir
+  await sandik.ac(id, () => 0.99);   // son dilim: kalıp seti
+  assert.equal(await L.envanterMiktar(id, 'KALIP_SETI'), kalip + 1);
 });
 
 test('mini etkinlik: yalnızca cuma–pazar; şablon haftaya göre döner; etkiler', () => {

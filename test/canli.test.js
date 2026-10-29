@@ -13,7 +13,7 @@ const push = require('../server/push');
 let sunucu, taban, host;
 before(async () => {
   await new Promise((r) => { sunucu = app.listen(0, r); });
-  app.canliBagla(sunucu);
+  await app.canliBagla(sunucu);
   host = `127.0.0.1:${sunucu.address().port}`;
   taban = `http://${host}`;
   await app.hazir;
@@ -59,7 +59,7 @@ function soket(c, origin = taban) {
   ws.gelen = gelen;
   return new Promise((coz, red) => { ws.on('open', () => coz(ws)); ws.on('error', red); ws.on('unexpected-response', (_q, r) => red(new Error(`HTTP ${r.statusCode}`))); });
 }
-const ilId = () => db.prepare(`SELECT id FROM regions WHERE type = 'IL' AND plaka = '42'`).get().id;
+const ilId = async () => (await db.get(`SELECT id FROM regions WHERE type = 'IL' AND plaka = '42'`)).id;
 
 test('WebSocket: oturum çereziyle kimlik; yabancı Origin reddedilir', async () => {
   const c = await oyuncu('soketci');
@@ -81,7 +81,7 @@ test('bildirim anında canlı bağlantıya düşer', async () => {
   const c = await oyuncu('bildirimci');
   const ws = await soket(c);
   await ws.bekle('merhaba');
-  require('../server/pazar').bildir(c.id, 'Test bildirimi', 'pazar:borsa');
+  await require('../server/pazar').bildir(c.id, 'Test bildirimi', 'pazar:borsa');
   const b = await ws.bekle('bildirim');
   assert.equal(b.metin, 'Test bildirimi');
   assert.equal(b.link, 'pazar:borsa');
@@ -90,7 +90,7 @@ test('bildirim anında canlı bağlantıya düşer', async () => {
 
 test('sohbet: il meydanı canlı iletim, kişisel veri engeli, hız sınırı, mahalle kanalı sakinlere açık', async () => {
   const a = await oyuncu('ayse'), b = await oyuncu('bora');
-  const kanal = `il:${ilId()}`;
+  const kanal = `il:${await ilId()}`;
   const wsB = await soket(b);
   await wsB.bekle('merhaba');
   wsB.send(JSON.stringify({ tip: 'abone', kanallar: [kanal, 'gecersiz:1'] }));
@@ -119,7 +119,7 @@ test('sohbet: il meydanı canlı iletim, kişisel veri engeli, hız sınırı, m
   const c = await oyuncu('cemil');
   const h = hucreBul('TARIM');
   assert.equal((await c(`/api/parsel/${h}/edin`, {})).durum, 200);
-  const mahalle = db.prepare(`SELECT region_id FROM parcels WHERE id = ?`).get(h).region_id;
+  const mahalle = (await db.get(`SELECT region_id FROM parcels WHERE id = ?`, h)).region_id;
   assert.equal((await c(`/api/sohbet/mahalle:${mahalle}`, { metin: 'Komşular merhaba' })).durum, 200);
   assert.equal((await b(`/api/sohbet/mahalle:${mahalle}`, { metin: 'Ben de buradayım' })).durum, 403);
   wsB.close();
@@ -127,13 +127,13 @@ test('sohbet: il meydanı canlı iletim, kişisel veri engeli, hız sınırı, m
 
 test('genç hesapta sohbet varsayılan kapalı; moderatör mesajı gizleyince listeden düşer', async () => {
   const g = await oyuncu('gencoyuncu', { dogumYili: new Date().getUTCFullYear() - 15 });
-  const kanal = `il:${ilId()}`;
+  const kanal = `il:${await ilId()}`;
   const r = await g(`/api/sohbet/${kanal}`, { metin: 'selam' });
   assert.equal(r.durum, 403);
   assert.match(r.veri.hata, /ayarın kapalı/);
-  const m = db.prepare(`SELECT id FROM sohbet_mesajlari WHERE on_tarama IS NOT NULL LIMIT 1`).get();
-  assert.ok(require('../server/moderasyon').panel(1).isaretliMesajlar.some((x) => x.id === m.id));
-  db.prepare(`UPDATE sohbet_mesajlari SET gizlendi = 1 WHERE id = ?`).run(m.id);
+  const m = await db.get(`SELECT id FROM sohbet_mesajlari WHERE on_tarama IS NOT NULL LIMIT 1`);
+  assert.ok((await require('../server/moderasyon').panel(1)).isaretliMesajlar.some((x) => x.id === m.id));
+  await db.run(`UPDATE sohbet_mesajlari SET gizlendi = 1 WHERE id = ?`, m.id);
   assert.ok(!(await g(`/api/sohbet/${kanal}`)).veri.mesajlar.some((x) => x.id === m.id));
 });
 
@@ -145,15 +145,15 @@ test('web push: abonelik kaydı, bildirimde gönderim, geçersiz abonelik silini
   assert.equal((await c('/api/push/abone', { abonelik: ab })).durum, 200);
   const gonderilen = [];
   push.gondericiAyarla(async (abonelik, yuk) => { gonderilen.push({ abonelik, yuk: JSON.parse(yuk) }); });
-  require('../server/pazar').bildir(c.id, 'Teklifin kabul edildi', 'parsel:TR-1');
+  await require('../server/pazar').bildir(c.id, 'Teklifin kabul edildi', 'parsel:TR-1');
   await new Promise((r) => setTimeout(r, 50));
   assert.equal(gonderilen.length, 1);
   assert.equal(gonderilen[0].abonelik.endpoint, ab.endpoint);
   assert.equal(gonderilen[0].yuk.metin, 'Teklifin kabul edildi');
   push.gondericiAyarla(async () => { const e = new Error('gitti'); e.statusCode = 410; throw e; });
-  require('../server/pazar').bildir(c.id, 'İkinci', null);
+  await require('../server/pazar').bildir(c.id, 'İkinci', null);
   await new Promise((r) => setTimeout(r, 50));
-  assert.equal(db.prepare(`SELECT COUNT(*) c FROM push_abonelikleri WHERE user_id = ?`).get(c.id).c, 0);
+  assert.equal((await db.get(`SELECT COUNT(*) c FROM push_abonelikleri WHERE user_id = ?`, c.id)).c, 0);
 });
 
 test('PWA: servis çalışanı ve çevrimdışı sayfası sunulur', async () => {

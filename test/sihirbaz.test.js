@@ -23,10 +23,10 @@ const istemci = istemciUret(() => taban);
 const kayit = async (ad) => {
   const c = istemci();
   await c('/api/kayit', { email: `${ad}@test.local`, sifre: 'parola123', ad, dogumYili: 1990, kosullarOnay: true, kvkkOnay: true });
-  return { c, id: db.prepare(`SELECT id FROM users WHERE email = ?`).get(`${ad}@test.local`).id };
+  return { c, id: (await db.get(`SELECT id FROM users WHERE email = ?`, `${ad}@test.local`)).id };
 };
 // Konya Meram çevresindeki bir ilçe (test verisi sahte karo kullanır; her yerde tarım hücresi bulunur)
-const ilce = () => db.prepare(`SELECT id FROM regions WHERE type = 'ILCE' ORDER BY id LIMIT 1`).get().id;
+const ilce = async () => (await db.get(`SELECT id FROM regions WHERE type = 'ILCE' ORDER BY id LIMIT 1`)).id;
 
 test('Ada/Parsel numarası kararlı ve sınırlar içinde; komşu hücreler farklı parsel no alır', () => {
   const a = adaParsel(618103, 405974), b = adaParsel(618103, 405974), c = adaParsel(618104, 405974);
@@ -41,7 +41,7 @@ test('yeni oyuncu: sihirbaz açık; 3 aday arsa gelir, seçtiği arsa hediye olu
   let d = (await A.c('/api/sihirbaz')).veri;
   assert.equal(d.aktif, true);
   assert.equal(d.adimlar.find((x) => x.kod === 'ARSA').tamam, false);
-  const r = await A.c(`/api/baslangic/adaylar?ilce=${ilce()}`);
+  const r = await A.c(`/api/baslangic/adaylar?ilce=${await ilce()}`);
   assert.equal(r.durum, 200, JSON.stringify(r.veri));
   assert.ok(r.veri.adaylar.length >= 1 && r.veri.adaylar.length <= 3);
   for (const a of r.veri.adaylar) {
@@ -50,7 +50,7 @@ test('yeni oyuncu: sihirbaz açık; 3 aday arsa gelir, seçtiği arsa hediye olu
   }
   assert.equal(new Set(r.veri.adaylar.map((a) => a.id)).size, r.veri.adaylar.length);
   // Başka bir (önerilmeyen) tarım parseli hediye alınamaz
-  const yabanci = db.prepare(`SELECT id FROM parcels WHERE owner_user_id IS NULL AND zoning_type = 'TARIM' AND id NOT IN (${r.veri.adaylar.map(() => '?').join(',')}) LIMIT 1`).get(...r.veri.adaylar.map((a) => a.id));
+  const yabanci = await db.get(`SELECT id FROM parcels WHERE owner_user_id IS NULL AND zoning_type = 'TARIM' AND id NOT IN (${r.veri.adaylar.map(() => '?').join(',')}) LIMIT 1`, ...r.veri.adaylar.map((a) => a.id));
   if (yabanci) assert.equal((await A.c('/api/baslangic/tarla', { parsel: yabanci.id })).durum, 409);
   const secilen = r.veri.adaylar.at(-1).id;
   const al = await A.c('/api/baslangic/tarla', { parsel: secilen });
@@ -61,33 +61,33 @@ test('yeni oyuncu: sihirbaz açık; 3 aday arsa gelir, seçtiği arsa hediye olu
   assert.ok(ben.portfoy[0].adaParsel.ada);
   d = (await A.c('/api/sihirbaz')).veri;
   assert.equal(d.adimlar.find((x) => x.kod === 'ARSA').tamam, true);
-  assert.equal((await A.c(`/api/baslangic/adaylar?ilce=${ilce()}`)).durum, 409, 'arsası olan aday istemez');
+  assert.equal((await A.c(`/api/baslangic/adaylar?ilce=${await ilce()}`)).durum, 409, 'arsası olan aday istemez');
 });
 
 test('sihirbazdaki ilk ekin 1 dakikada olur; adım ödülü yalnızca yapılan adıma ve bir kez; GUNLUK sihirbazı bitirir', async () => {
   const A = await kayit('ilkekim');
-  const ad = (await A.c(`/api/baslangic/adaylar?ilce=${ilce()}`)).veri.adaylar[0];
+  const ad = (await A.c(`/api/baslangic/adaylar?ilce=${await ilce()}`)).veri.adaylar[0];
   assert.equal((await A.c('/api/baslangic/tarla', { parsel: ad.id })).durum, 200);
   assert.equal((await A.c('/api/sihirbaz/odul', { adim: 'EKIM' })).durum, 409, 'ekim yapılmadan ödül yok');
   assert.equal((await A.c(`/api/parsel/${ad.id}/ek`, { urun: 'BUGDAY' })).durum, 200);
-  const e = db.prepare(`SELECT planted_at, ready_at FROM crops WHERE parcel_id = ?`).get(ad.id);
+  const e = await db.get(`SELECT planted_at, ready_at FROM crops WHERE parcel_id = ?`, ad.id);
   assert.ok(e.ready_at - e.planted_at <= SIHIRBAZ.ilkEkinMs, 'ilk ekin en geç 1 dakikada olur');
-  const once = L.bakiye(A.id);
+  const once = await L.bakiye(A.id);
   const o = await A.c('/api/sihirbaz/odul', { adim: 'EKIM' });
   assert.equal(o.durum, 200);
-  assert.equal(Math.round(L.bakiye(A.id) - once), SIHIRBAZ.adimlar.find((x) => x.kod === 'EKIM').odul);
+  assert.equal(Math.round(await L.bakiye(A.id) - once), SIHIRBAZ.adimlar.find((x) => x.kod === 'EKIM').odul);
   assert.equal((await A.c('/api/sihirbaz/odul', { adim: 'EKIM' })).veri.odul, 0, 'ikinci kez ödül yok');
   assert.equal((await A.c('/api/sihirbaz/odul', { adim: 'GUNLUK' })).durum, 409, 'önceki adımlar bitmeden son adım yok');
   // Diğer adımları denetim kayıtlarıyla tamamla → son adım ödülü sihirbazı bitirir
-  for (const eylem of ['CROP_WATERED', 'CROP_HARVESTED', 'TRADE_SETTLED', 'STRUCTURE_STARTED']) L.denetim({ aktor: A.id, eylem, varlik: 'test' });
+  for (const eylem of ['CROP_WATERED', 'CROP_HARVESTED', 'TRADE_SETTLED', 'STRUCTURE_STARTED']) await L.denetim({ aktor: A.id, eylem, varlik: 'test' });
   const son = await A.c('/api/sihirbaz/odul', { adim: 'GUNLUK' });
   assert.equal(son.durum, 200);
   assert.equal(son.veri.bitti, true);
   assert.equal((await A.c('/api/ben')).veri.sihirbaz, false);
   // Sihirbaz bittikten sonraki ekimler olağan sürede büyür
-  db.prepare(`DELETE FROM crops WHERE parcel_id = ?`).run(ad.id);
+  await db.run(`DELETE FROM crops WHERE parcel_id = ?`, ad.id);
   assert.equal((await A.c(`/api/parsel/${ad.id}/ek`, { urun: 'BUGDAY' })).durum, 200);
-  const e2 = db.prepare(`SELECT planted_at, ready_at FROM crops WHERE parcel_id = ?`).get(ad.id);
+  const e2 = await db.get(`SELECT planted_at, ready_at FROM crops WHERE parcel_id = ?`, ad.id);
   assert.ok(e2.ready_at - e2.planted_at >= e.ready_at - e.planted_at);
 });
 
@@ -100,18 +100,18 @@ test('atla: sihirbaz biter, adım ödülleri artık verilmez', async () => {
 
 test('sulama adımı yağmur/komşu sulamasıyla da tamam sayılır; sulamasız hasatta son adım yine alınır', async () => {
   const A = await kayit('yagmurlu');
-  const ad = (await A.c(`/api/baslangic/adaylar?ilce=${ilce()}`)).veri.adaylar[0];
+  const ad = (await A.c(`/api/baslangic/adaylar?ilce=${await ilce()}`)).veri.adaylar[0];
   assert.equal((await A.c('/api/baslangic/tarla', { parsel: ad.id })).durum, 200);
   assert.equal((await A.c(`/api/parsel/${ad.id}/ek`, { urun: 'BUGDAY' })).durum, 200);
   assert.equal((await A.c('/api/sihirbaz/odul', { adim: 'SULAMA' })).durum, 409);
-  db.prepare(`UPDATE crops SET waterings = 1 WHERE parcel_id = ?`).run(ad.id);   // yağmur denetim kaydı yazmaz
+  await db.run(`UPDATE crops SET waterings = 1 WHERE parcel_id = ?`, ad.id);   // yağmur denetim kaydı yazmaz
   assert.equal((await A.c('/api/sihirbaz')).veri.adimlar.find((x) => x.kod === 'SULAMA').tamam, true);
   assert.equal((await A.c('/api/sihirbaz/odul', { adim: 'SULAMA' })).durum, 200);
   // Başka oyuncu: hiç sulamadan hasat etti
   const B = await kayit('sulamasiz');
-  const bAd = (await B.c(`/api/baslangic/adaylar?ilce=${ilce()}`)).veri.adaylar[0];
+  const bAd = (await B.c(`/api/baslangic/adaylar?ilce=${await ilce()}`)).veri.adaylar[0];
   assert.equal((await B.c('/api/baslangic/tarla', { parsel: bAd.id })).durum, 200);
-  for (const eylem of ['CROP_PLANTED', 'CROP_HARVESTED', 'TRADE_SETTLED', 'STRUCTURE_STARTED']) L.denetim({ aktor: B.id, eylem, varlik: 'test' });
+  for (const eylem of ['CROP_PLANTED', 'CROP_HARVESTED', 'TRADE_SETTLED', 'STRUCTURE_STARTED']) await L.denetim({ aktor: B.id, eylem, varlik: 'test' });
   const son = await B.c('/api/sihirbaz/odul', { adim: 'GUNLUK' });
   assert.equal(son.durum, 200, JSON.stringify(son.veri));
   assert.equal(son.veri.bitti, true);
@@ -121,10 +121,10 @@ test('silinen hesabın e-postasıyla açılan hesap sihirbaz adımlarını yapar
   const A = await kayit('odulcu');
   assert.equal((await A.c('/api/hesap/sil', { sifre: 'parola123', onayMetni: 'SİL' })).durum, 200);
   const B = await kayit('odulcu');
-  L.denetim({ aktor: B.id, eylem: 'CROP_PLANTED', varlik: 'test' });
-  const once = L.bakiye(B.id);
+  await L.denetim({ aktor: B.id, eylem: 'CROP_PLANTED', varlik: 'test' });
+  const once = await L.bakiye(B.id);
   const r = await B.c('/api/sihirbaz/odul', { adim: 'EKIM' });
   assert.equal(r.durum, 200);
   assert.equal(r.veri.odul, 0);
-  assert.equal(L.bakiye(B.id), once);
+  assert.equal(await L.bakiye(B.id), once);
 });

@@ -20,38 +20,42 @@ function goruldu(userId, kod, t = Date.now()) {
   if (gorulen.size > 50_000) for (const [k, v] of gorulen) if (t - v > GORME_SURESI) gorulen.delete(k);
   gorulen.set(`${userId}:${kod}`, t);
 }
-const toplandiMi = (userId, kod) => !!userId && !!db.prepare(`SELECT 1 FROM koleksiyon WHERE user_id = ? AND simge = ?`).get(userId, kod);
+const toplandiMi = async (userId, kod) => !!userId && !!await db.get(`SELECT 1 FROM koleksiyon WHERE user_id = ? AND simge = ?`, userId, kod);
 // gorme: parsel kartı açılışı (oyun.parselKarti) — kartı toplama hakkı 15 dakika sürer
-function parselSimgesi(parcelId, userId = null, { gorme = false } = {}) {
+async function parselSimgesi(parcelId, userId = null, { gorme = false } = {}) {
   const s = parseldenSimge.get(parcelId);
   if (s && userId && gorme) goruldu(userId, s.kod);
-  return s ? { kod: s.kod, ad: s.ad, ikon: s.ikon, not: s.not, bolge: s.bolge, toplandi: toplandiMi(userId, s.kod) } : null;
+  return s ? { kod: s.kod, ad: s.ad, ikon: s.ikon, not: s.not, bolge: s.bolge, toplandi: await toplandiMi(userId, s.kod) } : null;
 }
 
-const topla = db.transaction((userId, kod) => {
+const topla = (userId, kod) => db.tx(async () => {
   const s = koddanSimge.get(String(kod));
   if (!s) throw new OyunHatasi(404, 'Simge bulunamadı');
-  if (toplandiMi(userId, s.kod)) throw new OyunHatasi(409, 'Bu kart zaten albümünde');
+  await db.kilit(`koleksiyon:${userId}`);   // günlük sınır sayımı ile yazım arasına aynı oyuncunun ikinci isteği girmesin
+  if (await toplandiMi(userId, s.kod)) throw new OyunHatasi(409, 'Bu kart zaten albümünde');
   if (!(Date.now() - (gorulen.get(`${userId}:${s.kod}`) ?? -Infinity) <= GORME_SURESI)) throw new OyunHatasi(409, 'Kartı toplamak için önce haritada simgeye git', 'GORULMEDI');
-  const bugun = db.prepare(`SELECT COUNT(*) c FROM koleksiyon WHERE user_id = ? AND created_at > ?`).get(userId, Date.now() - 24 * 3600e3).c;
+  const bugun = (await db.get(`SELECT COUNT(*) c FROM koleksiyon WHERE user_id = ? AND created_at > ?`, userId, Date.now() - 24 * 3600e3)).c;
   if (bugun >= GUNLUK) throw new OyunHatasi(429, `Günde en fazla ${GUNLUK} kart toplanabilir; yolculuğa yarın devam et`);
-  db.prepare(`INSERT INTO koleksiyon (user_id, simge, created_at) VALUES (?, ?, ?)`).run(userId, s.kod, Date.now());
+  // Birincil anahtar (oyuncu, simge): eşzamanlı ikinci toplama satır yazamaz ve ödül almaz
+  if ((await db.run(`INSERT OR IGNORE INTO koleksiyon (user_id, simge, created_at) VALUES (?, ?, ?)`, userId, s.kod, Date.now())).changes !== 1) {
+    throw new OyunHatasi(409, 'Bu kart zaten albümünde');
+  }
   const tx = L.yeniTx();
-  L.odul(userId, ODUL, `Simge kartı: ${s.ad}`, tx);
-  const p = db.prepare(`SELECT region_id FROM parcels WHERE id = ?`).get(s.parsel);
-  L.denetim({ aktor: userId, eylem: 'LANDMARK_COLLECTED', varlik: s.parsel, sonra: { simge: s.ad }, bolge: p?.region_id ?? null, herkese: !!p });
+  await L.odul(userId, ODUL, `Simge kartı: ${s.ad}`, tx);
+  const p = await db.get(`SELECT region_id FROM parcels WHERE id = ?`, s.parsel);
+  await L.denetim({ aktor: userId, eylem: 'LANDMARK_COLLECTED', varlik: s.parsel, sonra: { simge: s.ad }, bolge: p?.region_id ?? null, herkese: !!p });
   // Bölge seti ve tam albüm rozetleri
   const dunya = require('./dunya');
-  const benim = new Set(db.prepare(`SELECT simge FROM koleksiyon WHERE user_id = ?`).all(userId).map((r) => r.simge));
+  const benim = new Set((await db.all(`SELECT simge FROM koleksiyon WHERE user_id = ?`, userId)).map((r) => r.simge));
   const rozetler = [];
   const bolgeTamam = SIMGELER.filter((x) => x.bolge === s.bolge).every((x) => benim.has(x.kod));
-  if (bolgeTamam && dunya.rozetVer(userId, `ALBUM_${s.bolge}`, `${s.bolge} gezgini`, '🧭', `${s.bolge} bölgesindeki tüm simgeleri topladı.`)) rozetler.push(`${s.bolge} gezgini`);
-  if (benim.size === SIMGELER.length && dunya.rozetVer(userId, 'ALBUM_TAM', 'Türkiye albümü', '📔', 'Bütün simge kartlarını topladı.')) rozetler.push('Türkiye albümü');
+  if (bolgeTamam && await dunya.rozetVer(userId, `ALBUM_${s.bolge}`, `${s.bolge} gezgini`, '🧭', `${s.bolge} bölgesindeki tüm simgeleri topladı.`)) rozetler.push(`${s.bolge} gezgini`);
+  if (benim.size === SIMGELER.length && await dunya.rozetVer(userId, 'ALBUM_TAM', 'Türkiye albümü', '📔', 'Bütün simge kartlarını topladı.')) rozetler.push('Türkiye albümü');
   return { tamam: true, simge: s.ad, odul: ODUL, rozetler, toplanan: benim.size, toplam: SIMGELER.length };
 });
 
-function album(userId) {
-  const benim = new Map(userId ? db.prepare(`SELECT simge, created_at FROM koleksiyon WHERE user_id = ?`).all(userId).map((r) => [r.simge, r.created_at]) : []);
+async function album(userId) {
+  const benim = new Map(userId ? (await db.all(`SELECT simge, created_at FROM koleksiyon WHERE user_id = ?`, userId)).map((r) => [r.simge, r.created_at]) : []);
   return {
     toplam: SIMGELER.length, toplanan: benim.size, odul: ODUL, gunluk: GUNLUK,
     bolgeler: BOLGELER.map((b) => {

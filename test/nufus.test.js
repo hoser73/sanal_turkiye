@@ -33,7 +33,7 @@ function istemci() {
 async function oyuncu(ad, hucre) {
   const c = istemci();
   assert.equal((await c('/api/kayit', { email: `${ad}@test.local`, sifre: 'parola123', dogumYili: 1990, kosullarOnay: true, kvkkOnay: true, ad })).durum, 201);
-  db.prepare(`UPDATE users SET created_at = datetime('now', '-40 days') WHERE email = ?`).run(`${ad}@test.local`);
+  await db.run(`UPDATE users SET created_at = datetime('now', '-40 days') WHERE email = ?`, `${ad}@test.local`);
   if (hucre) assert.equal((await c(`/api/parsel/${hucre}/edin`, {})).durum, 200);
   c.id = (await c('/api/ben')).veri.kullanici.id;
   return c;
@@ -48,16 +48,16 @@ function mahalleHucreleri([lon, lat], imar = 'TARIM') {
   }
   return liste;
 }
-function asamayaGetir(secimId, asama) {
-  const s = db.prepare('SELECT * FROM secimler WHERE id = ?').get(secimId);
+async function asamayaGetir(secimId, asama) {
+  const s = (await db.get('SELECT * FROM secimler WHERE id = ?', secimId));
   const hedef = { ADAYLIK: s.adaylik_at, KAMPANYA: s.kampanya_at, OYLAMA: s.oylama_at, ITIRAZ: s.itiraz_at, BITTI: s.bitis_at }[asama];
   const k = hedef - Date.now() + 5;
-  db.prepare(`UPDATE secimler SET duyuru_at = duyuru_at - ?, adaylik_at = adaylik_at - ?, kampanya_at = kampanya_at - ?,
-              oylama_at = oylama_at - ?, itiraz_at = itiraz_at - ?, bitis_at = bitis_at - ? WHERE id = ?`).run(k, k, k, k, k, k, secimId);
-  secim.secimBakim();
-  return db.prepare('SELECT * FROM secimler WHERE id = ?').get(secimId);
+  await db.run(`UPDATE secimler SET duyuru_at = duyuru_at - ?, adaylik_at = adaylik_at - ?, kampanya_at = kampanya_at - ?,
+              oylama_at = oylama_at - ?, itiraz_at = itiraz_at - ?, bitis_at = bitis_at - ? WHERE id = ?`, k, k, k, k, k, k, secimId);
+  await secim.secimBakim();
+  return (await db.get('SELECT * FROM secimler WHERE id = ?', secimId));
 }
-const demolar = (mahalleId) => db.prepare(`SELECT * FROM users WHERE is_npc = 1 AND npc_mahalle = ? AND npc_durum = 'AKTIF'`).all(mahalleId);
+const demolar = (mahalleId) => db.all(`SELECT * FROM users WHERE is_npc = 1 AND npc_mahalle = ? AND npc_durum = 'AKTIF'`, mahalleId);
 
 const MERKEZ = [33.05, 38.25];
 let ilk, mahalle, hucreler;
@@ -65,77 +65,78 @@ let ilk, mahalle, hucreler;
 test('tek gerçek oyuncunun mahallesine kişilikli demo sakinler yerleşir; aynı kurallarla parsel edinirler', async () => {
   hucreler = mahalleHucreleri(MERKEZ);
   ilk = await oyuncu('yalniz', hucreler[0]);
-  mahalle = db.prepare(`SELECT region_id FROM parcels WHERE id = ?`).get(hucreler[0]).region_id;
+  mahalle = (await db.get(`SELECT region_id FROM parcels WHERE id = ?`, hucreler[0])).region_id;
   const r = await nufus.nufusDongusu({ yerlestirmeSiniri: 3 });
   assert.equal(r.yerlesen, 3);
-  const d = demolar(mahalle);
+  const d = await demolar(mahalle);
   assert.equal(d.length, NUFUS.mahalleHedef - 1, 'gerçek + demo = hedef');
   for (const n of d) {
     assert.ok(nufus.KISILIKLER[n.npc_kisilik]);
-    const p = db.prepare(`SELECT * FROM parcels WHERE owner_user_id = ?`).all(n.id);
+    const p = (await db.all(`SELECT * FROM parcels WHERE owner_user_id = ?`, n.id));
     assert.equal(p.length, 1);
     assert.equal(p[0].region_id, mahalle, 'aynı mahallede');
-    assert.ok(db.prepare(`SELECT 1 FROM wallet_ledger WHERE user_id = ? AND reason LIKE 'Birincil tahsis%'`).get(n.id), 'parseli bedelini ödeyerek edindi');
+    assert.ok((await db.get(`SELECT 1 FROM wallet_ledger WHERE user_id = ? AND reason LIKE 'Birincil tahsis%'`, n.id)), 'parseli bedelini ödeyerek edindi');
   }
   // İkinci döngü hedefi aşmaz
   assert.equal((await nufus.nufusDongusu({ yerlestirmeSiniri: 3 })).yerlesen, 0);
-  const kart = (await ilk(`/api/parsel/${db.prepare(`SELECT id FROM parcels WHERE owner_user_id = ?`).get(d[0].id).id}`)).veri;
+  const kart = (await ilk(`/api/parsel/${(await db.get(`SELECT id FROM parcels WHERE owner_user_id = ?`, d[0].id)).id}`)).veri;
   assert.equal(kart.sahip.demoSakin, true);
   assert.equal((await ilk(`/api/mahalle/${mahalle}/nufus`)).veri.length, 3);
 });
 
 test('demo sakin eylemi: tarımcı ekim yapar, bakiye kuralları geçerlidir', async () => {
-  const d = demolar(mahalle);
+  const d = await demolar(mahalle);
   let ekildi = false;
   for (const n of d) {
-    const tarla = db.prepare(`SELECT id FROM parcels WHERE owner_user_id = ? AND zoning_type = 'TARIM'`).get(n.id);
-    const yapilanlar = nufus.eylem(n);
+    const tarla = (await db.get(`SELECT id FROM parcels WHERE owner_user_id = ? AND zoning_type = 'TARIM'`, n.id));
+    const yapilanlar = await nufus.eylem(n);
     assert.ok(Array.isArray(yapilanlar));
-    if (tarla && db.prepare(`SELECT 1 FROM crops WHERE parcel_id = ? AND status = 'GROWING'`).get(tarla.id)) ekildi = true;
-    assert.ok(db.prepare(`SELECT npc_sonraki FROM users WHERE id = ?`).get(n.id).npc_sonraki > Date.now());
-    assert.ok(require('../server/lib/ledger').bakiye(n.id) >= 0);
+    if (tarla && (await db.get(`SELECT 1 FROM crops WHERE parcel_id = ? AND status = 'GROWING'`, tarla.id))) ekildi = true;
+    assert.ok((await db.get(`SELECT npc_sonraki FROM users WHERE id = ?`, n.id)).npc_sonraki > Date.now());
+    assert.ok(await require('../server/lib/ledger').bakiye(n.id) >= 0);
   }
   assert.ok(ekildi, 'en az bir demo sakin tarlasına ekin ekti');
   // Olgun ekin hasat edilir
-  const n = d.find((x) => db.prepare(`SELECT 1 FROM crops c JOIN parcels p ON p.id = c.parcel_id WHERE p.owner_user_id = ? AND c.status = 'GROWING'`).get(x.id));
-  db.prepare(`UPDATE crops SET ready_at = ?, waterings = 5 WHERE user_id = ? AND status = 'GROWING'`).run(Date.now() - 1, n.id);
-  assert.ok(nufus.eylem(n).includes('hasat'));
+  let n;
+  for (const x of d) if (await db.get(`SELECT 1 FROM crops c JOIN parcels p ON p.id = c.parcel_id WHERE p.owner_user_id = ? AND c.status = 'GROWING'`, x.id)) { n = x; break; }
+  await db.run(`UPDATE crops SET ready_at = ?, waterings = 5 WHERE user_id = ? AND status = 'GROWING'`, Date.now() - 1, n.id);
+  assert.ok((await nufus.eylem(n)).includes('hasat'));
 });
 
 test('doldurma kipi: demo sakinlerle seçim açılır, demo adaylar çıkar, oy kullanılır; aynı cihaz şüphesi oluşmaz', async () => {
-  secim.secimBakim({ zorla: true });
-  let s = db.prepare(`SELECT * FROM secimler WHERE region_id = ? AND tur = 'MUHTAR'`).get(mahalle);
+  await secim.secimBakim({ zorla: true });
+  let s = (await db.get(`SELECT * FROM secimler WHERE region_id = ? AND tur = 'MUHTAR'`, mahalle));
   assert.ok(s, 'tek gerçek oyuncu + demo sakinlerle seçim duyuruldu');
-  s = asamayaGetir(s.id, 'ADAYLIK');
-  for (let i = 0; i < 4; i++) nufus.siyaset();
+  s = await asamayaGetir(s.id, 'ADAYLIK');
+  for (let i = 0; i < 4; i++) await nufus.siyaset();
   const adaylar = (await ilk(`/api/mahalle/${mahalle}`)).veri.secim.adaylar;
   assert.ok(adaylar.length >= 1 && adaylar.every((a) => a.demo), 'demo adaylar etiketli');
-  s = asamayaGetir(s.id, 'KAMPANYA');
+  s = await asamayaGetir(s.id, 'KAMPANYA');
   assert.equal(s.doldurma, 1);
-  const kutuk = db.prepare(`SELECT COUNT(*) c FROM secmen_kutugu WHERE secim_id = ?`).get(s.id).c;
+  const kutuk = (await db.get(`SELECT COUNT(*) c FROM secmen_kutugu WHERE secim_id = ?`, s.id)).c;
   assert.equal(kutuk, 4, '1 gerçek + 3 demo seçmen');
-  s = asamayaGetir(s.id, 'OYLAMA');
+  s = await asamayaGetir(s.id, 'OYLAMA');
   // Gerçek oyuncu da oy kullanır
   assert.equal((await ilk(`/api/secim/${s.id}/oy`, { adayId: adaylar[0].id })).durum, 200);
-  for (let i = 0; i < 5; i++) nufus.siyaset();
-  const katilim = db.prepare(`SELECT COUNT(*) c FROM secim_katilim WHERE secim_id = ?`).get(s.id).c;
+  for (let i = 0; i < 5; i++) await nufus.siyaset();
+  const katilim = (await db.get(`SELECT COUNT(*) c FROM secim_katilim WHERE secim_id = ?`, s.id)).c;
   assert.ok(katilim >= 3);
-  s = asamayaGetir(s.id, 'ITIRAZ');
+  s = await asamayaGetir(s.id, 'ITIRAZ');
   const sonuc = JSON.parse(s.sonuc_json);
   assert.equal(sonuc.denetim.supheli, 0, 'her demo sakinin cihazı ayrı');
   assert.equal(sonuc.demoKatilim, katilim - 1);
-  s = asamayaGetir(s.id, 'BITTI');
+  s = await asamayaGetir(s.id, 'BITTI');
   assert.equal(s.asama, 'SONUCLANDI');
   assert.ok((await ilk(`/api/mahalle/${mahalle}`)).veri.muhtar, 'muhtar seçildi');
 });
 
 test('gerçek oyuncu eşiğe ulaşınca demo sakin aday olamaz', async () => {
   const s = { region_id: mahalle, tur: 'MUHTAR' };
-  const n = demolar(mahalle)[0];
-  assert.equal(secim.adayUygunlugu(n.id, s, 'MUHTAR').uygun, true);
+  const n = (await demolar(mahalle))[0];
+  assert.equal((await secim.adayUygunlugu(n.id, s, 'MUHTAR')).uygun, true);
   for (const [i, ad] of ['ikinci', 'ucuncu'].entries()) await oyuncu(ad, hucreler[i + 10]);
-  assert.equal(secim.doldurmaKipi(SECIM.turler.MUHTAR, mahalle), false);
-  assert.match(secim.adayUygunlugu(n.id, s, 'MUHTAR').sebepler.join(), /yeterli gerçek oyuncu/);
+  assert.equal(await secim.doldurmaKipi(SECIM.turler.MUHTAR, mahalle), false);
+  assert.match((await secim.adayUygunlugu(n.id, s, 'MUHTAR')).sebepler.join(), /yeterli gerçek oyuncu/);
 });
 
 test('sohbet: gerçek oyuncunun mahalle mesajına demo sakin yanıt verir (etiketli)', async () => {
@@ -148,23 +149,23 @@ test('sohbet: gerçek oyuncunun mahalle mesajına demo sakin yanıt verir (etike
   const demo = mesajlar.find((m) => m.demo);
   assert.ok(demo, 'demo sakin yanıtladı');
   assert.ok(demo.metin.length > 3);
-  assert.match(nufus.kalipYanit('selam', mahalle), /selam|Merhaba|hoş geldin|Selam/i);
+  assert.match(await nufus.kalipYanit('selam', mahalle), /selam|Merhaba|hoş geldin|Selam/i);
 });
 
 test('mahallede gerçek oyuncu çoğalınca demo sakinler ilan açıp taşınır; satılmayan parsel devlete döner', async () => {
   await oyuncu('dorduncu', hucreler[14]);
-  nufus.tasinma();
-  const tasinan = db.prepare(`SELECT * FROM users WHERE is_npc = 1 AND npc_mahalle = ? AND npc_durum = 'TASINIYOR'`).all(mahalle);
+  await nufus.tasinma();
+  const tasinan = (await db.all(`SELECT * FROM users WHERE is_npc = 1 AND npc_mahalle = ? AND npc_durum = 'TASINIYOR'`, mahalle));
   assert.equal(tasinan.length, 3);
-  for (const n of tasinan) assert.ok(db.prepare(`SELECT 1 FROM listings WHERE seller_id = ? AND status = 'ACTIVE'`).get(n.id), 'parselini ilana koydu');
-  db.prepare(`UPDATE users SET npc_sonraki = ? WHERE npc_durum = 'TASINIYOR'`).run(Date.now() - 1);
-  nufus.tasinma();
+  for (const n of tasinan) assert.ok((await db.get(`SELECT 1 FROM listings WHERE seller_id = ? AND status = 'ACTIVE'`, n.id)), 'parselini ilana koydu');
+  await db.run(`UPDATE users SET npc_sonraki = ? WHERE npc_durum = 'TASINIYOR'`, Date.now() - 1);
+  await nufus.tasinma();
   for (const n of tasinan) {
-    assert.equal(db.prepare(`SELECT npc_durum FROM users WHERE id = ?`).get(n.id).npc_durum, 'TASINDI');
-    assert.equal(db.prepare(`SELECT COUNT(*) c FROM parcels WHERE owner_user_id = ?`).get(n.id).c, 0);
+    assert.equal((await db.get(`SELECT npc_durum FROM users WHERE id = ?`, n.id)).npc_durum, 'TASINDI');
+    assert.equal((await db.get(`SELECT COUNT(*) c FROM parcels WHERE owner_user_id = ?`, n.id)).c, 0);
   }
   // Demo muhtar taşındıysa makam boşaldı
-  const m = db.prepare(`SELECT m.* FROM muhtarlar m JOIN users u ON u.id = m.user_id WHERE m.region_id = ? AND u.is_npc = 1 AND m.bitis > ?`).get(mahalle, Date.now());
+  const m = (await db.get(`SELECT m.* FROM muhtarlar m JOIN users u ON u.id = m.user_id WHERE m.region_id = ? AND u.is_npc = 1 AND m.bitis > ?`, mahalle, Date.now()));
   assert.equal(m, undefined);
   assert.equal((await nufus.nufusDongusu()).yerlesen, 0, 'yeterli gerçek oyuncu olan mahalleye yeni demo sakin gelmez');
 });

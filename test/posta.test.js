@@ -43,22 +43,22 @@ test('kayıtta doğrulama e-postası SMTP ile gider: düz metin + HTML, doğru g
   assert.match(ham, /Content-Type: text\/plain/);
   assert.match(ham, /Content-Type: text\/html/);
   assert.match(ham.replace(/=\r?\n/g, ''), /https:\/\/sanalturkiye\.example\/\?dogrula=/);
-  assert.equal(db.prepare(`SELECT durum FROM giden_postalar ORDER BY id DESC LIMIT 1`).get().durum, 'GONDERILDI');
+  assert.equal((await db.get(`SELECT durum FROM giden_postalar ORDER BY id DESC LIMIT 1`)).durum, 'GONDERILDI');
 });
 
 test('SMTP kapalıyken ileti kuyrukta kalır, sunucu dönünce yeniden denenir', async () => {
   await new Promise((r) => smtp.close(r));
   const g = await posta.gonder('kuyruk@test.local', 'Deneme', 'metin', { baslik: 'Deneme', paragraflar: ['merhaba'] });
   assert.equal(g.gonderildi, false);
-  let m = db.prepare(`SELECT * FROM giden_postalar WHERE id = ?`).get(g.id);
+  let m = await db.get(`SELECT * FROM giden_postalar WHERE id = ?`, g.id);
   assert.equal(m.durum, 'BEKLIYOR');
   assert.equal(m.deneme, 1);
   assert.ok(m.hata && m.sonraki > Date.now());
   await smtpBaslat(smtpPort);
   assert.equal(await posta.postaBakim(), 0, 'vakti gelmeden denenmez');
-  db.prepare(`UPDATE giden_postalar SET sonraki = ? WHERE id = ?`).run(Date.now() - 1, g.id);
+  await db.run(`UPDATE giden_postalar SET sonraki = ? WHERE id = ?`, Date.now() - 1, g.id);
   assert.equal(await posta.postaBakim(), 1);
-  m = db.prepare(`SELECT * FROM giden_postalar WHERE id = ?`).get(g.id);
+  m = await db.get(`SELECT * FROM giden_postalar WHERE id = ?`, g.id);
   assert.equal(m.durum, 'GONDERILDI');
   assert.ok(gelenler.some((x) => x.alici.includes('kuyruk@test.local')));
 });

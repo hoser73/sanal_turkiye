@@ -5,7 +5,6 @@
 // canlıya almadan önce Netgsm'in güncel belgesiyle doğrulanmalıdır.
 const db = require('./db');
 
-
 const saglayici = () => process.env.SMS_SAGLAYICI || '';
 const uretim = () => process.env.NODE_ENV === 'production';
 // Telefon doğrulama sunulabilir mi: gerçek sağlayıcı ya da geliştirme kutusu
@@ -27,9 +26,9 @@ async function gonder(telefon, metin) {
     return { gonderildi: true };
   }
   if (uretim()) throw new Error('SMS sağlayıcısı tanımlı değil');
-  db.prepare(`INSERT INTO giden_smsler (telefon, metin) VALUES (?, ?)`).run(telefon, metin);
+  await db.run(`INSERT INTO giden_smsler (telefon, metin) VALUES (?, ?)`, telefon, metin);
   return { gonderildi: false, gelistirme: true };
 }
-const gelistirmeKutusu = () => db.prepare(`SELECT telefon, metin, created_at FROM giden_smsler ORDER BY id DESC LIMIT 30`).all();
+const gelistirmeKutusu = async () => db.all(`SELECT telefon, metin, created_at FROM giden_smsler ORDER BY id DESC LIMIT 30`);
 
 module.exports = { gonder, etkin, gelistirmeMi, gelistirmeKutusu, ayar };

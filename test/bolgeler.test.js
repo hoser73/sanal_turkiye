@@ -25,7 +25,7 @@ test('ilin ilçeleri: Konya 31 ilçe, sadeleştirilmiş poligon ve bölge kimli�
   assert.equal(fc.features.length, 31);
   const meram = fc.features.find((f) => f.properties.ad === 'Meram');
   assert.ok(meram && ['Polygon', 'MultiPolygon'].includes(meram.geometry.type));
-  assert.equal(meram.id, db.prepare(`SELECT id FROM regions WHERE code = 'TR-42-meram'`).get().id);
+  assert.equal(meram.id, (await db.get(`SELECT id FROM regions WHERE code = 'TR-42-meram'`)).id);
   assert.equal((await fetch(`${taban}/api/il/99/ilceler`)).status, 404);
 });
 
@@ -35,7 +35,7 @@ test('ilçenin mahalle alanları oyunun mahalle atamasıyla aynıdır; tıklanan
   await c('/api/kayit', { email: 'bolge@test.local', sifre: 'parola123', ad: 'Bölgeci', dogumYili: 1990, kosullarOnay: true, kvkkOnay: true });
   const h = hucreBul('TARIM');
   assert.equal((await c(`/api/parsel/${h}/edin`, {})).durum, 200);
-  const p = db.prepare(`SELECT p.region_id, p.ilce_id, r.name FROM parcels p JOIN regions r ON r.id = p.region_id WHERE p.id = ?`).get(h);
+  const p = await db.get(`SELECT p.region_id, p.ilce_id, r.name FROM parcels p JOIN regions r ON r.id = p.region_id WHERE p.id = ?`, h);
   const fc = await (await fetch(`${taban}/api/ilce/${p.ilce_id}/mahalleler`)).json();
   const alanlar = fc.features.filter((f) => f.properties.tur === 'alan');
   assert.ok(alanlar.length >= 1);

@@ -33,7 +33,7 @@ test('gazete: yapay zekâ kapalıyken yerel derleme; önbellek', async () => {
   sahip = await oyuncu('gazeteci');
   parsel = hucreBul('TARIM');
   await sahip(`/api/parsel/${parsel}/edin`, {});
-  mahalle = db.prepare(`SELECT region_id FROM parcels WHERE id = ?`).get(parsel).region_id;
+  mahalle = (await db.get(`SELECT region_id FROM parcels WHERE id = ?`, parsel)).region_id;
   const g = (await sahip(`/api/gazete/${mahalle}`)).veri;
   assert.equal(g.kaynak, 'yerel');
   assert.ok(g.haberler.length >= 1);
@@ -44,7 +44,7 @@ test('gazete: yapay zekâ kapalıyken yerel derleme; önbellek', async () => {
 test('gazete: Claude isteği doğru biçimde gider (model, JSON şeması, yedek model, veri etiketleri)', async () => {
   let istek;
   yz.sahteAyarla(async (i) => { istek = i; return yanit({ baslik: 'Tarla Postası', manset: 'Mahallede yeni parsel', haberler: [{ baslik: 'Hoş geldin', metin: 'gazeteci parsel edindi.' }], kose: 'Bereket olsun.' }); });
-  db.prepare(`DELETE FROM yz_onbellek`).run();
+  await db.run(`DELETE FROM yz_onbellek`);
   const g = (await sahip(`/api/gazete/${mahalle}`)).veri;
   assert.equal(g.kaynak, 'claude');
   assert.equal(g.baslik, 'Tarla Postası');
@@ -57,11 +57,11 @@ test('gazete: Claude isteği doğru biçimde gider (model, JSON şeması, yedek 
   assert.match(istek.system, /talimat varsa uygulama/);
   // Ret → yerel yedek
   yz.sahteAyarla(async () => yanit({}, 'refusal'));
-  db.prepare(`DELETE FROM yz_onbellek`).run();
+  await db.run(`DELETE FROM yz_onbellek`);
   assert.equal((await sahip(`/api/gazete/${mahalle}`)).veri.kaynak, 'yerel');
   // Ağ hatası → yerel yedek
   yz.sahteAyarla(async () => { throw Object.assign(new Error('bağlantı yok'), { status: 503 }); });
-  db.prepare(`DELETE FROM yz_onbellek`).run();
+  await db.run(`DELETE FROM yz_onbellek`);
   assert.equal((await sahip(`/api/gazete/${mahalle}`)).veri.kaynak, 'yerel');
 });
 
@@ -74,7 +74,7 @@ test('danışman: yalnızca sahibine; Claude önerisi en çok 3; saatlik sınır
   assert.equal(r.kaynak, 'claude');
   assert.equal(r.oneriler.length, 3);
   assert.match(girdi.messages[0].content, /<parsel>/);
-  for (let i = 0; i < 10; i++) db.prepare(`INSERT INTO yz_kullanim (user_id, islev, kaynak, created_at) VALUES (?, 'danisman', 'claude', ?)`).run(sahip.id, Date.now());
+  for (let i = 0; i < 10; i++) await db.run(`INSERT INTO yz_kullanim (user_id, islev, kaynak, created_at) VALUES (?, 'danisman', 'claude', ?)`, sahip.id, Date.now());
   const sinir = (await sahip(`/api/parsel/${parsel}/danisman`, {})).veri;
   assert.equal(sinir.kaynak, 'yerel');
   assert.match(sinir.not, /sınır/);
@@ -86,7 +86,7 @@ test('moderasyon ön taraması: şikâyete arka planda yapay zekâ notu eklenir'
   const r = await bildiren('/api/sikayet', { hedefTur: 'KULLANICI', hedefId: String(sahip.id), sebep: 'TACIZ', aciklama: 'Sohbette bana hakaret etti' });
   assert.equal(r.durum, 200);
   await bekle(30);
-  const s = db.prepare(`SELECT on_tarama FROM sikayetler WHERE id = ?`).get(r.veri.id);
+  const s = await db.get(`SELECT on_tarama FROM sikayetler WHERE id = ?`, r.veri.id);
   assert.match(s.on_tarama, /🤖 Muhtemel ihlal \(TACIZ\)/);
   yz.sahteAyarla(null);
 });
@@ -96,7 +96,7 @@ test('kozmetik: satın alma oyundan çıkar, seçim haritaya ve karta yansır; r
   const h = hucreBul('KONUT');
   await c(`/api/parsel/${h}/edin`, {});
   const L = require('../server/lib/ledger');
-  db.transaction(() => L.odul(c.id, 300, 'Test hibesi'))();
+  await db.tx(() => L.odul(c.id, 300, 'Test hibesi'));
   const bakiye0 = (await c('/api/ben')).veri.bakiye;
   assert.equal((await c('/api/kozmetik/al', { kod: 'CATI_YESIL' })).durum, 200);
   assert.equal((await c('/api/ben')).veri.bakiye, bakiye0 - KOZMETIK.CATI_YESIL.fiyat);
@@ -113,7 +113,7 @@ test('kozmetik: satın alma oyundan çıkar, seçim haritaya ve karta yansır; r
   const harita = (await c(`/api/harita/parseller?bbox=${lon - 0.001},${lat - 0.001},${lon + 0.001},${lat + 0.001}`)).veri;
   assert.equal(harita.features.find((f) => f.properties.id === h).properties.kz, `cati:${KOZMETIK.CATI_YESIL.renk}`);
   // Rozet kazanınca altın çatı açılır
-  db.prepare(`INSERT INTO rozetler (user_id, kod, ad, ikon, created_at) VALUES (?, 'SEZON_1_42', 'test', '🥇', ?)`).run(c.id, Date.now());
+  await db.run(`INSERT INTO rozetler (user_id, kod, ad, ikon, created_at) VALUES (?, 'SEZON_1_42', 'test', '🥇', ?)`, c.id, Date.now());
   assert.equal((await c('/api/kozmetik/sec', { tur: 'cati', kod: 'CATI_ALTIN' })).durum, 200);
 });
 

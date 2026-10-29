@@ -9,22 +9,26 @@ const { OyunHatasi } = L;
 
 const gun = (t = Date.now()) => new Date(t + 3 * 3600_000).toISOString().slice(0, 10);
 const BOLGELER = [...new Set(Object.values(YORESEL).map((y) => y.bolge))];
-const ilAdi = (plaka) => db.prepare(`SELECT name FROM regions WHERE type = 'IL' AND plaka = ?`).get(plaka)?.name || plaka;
+const ilAdi = async (plaka) => (await db.get(`SELECT name FROM regions WHERE type = 'IL' AND plaka = ?`, plaka))?.name || plaka;
 
 function ildekiParsel(userId, plaka) {
-  return db.prepare(`SELECT p.id, p.region_id FROM parcels p JOIN regions r ON r.id = p.il_id WHERE p.owner_user_id = ? AND r.plaka = ? AND p.status = 'ACTIVE' LIMIT 1`).get(userId, plaka);
+  return db.get(`SELECT p.id, p.region_id FROM parcels p JOIN regions r ON r.id = p.il_id WHERE p.owner_user_id = ? AND r.plaka = ? AND p.status = 'ACTIVE' ORDER BY p.id LIMIT 1`, userId, plaka);
 }
 
-function durum(userId) {
+async function durum(userId) {
   const g = gun();
-  const albumde = new Set(db.prepare(`SELECT urun FROM yoresel_album WHERE user_id = ?`).all(userId).map((r) => r.urun));
-  const bugun = new Set(db.prepare(`SELECT urun FROM yoresel_uretim WHERE user_id = ? AND gun = ?`).all(userId, g).map((r) => r.urun));
-  const bolgeOdul = new Set(db.prepare(`SELECT bolge FROM yoresel_bolge_odul WHERE user_id = ?`).all(userId).map((r) => r.bolge));
-  const iller = new Set(db.prepare(`SELECT DISTINCT r.plaka FROM parcels p JOIN regions r ON r.id = p.il_id WHERE p.owner_user_id = ?`).all(userId).map((r) => r.plaka));
+  const albumde = new Set((await db.all(`SELECT urun FROM yoresel_album WHERE user_id = ?`, userId)).map((r) => r.urun));
+  const bugun = new Set((await db.all(`SELECT urun FROM yoresel_uretim WHERE user_id = ? AND gun = ?`, userId, g)).map((r) => r.urun));
+  const bolgeOdul = new Set((await db.all(`SELECT bolge FROM yoresel_bolge_odul WHERE user_id = ?`, userId)).map((r) => r.bolge));
+  const iller = new Set((await db.all(`SELECT DISTINCT r.plaka FROM parcels p JOIN regions r ON r.id = p.il_id WHERE p.owner_user_id = ?`, userId)).map((r) => r.plaka));
+  // İl adları ve stoklar önce toplanır (senkron eşlemede bekleme yapılmaz)
+  const ilAdlari = new Map((await db.all(`SELECT plaka, name FROM regions WHERE type = 'IL'`)).map((r) => [r.plaka, r.name]));
+  const stok = {};
+  for (const i of await L.envanter(userId)) stok[i.item_id] = i.miktar;
   const urunler = Object.entries(YORESEL).map(([kod, y]) => ({
-    kod, ad: y.ad, ikon: y.ikon, il: y.il, ilAd: ilAdi(y.il), bolge: y.bolge,
-    girdi: Object.entries(y.girdi || {}).map(([u, n]) => ({ kod: u, ad: URUNLER[u].ad, ikon: URUNLER[u].ikon, adet: n, eldeki: L.envanterMiktar(userId, u) })),
-    akce: y.akce || 0, eldeki: L.envanterMiktar(userId, kod), albumde: albumde.has(kod),
+    kod, ad: y.ad, ikon: y.ikon, il: y.il, ilAd: ilAdlari.get(y.il) || y.il, bolge: y.bolge,
+    girdi: Object.entries(y.girdi || {}).map(([u, n]) => ({ kod: u, ad: URUNLER[u].ad, ikon: URUNLER[u].ikon, adet: n, eldeki: stok[u] || 0 })),
+    akce: y.akce || 0, eldeki: stok[kod] || 0, albumde: albumde.has(kod),
     uretebilir: iller.has(y.il), bugunUretildi: bugun.has(kod),
   }));
   const bolgeler = BOLGELER.map((b) => {
@@ -34,41 +38,48 @@ function durum(userId) {
   return { urunler, bolgeler, kural: YORESEL_KURAL, albumToplam: albumde.size };
 }
 
-const uret = db.transaction((userId, kod) => {
+const uret = (userId, kod) => db.tx(async () => {
   const y = Object.hasOwn(YORESEL, String(kod)) ? YORESEL[kod] : null;
   if (!y) throw new OyunHatasi(400, 'Bilinmeyen yöresel ürün');
-  const p = ildekiParsel(userId, y.il);
-  if (!p) throw new OyunHatasi(403, `${y.ad} yalnızca ${ilAdi(y.il)} ilinde parseli olanlar tarafından üretilir`);
+  const p = await ildekiParsel(userId, y.il);
+  if (!p) throw new OyunHatasi(403, `${y.ad} yalnızca ${await ilAdi(y.il)} ilinde parseli olanlar tarafından üretilir`);
   const g = gun();
-  if (db.prepare(`SELECT 1 FROM yoresel_uretim WHERE user_id = ? AND urun = ? AND gun = ?`).get(userId, kod, g)) throw new OyunHatasi(409, 'Bugünün partisini ürettin; yarın yine gel');
-  require('./ekonomi').envanterBozulmasi(userId);
+  if (await db.get(`SELECT 1 FROM yoresel_uretim WHERE user_id = ? AND urun = ? AND gun = ?`, userId, kod, g)) throw new OyunHatasi(409, 'Bugünün partisini ürettin; yarın yine gel');
+  // Birincil anahtar (oyuncu, ürün, gün): eşzamanlı ikinci parti satır yazamaz ve geri alınır
+  if ((await db.run(`INSERT OR IGNORE INTO yoresel_uretim (user_id, urun, gun, at) VALUES (?, ?, ?, ?)`, userId, kod, g, Date.now())).changes !== 1) {
+    throw new OyunHatasi(409, 'Bugünün partisini ürettin; yarın yine gel');
+  }
+  await require('./ekonomi').envanterBozulmasi(userId);
   const tx = L.yeniTx();
-  for (const [u, n] of Object.entries(y.girdi || {})) L.envanterDegis(userId, u, -n, `Yöresel üretim: ${y.ad}`, tx);
-  if (y.akce) L.harca(userId, y.akce, `Yöresel üretim: ${y.ad}`, tx);
-  L.envanterDegis(userId, kod, YORESEL_KURAL.partiCikti, `Yöresel üretim: ${y.ad}`, tx);
-  db.prepare(`INSERT INTO yoresel_uretim (user_id, urun, gun, at) VALUES (?, ?, ?, ?)`).run(userId, kod, g, Date.now());
-  L.denetim({ aktor: userId, eylem: 'GI_PRODUCED', varlik: p.id, sonra: { urun: kod, adet: YORESEL_KURAL.partiCikti }, bolge: p.region_id, herkese: true });
+  for (const [u, n] of Object.entries(y.girdi || {})) await L.envanterDegis(userId, u, -n, `Yöresel üretim: ${y.ad}`, tx);
+  if (y.akce) await L.harca(userId, y.akce, `Yöresel üretim: ${y.ad}`, tx);
+  await L.envanterDegis(userId, kod, YORESEL_KURAL.partiCikti, `Yöresel üretim: ${y.ad}`, tx);
+  await L.denetim({ aktor: userId, eylem: 'GI_PRODUCED', varlik: p.id, sonra: { urun: kod, adet: YORESEL_KURAL.partiCikti }, bolge: p.region_id, herkese: true });
   return { tamam: true, urun: kod, adet: YORESEL_KURAL.partiCikti };
 });
 
-const albumeEkle = db.transaction((userId, kod) => {
+const albumeEkle = (userId, kod) => db.tx(async () => {
   const y = Object.hasOwn(YORESEL, String(kod)) ? YORESEL[kod] : null;
   if (!y) throw new OyunHatasi(400, 'Bilinmeyen yöresel ürün');
-  if (db.prepare(`SELECT 1 FROM yoresel_album WHERE user_id = ? AND urun = ?`).get(userId, kod)) throw new OyunHatasi(409, 'Bu ürün albümünde zaten var');
-  L.envanterDegis(userId, kod, -1, `Albüme eklendi: ${y.ad}`);
-  db.prepare(`INSERT INTO yoresel_album (user_id, urun, at) VALUES (?, ?, ?)`).run(userId, kod, Date.now());
-  L.odul(userId, YORESEL_KURAL.albumOdul, `Yöresel albüm: ${y.ad}`);
-  require('./ciftlik').tpEkle(userId, YORESEL_KURAL.albumTp, 'GI_ALBUM');
+  if (await db.get(`SELECT 1 FROM yoresel_album WHERE user_id = ? AND urun = ?`, userId, kod)) throw new OyunHatasi(409, 'Bu ürün albümünde zaten var');
+  await L.envanterDegis(userId, kod, -1, `Albüme eklendi: ${y.ad}`);
+  // Birincil anahtar (oyuncu, ürün): eşzamanlı ikinci ekleme satır yazamaz ve geri alınır
+  if ((await db.run(`INSERT OR IGNORE INTO yoresel_album (user_id, urun, at) VALUES (?, ?, ?)`, userId, kod, Date.now())).changes !== 1) {
+    throw new OyunHatasi(409, 'Bu ürün albümünde zaten var');
+  }
+  await L.odul(userId, YORESEL_KURAL.albumOdul, `Yöresel albüm: ${y.ad}`);
+  await require('./ciftlik').tpEkle(userId, YORESEL_KURAL.albumTp, 'GI_ALBUM');
   // Bölge tamamlandı mı?
   const bolgeUrunleri = Object.entries(YORESEL).filter(([, x]) => x.bolge === y.bolge).map(([k]) => k);
-  const tamam = bolgeUrunleri.every((k) => db.prepare(`SELECT 1 FROM yoresel_album WHERE user_id = ? AND urun = ?`).get(userId, k));
+  const albumde = new Set((await db.all(`SELECT urun FROM yoresel_album WHERE user_id = ?`, userId)).map((r) => r.urun));
+  const tamam = bolgeUrunleri.every((k) => albumde.has(k));
   let bolgeOdulu = 0;
-  if (tamam && !db.prepare(`SELECT 1 FROM yoresel_bolge_odul WHERE user_id = ? AND bolge = ?`).get(userId, y.bolge)) {
-    db.prepare(`INSERT INTO yoresel_bolge_odul (user_id, bolge) VALUES (?, ?)`).run(userId, y.bolge);
-    L.odul(userId, YORESEL_KURAL.bolgeOdul, `Yöresel albüm: ${y.bolge} tamamlandı`);
+  // Birincil anahtar (oyuncu, bölge): bölge ödülü yalnızca gerçekten yazılan satır için bir kez ödenir
+  if (tamam && (await db.run(`INSERT OR IGNORE INTO yoresel_bolge_odul (user_id, bolge) VALUES (?, ?)`, userId, y.bolge)).changes === 1) {
+    await L.odul(userId, YORESEL_KURAL.bolgeOdul, `Yöresel albüm: ${y.bolge} tamamlandı`);
     bolgeOdulu = YORESEL_KURAL.bolgeOdul;
   }
-  L.denetim({ aktor: userId, eylem: 'GI_COLLECTED', sonra: { urun: kod, bolge: tamam ? y.bolge : null } });
+  await L.denetim({ aktor: userId, eylem: 'GI_COLLECTED', sonra: { urun: kod, bolge: tamam ? y.bolge : null } });
   return { tamam: true, odul: YORESEL_KURAL.albumOdul, bolgeTamam: tamam ? y.bolge : null, bolgeOdulu };
 });
 

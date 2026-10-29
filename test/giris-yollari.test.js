@@ -199,14 +199,14 @@ test('passkey: şifresiz yeni hesap, cihazla giriş, sayaç, tekrar kullanılan 
   assert.equal((await c('/api/passkey/yeni/dogrula', { sorguId: s.sorguId, yanit: d.olustur(s.secenekler) })).durum, 400, 'sorgu tek kullanımlık');
   assert.equal((await c('/api/kayit/tamamla', profil('Anahtarlı Oyuncu'))).durum, 201);
   const uid = (await c('/api/ben')).veri.kullanici.id;
-  assert.equal(db.prepare(`SELECT COUNT(*) c FROM passkeyler WHERE user_id = ?`).get(uid).c, 1);
+  assert.equal((await db.get(`SELECT COUNT(*) c FROM passkeyler WHERE user_id = ?`, uid)).c, 1);
   // Yeni tarayıcıdan cihazla giriş
   const g = istemci();
   const gs = (await g('/api/passkey/giris/secenekler', {})).veri;
   const gr = await g('/api/passkey/giris/dogrula', { sorguId: gs.sorguId, yanit: d.imzala(gs.secenekler) });
   assert.equal(gr.durum, 200, JSON.stringify(gr.veri));
   assert.equal((await g('/api/ben')).veri.kullanici.id, uid);
-  assert.equal(db.prepare(`SELECT sayac FROM passkeyler WHERE user_id = ?`).get(uid).sayac, 1);
+  assert.equal((await db.get(`SELECT sayac FROM passkeyler WHERE user_id = ?`, uid)).sayac, 1);
   // Başka siteden gelen imza ve tanınmayan anahtar
   const h = istemci();
   const hs = (await h('/api/passkey/giris/secenekler', {})).veri;
@@ -239,17 +239,17 @@ test('telefon: geliştirme kodu, hatalı deneme sınırı, numara tekilliği, bi
   const yol = (await a('/api/hesap/giris-yollari')).veri;
   assert.equal(yol.telefon.numara, '+90532 *** ** 33');
   assert.equal((await a('/api/ben')).veri.hesap.telefonDogrulandi, true);
-  assert.ok(!db.prepare(`SELECT telefon_sifreli FROM users WHERE email = 'tel1@test.local'`).get().telefon_sifreli.includes('532'), 'numara şifreli saklanır');
+  assert.ok(!(await db.get(`SELECT telefon_sifreli FROM users WHERE email = 'tel1@test.local'`)).telefon_sifreli.includes('532'), 'numara şifreli saklanır');
   assert.equal((await b('/api/telefon/kod', { telefon: '+905321112233' })).durum, 409, 'başka hesapta kayıtlı');
   // Beş hatalı denemede kod geçersizleşir
-  db.prepare(`UPDATE telefon_kodlari SET created_at = created_at - 120000`).run();
+  await db.run(`UPDATE telefon_kodlari SET created_at = created_at - 120000`);
   const k2 = (await b('/api/telefon/kod', { telefon: '5441234567' })).veri;
   const y2 = k2.gelistirmeKodu === '000000' ? '111111' : '000000';
   for (let i = 0; i < 5; i++) await b('/api/telefon/dogrula', { kod: y2 });
   assert.equal((await b('/api/telefon/dogrula', { kod: k2.gelistirmeKodu })).durum, 400, 'kilitlendi');
   // TELEFON_ZORUNLU: değer aktaran işlem telefon ister
   process.env.TELEFON_ZORUNLU = '1';
-  db.prepare('UPDATE users SET tp = 240').run();   // çarşı 4. seviyede açılır
+  await db.run('UPDATE users SET tp = 240');   // çarşı 4. seviyede açılır
   try {
     assert.equal((await b('/api/banka/vadeli', { tutar: 100 })).veri.kod, 'TELEFON_GEREKLI');
     assert.equal((await a('/api/banka/vadeli', { tutar: 100 })).durum, 200);
@@ -283,13 +283,13 @@ test('telefon: silinen hesabın numarası yeni hesapta doğrulanınca hesap "tek
   assert.equal((await a('/api/hesap/sil', { sifre: 'parola123', onayMetni: 'SİL' })).durum, 200);
   const b = istemci();
   await b('/api/kayit', { email: 'telyeni@test.local', sifre: 'parola123', ...profil('Telefon Yeni') });
-  const id = db.prepare(`SELECT id FROM users WHERE email = 'telyeni@test.local'`).get().id;
-  assert.ok(!db.prepare(`SELECT tekrar_hesap FROM users WHERE id = ?`).get(id).tekrar_hesap, 'yeni e-posta: işaret yok');
+  const id = (await db.get(`SELECT id FROM users WHERE email = 'telyeni@test.local'`)).id;
+  assert.ok(!(await db.get(`SELECT tekrar_hesap FROM users WHERE id = ?`, id)).tekrar_hesap, 'yeni e-posta: işaret yok');
   const L = require('../server/lib/ledger'), { HESAP } = require('../server/config/rules');
-  assert.equal(L.bakiye(id), HESAP.baslangicBakiye, 'kayıtta hibe verildi');
+  assert.equal(await L.bakiye(id), HESAP.baslangicBakiye, 'kayıtta hibe verildi');
   const k2 = (await b('/api/telefon/kod', { telefon: '+90 546 777 88 99' })).veri;
   assert.equal((await b('/api/telefon/dogrula', { kod: k2.gelistirmeKodu })).durum, 200);
-  assert.equal(db.prepare(`SELECT tekrar_hesap FROM users WHERE id = ?`).get(id).tekrar_hesap, 1);
-  assert.equal(L.bakiye(id), 0, 'silinmiş numara: hoş geldin hibesi geri alındı');
+  assert.equal((await db.get(`SELECT tekrar_hesap FROM users WHERE id = ?`, id)).tekrar_hesap, 1);
+  assert.equal(await L.bakiye(id), 0, 'silinmiş numara: hoş geldin hibesi geri alındı');
   assert.ok((await b('/api/bildirimler')).veri.some((x) => x.text.includes('hibesi')));
 });

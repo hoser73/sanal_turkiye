@@ -65,7 +65,7 @@ function turSec(su, yem, derinlik) {
 }
 
 // Balık aktivitesi: ilin gerçek saati (Türkiye) ve havası. Çarpan < 1 balık daha çabuk ısırır.
-function aktivite(plaka, t = Date.now()) {
+async function aktivite(plaka, t = Date.now()) {
   const A = BALIK.aktivite, sebepler = [];
   let kat = 1;
   const saat = Number(new Intl.DateTimeFormat('en', { hour: 'numeric', hourCycle: 'h23', timeZone: 'Europe/Istanbul' }).format(t));
@@ -73,7 +73,7 @@ function aktivite(plaka, t = Date.now()) {
   else if (saat >= 17 && saat < 20) { kat *= A.aksam; sebepler.push('🌇 akşamüstü: balık yemde'); }
   else if (saat >= 11 && saat < 15) { kat *= A.ogle; sebepler.push('☀️ öğle: balık derinde dinleniyor'); }
   else if (saat >= 22 || saat < 4) { kat *= A.gece; sebepler.push('🌙 gece: balık durgun'); }
-  const h = plaka ? db.prepare(`SELECT * FROM hava_durumu WHERE plaka = ?`).get(plaka) : null;
+  const h = plaka ? await db.get(`SELECT * FROM hava_durumu WHERE plaka = ?`, plaka) : null;
   if (h) {
     if (h.kod >= 95) { kat *= A.firtina; sebepler.push('⛈️ fırtına: balık saklanıyor'); }
     else if ((h.kod >= 51 && h.kod <= 67) || (h.kod >= 80 && h.kod <= 82)) { kat *= A.yagmur; sebepler.push('🌧️ yağmur: su hareketli, balık iştahlı'); }
@@ -100,8 +100,8 @@ async function suVeyaBolge(userId, lon, lat) {
   const nokta = Number.isFinite(lon) && Number.isFinite(lat);
   if (nokta) { const su = await ayar.suBul(lon, lat); if (su) return su; }
   const plaka = (nokta && ilceBul(lon, lat)?.plaka)
-    || db.prepare(`SELECT r.plaka FROM parcels p JOIN regions r ON r.id = p.il_id WHERE p.owner_user_id = ? ORDER BY p.acquired_at LIMIT 1`).get(userId)?.plaka
-    || db.prepare('SELECT memleket_plaka FROM users WHERE id = ?').get(userId)?.memleket_plaka || '42';
+    || (await db.get(`SELECT r.plaka FROM parcels p JOIN regions r ON r.id = p.il_id WHERE p.owner_user_id = ? ORDER BY p.acquired_at LIMIT 1`, userId))?.plaka
+    || (await db.get('SELECT memleket_plaka FROM users WHERE id = ?', userId))?.memleket_plaka || '42';
   const kiyi = Object.values(BALIK.deniz).some((d) => d.iller.includes(plaka));
   return { tip: kiyi ? 'deniz' : 'ic', plaka };
 }
@@ -112,92 +112,94 @@ async function ortam(userId, { lon, lat } = {}) {
   return {
     su: { tip: su.tip, plaka: su.plaka },
     turler: Object.entries(yore).map(([kod, w]) => ({ kod, ad: BALIK.turler[kod].ad, w, yem: BALIK.turler[kod].yem, derinlik: BALIK.turler[kod].derinlik })),
-    aktivite: aktivite(su.plaka),
-    kalan: Math.max(0, gunlukHak() - db.prepare(`SELECT COUNT(*) c FROM balik_atislari WHERE user_id = ? AND gun = ?`).get(userId, gun()).c),
+    aktivite: await aktivite(su.plaka),
+    kalan: Math.max(0, gunlukHak() - (await db.get(`SELECT COUNT(*) c FROM balik_atislari WHERE user_id = ? AND gun = ?`, userId, gun())).c),
     // Çarşıdan alınmış yem stoku (varsa atış ücretsiz)
-    stok: { KARIDES: L.envanterMiktar(userId, 'YEM_KARIDES'), MISIR: L.envanterMiktar(userId, 'YEM_MISIR'), SAHTE: L.envanterMiktar(userId, 'SAHTE_YEM_TAKIMI') > 0 ? 1 : 0 },
+    stok: { KARIDES: await L.envanterMiktar(userId, 'YEM_KARIDES'), MISIR: await L.envanterMiktar(userId, 'YEM_MISIR'), SAHTE: await L.envanterMiktar(userId, 'SAHTE_YEM_TAKIMI') > 0 ? 1 : 0 },
   };
 }
 
 async function at(userId, govde = {}) {
-  require('./ciftlik').seviyeKilidi(userId, 'balik');
+  await require('./ciftlik').seviyeKilidi(userId, 'balik');
   const lon = Number(govde.lon), lat = Number(govde.lat);
   const tk = takim(govde);
   const g = gun();
-  const say = () => db.prepare(`SELECT COUNT(*) c FROM balik_atislari WHERE user_id = ? AND gun = ?`).get(userId, g).c;
-  if (say() >= gunlukHak()) throw new OyunHatasi(429, `Bugün ${gunlukHak()} kez olta attın; balıklar yarın yine burada`);
+  const say = async () => (await db.get(`SELECT COUNT(*) c FROM balik_atislari WHERE user_id = ? AND gun = ?`, userId, g)).c;
+  if (await say() >= gunlukHak()) throw new OyunHatasi(429, `Bugün ${gunlukHak()} kez olta attın; balıklar yarın yine burada`);
   const su = await suVeyaBolge(userId, lon, lat);
   // Su denetimi beklenirken başka istekler gelmiş olabilir: sayım ve kayıt beklemeden sonra, tek işlemde
-  const sonuc = db.transaction(() => {
-    const bugun = say();
+  return db.tx(async () => {
+    await db.kilit(`balik:${userId}`);   // eşzamanlı iki atış günlük hakkı aşmasın
+    const bugun = await say();
     if (bugun >= gunlukHak()) throw new OyunHatasi(429, `Bugün ${gunlukHak()} kez olta attın; balıklar yarın yine burada`);
     const t = Date.now();
     // Yem: marketten alınmış paket ya da nalburdan sahte yem takımı varsa stoktan, yoksa akçe
     const yem = BALIK.yemler[tk.yem], carsi = require('./carsi');
     const stok = { KARIDES: 'YEM_KARIDES', MISIR: 'YEM_MISIR' }[tk.yem];
     let yemStok = 0;
-    if (tk.yem === 'SAHTE' && carsi.sahip(userId, 'SAHTE_YEM_TAKIMI')) yemStok = 1;
-    else if (stok && carsi.stoktanKullan(userId, stok, `Balık yemi: ${yem.ad}`)) yemStok = 1;
-    else if (yem.fiyat > 0) L.harca(userId, yem.fiyat, `Balık yemi: ${yem.ad}`);
+    if (tk.yem === 'SAHTE' && await carsi.sahip(userId, 'SAHTE_YEM_TAKIMI')) yemStok = 1;
+    else if (stok && await carsi.stoktanKullan(userId, stok, `Balık yemi: ${yem.ad}`)) yemStok = 1;
+    else if (yem.fiyat > 0) await L.harca(userId, yem.fiyat, `Balık yemi: ${yem.ad}`);
     // Önceki bekleyen atış kaçmış sayılır
-    db.prepare(`UPDATE balik_atislari SET durum = 'KACTI' WHERE user_id = ? AND durum IN ('BEKLIYOR', 'TAKILDI')`).run(userId);
-    const akt = aktivite(su.plaka, t), { uyum } = turDagilimi(su, tk.yem, tk.derinlik);
+    await db.run(`UPDATE balik_atislari SET durum = 'KACTI' WHERE user_id = ? AND durum IN ('BEKLIYOR', 'TAKILDI')`, userId);
+    const akt = await aktivite(su.plaka, t), { uyum } = turDagilimi(su, tk.yem, tk.derinlik);
     const A = BALIK.aktivite;
     const taban = BALIK.isirma[0] + Math.random() * (BALIK.isirma[1] - BALIK.isirma[0]);
     const bekleme = Math.round(Math.min(A.maks, Math.max(A.min, taban * akt.kat * BALIK.misinalar[tk.misina].isirma / Math.max(0.35, Math.min(1.6, uyum)))));
     const isirma = t + bekleme;
-    const id = db.prepare(`INSERT INTO balik_atislari (user_id, plaka, tur, isirma, gun, at, yem, derinlik, misina, yem_stok) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run(userId, su.plaka, turSec(su, tk.yem, tk.derinlik), isirma, g, t, tk.yem, tk.derinlik, tk.misina, yemStok).lastInsertRowid;
+    const id = (await db.run(`INSERT INTO balik_atislari (user_id, plaka, tur, isirma, gun, at, yem, derinlik, misina, yem_stok) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      userId, su.plaka, turSec(su, tk.yem, tk.derinlik), isirma, g, t, tk.yem, tk.derinlik, tk.misina, yemStok)).lastInsertRowid;
     return { id, isirmaMs: isirma - t, pencereMs: BALIK.pencere, tip: su.tip, plaka: su.plaka, kalan: gunlukHak() - bugun - 1, aktivite: akt, ...tk,
       yemFiyat: yemStok ? 0 : yem.fiyat, yemStok: !!yemStok };
-  })();
-  return sonuc;
+  });
 }
 
 // Çek: zamanındaysa balık oltaya takılır ve mücadele başlar (balık henüz envantere girmez)
-const cek = db.transaction((userId, atisId) => {
-  const a = db.prepare(`SELECT * FROM balik_atislari WHERE id = ? AND user_id = ?`).get(Number(atisId), userId);
+const cek = (userId, atisId) => db.tx(async () => {
+  const a = await db.get(`SELECT * FROM balik_atislari WHERE id = ? AND user_id = ?`, Number(atisId), userId);
   if (!a) throw new OyunHatasi(404, 'Olta bulunamadı');
   if (a.durum !== 'BEKLIYOR') throw new OyunHatasi(409, 'Bu olta çoktan çekildi');
   const t = Date.now();
   const erken = t < a.isirma - 150, gec = t > a.isirma + BALIK.pencere + BALIK.tolerans;
+  // Koşullu yazma: eşzamanlı ikinci "Çek!" ikinci kez işlenmez
   if (erken || gec) {
-    db.prepare(`UPDATE balik_atislari SET durum = 'KACTI' WHERE id = ?`).run(a.id);
+    if ((await db.run(`UPDATE balik_atislari SET durum = 'KACTI' WHERE id = ? AND durum = 'BEKLIYOR'`, a.id)).changes !== 1) throw new OyunHatasi(409, 'Bu olta çoktan çekildi');
     return { takildi: false, tutuldu: false, sebep: erken ? 'erken' : 'gec' };
   }
-  db.prepare(`UPDATE balik_atislari SET durum = 'TAKILDI', takildi_at = ? WHERE id = ? AND durum = 'BEKLIYOR'`).run(t, a.id);
+  if ((await db.run(`UPDATE balik_atislari SET durum = 'TAKILDI', takildi_at = ? WHERE id = ? AND durum = 'BEKLIYOR'`, t, a.id)).changes !== 1) throw new OyunHatasi(409, 'Bu olta çoktan çekildi');
   const tur = BALIK.turler[a.tur];
   // Nalburdan alınan kalıcı takım: örgü misina dayanımı, karbon kamış sarma hızı
   const carsi = require('./carsi'), E = require('./config/rules').CARSI.etki;
   return { takildi: true, guc: tur.guc, davranis: tur.davranis,
-    dayanim: L.yuvarla(BALIK.misinalar[a.misina || 'ORTA'].dayanim * (carsi.sahip(userId, 'ORGU_MISINA') ? 1 + E.misinaDayanim : 1)),
-    sarmaHiz: carsi.sahip(userId, 'KARBON_KAMIS') ? E.kamisSarma : 1, minMs: mucadeleMinMs(a.tur), maksMs: BALIK.mucadele.maksMs };
+    dayanim: L.yuvarla(BALIK.misinalar[a.misina || 'ORTA'].dayanim * (await carsi.sahip(userId, 'ORGU_MISINA') ? 1 + E.misinaDayanim : 1)),
+    sarmaHiz: await carsi.sahip(userId, 'KARBON_KAMIS') ? E.kamisSarma : 1, minMs: mucadeleMinMs(a.tur), maksMs: BALIK.mucadele.maksMs };
 });
 
 // Mücadele sonucu: istemci balığı çıkardı mı (basari) ya da misina koptu / balık kaçtı mı
-const cikar = db.transaction((userId, atisId, { basari, neden } = {}) => {
-  const a = db.prepare(`SELECT * FROM balik_atislari WHERE id = ? AND user_id = ?`).get(Number(atisId), userId);
+const cikar = (userId, atisId, { basari, neden } = {}) => db.tx(async () => {
+  const a = await db.get(`SELECT * FROM balik_atislari WHERE id = ? AND user_id = ?`, Number(atisId), userId);
   if (!a) throw new OyunHatasi(404, 'Olta bulunamadı');
   if (a.durum !== 'TAKILDI') throw new OyunHatasi(409, a.durum === 'BEKLIYOR' ? 'Balık henüz oltaya takılmadı' : 'Bu mücadele bitti');
   const t = Date.now(), sure = t - a.takildi_at;
   if (basari === true && sure < mucadeleMinMs(a.tur)) throw new OyunHatasi(409, 'Balık henüz yorulmadı; sarmaya devam et');
   if (basari !== true || sure > BALIK.mucadele.maksMs) {
-    db.prepare(`UPDATE balik_atislari SET durum = 'KACTI' WHERE id = ?`).run(a.id);
+    // Koşullu yazma: mücadele yalnızca bir kez sonuçlanır
+    if ((await db.run(`UPDATE balik_atislari SET durum = 'KACTI' WHERE id = ? AND durum = 'TAKILDI'`, a.id)).changes !== 1) throw new OyunHatasi(409, 'Bu mücadele bitti');
     // Misina koptuysa stoktaki sahte yem balıkla gider
     // (koptuğunu istemci bildirir; bildirmese de kaçan balıkla sahte yem üçte bir olasılıkla gider: yem hiç tükenmez olmasın)
-    if ((neden === 'koptu' || Math.random() < 1 / 3) && a.yem === 'SAHTE' && a.yem_stok) require('./carsi').stoktanKullan(userId, 'SAHTE_YEM_TAKIMI', 'Misina koptu: sahte yem kayboldu');
+    if ((neden === 'koptu' || Math.random() < 1 / 3) && a.yem === 'SAHTE' && a.yem_stok) await require('./carsi').stoktanKullan(userId, 'SAHTE_YEM_TAKIMI', 'Misina koptu: sahte yem kayboldu');
     return { tutuldu: false, sebep: sure > BALIK.mucadele.maksMs ? 'gec' : 'kacti' };
   }
   const tur = BALIK.turler[a.tur];
   const agirlik = Math.round((tur.kg[0] + Math.random() ** 1.6 * (tur.kg[1] - tur.kg[0])) * 100) / 100;   // iri balık daha nadir
-  const onceki = db.prepare(`SELECT MAX(agirlik) AS m FROM balik_atislari WHERE user_id = ? AND tur = ? AND durum = 'TUTULDU'`).get(userId, a.tur).m;
-  if (db.prepare(`UPDATE balik_atislari SET durum = 'TUTULDU', agirlik = ? WHERE id = ? AND durum = 'TAKILDI'`).run(agirlik, a.id).changes !== 1) {
+  const onceki = (await db.get(`SELECT MAX(agirlik) AS m FROM balik_atislari WHERE user_id = ? AND tur = ? AND durum = 'TUTULDU'`, userId, a.tur)).m;
+  if ((await db.run(`UPDATE balik_atislari SET durum = 'TUTULDU', agirlik = ? WHERE id = ? AND durum = 'TAKILDI'`, agirlik, a.id)).changes !== 1) {
     throw new OyunHatasi(409, 'Bu mücadele bitti');
   }
-  L.envanterDegis(userId, a.tur, 1, `Balık: ${URUNLER[a.tur].ad}`);
+  await L.envanterDegis(userId, a.tur, 1, `Balık: ${URUNLER[a.tur].ad}`);
   let odul = 0;
-  if (a.tur === 'ALTIN_BALIK') { odul = BALIK.altinOdul; L.odul(userId, odul, 'Altın balık tuttun'); }
-  L.denetim({ aktor: userId, eylem: 'FISH_CAUGHT', sonra: { tur: a.tur, plaka: a.plaka, agirlik } });
+  if (a.tur === 'ALTIN_BALIK') { odul = BALIK.altinOdul; await L.odul(userId, odul, 'Altın balık tuttun'); }
+  await L.denetim({ aktor: userId, eylem: 'FISH_CAUGHT', sonra: { tur: a.tur, plaka: a.plaka, agirlik } });
   return { tutuldu: true, urun: a.tur, ad: URUNLER[a.tur].ad, ikon: URUNLER[a.tur].ikon, odul, agirlik, rekor: onceki == null || agirlik > onceki, oncekiRekor: onceki ?? null };
 });
 

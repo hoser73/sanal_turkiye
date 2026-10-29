@@ -35,23 +35,23 @@ test('ihale: hafta kurulur, ihaledeki tarla edinilemez, teklif emanete geçer, g
   const i = l.ihaleler[0];
   assert.equal((await a(`/api/parsel/${i.parsel}/edin`, {})).veri.kod, 'IHALEDE');
   assert.equal((await a(`/api/ihale/${i.id}/teklif`, { tutar: i.taban - 1 })).veri.kod, 'DUSUK');
-  const onceA = L.bakiye(a.id), onceB = L.bakiye(b.id);
+  const onceA = await L.bakiye(a.id), onceB = await L.bakiye(b.id);
   assert.equal((await a(`/api/ihale/${i.id}/teklif`, { tutar: i.taban })).durum, 200);
-  assert.equal(Math.round(onceA - L.bakiye(a.id)), i.taban, 'teklif emanette');
+  assert.equal(Math.round(onceA - await L.bakiye(a.id)), i.taban, 'teklif emanette');
   const asgari = Math.ceil(i.taban * (1 + I.artis));
   assert.equal((await b(`/api/ihale/${i.id}/teklif`, { tutar: asgari - 1 })).veri.kod, 'DUSUK');
   assert.equal((await b(`/api/ihale/${i.id}/teklif`, { tutar: asgari })).durum, 200);
-  assert.equal(Math.round(L.bakiye(a.id)), Math.round(onceA), 'geçilen teklif iade');
+  assert.equal(Math.round(await L.bakiye(a.id)), Math.round(onceA), 'geçilen teklif iade');
   const g = (await b('/api/ihale')).veri.ihaleler.find((x) => x.id === i.id);
   assert.equal(g.liderBen, true); assert.equal(g.enYuksek, asgari);
   // Bitir ve sonuçlandır
-  db.prepare('UPDATE ihaleler SET bitis = ? WHERE id = ?').run(Date.now() - 1, i.id);
-  ihale.sonuclandir();
-  assert.equal(db.prepare('SELECT owner_user_id FROM parcels WHERE id = ?').get(i.parsel).owner_user_id, b.id);
+  await db.run('UPDATE ihaleler SET bitis = ? WHERE id = ?', Date.now() - 1, i.id);
+  await ihale.sonuclandir();
+  assert.equal((await db.get('SELECT owner_user_id FROM parcels WHERE id = ?', i.parsel)).owner_user_id, b.id);
   const ilkParsel = require('../server/config/rules').GOREVLER.find((x) => x.kod === 'ILK_PARSEL').odul;   // ilk parsel görevi ödülü
-  assert.equal(Math.round(onceB - L.bakiye(b.id)), asgari - ilkParsel);
-  assert.equal(Math.round(L.hesapBakiye(`IHALE:${i.id}`)), 0, 'emanet boşaldı');
-  assert.equal(db.prepare('SELECT durum, fiyat FROM ihaleler WHERE id = ?').get(i.id).durum, 'SATILDI');
+  assert.equal(Math.round(onceB - await L.bakiye(b.id)), asgari - ilkParsel);
+  assert.equal(Math.round(await L.hesapBakiye(`IHALE:${i.id}`)), 0, 'emanet boşaldı');
+  assert.equal((await db.get('SELECT durum, fiyat FROM ihaleler WHERE id = ?', i.id)).durum, 'SATILDI');
 });
 
 test('ihale: kendi teklifini yükseltmek yalnızca son teklifi kilitler; geçilen teklif hemen iade edilir', async () => {
@@ -59,18 +59,18 @@ test('ihale: kendi teklifini yükseltmek yalnızca son teklifi kilitler; geçile
   const i = l.ihaleler.find((x) => x.durum === 'ACIK');
   assert.ok(i, 'açık ihale');
   const a = await oyuncu('iha2'), b = await oyuncu('ihb2');
-  const onceA = L.bakiye(a.id), onceB = L.bakiye(b.id);
+  const onceA = await L.bakiye(a.id), onceB = await L.bakiye(b.id);
   assert.equal((await b(`/api/ihale/${i.id}/teklif`, { tutar: i.taban })).durum, 200);
   const asgari = Math.ceil(i.taban * (1 + I.artis));
   assert.equal((await a(`/api/ihale/${i.id}/teklif`, { tutar: asgari })).durum, 200);
-  assert.equal(Math.round(L.bakiye(b.id)), Math.round(onceB), 'geçilen teklif iade');
+  assert.equal(Math.round(await L.bakiye(b.id)), Math.round(onceB), 'geçilen teklif iade');
   // A kendi teklifini yükseltir: eski teklif iade, yenisi kilitlenir (kilitli toplam = yeni teklif)
   const yeni = Math.ceil(asgari * (1 + I.artis));
   assert.equal((await a(`/api/ihale/${i.id}/teklif`, { tutar: yeni })).durum, 200);
-  assert.equal(Math.round(onceA - L.bakiye(a.id)), yeni, 'yalnızca son teklif emanette');
-  assert.equal(db.prepare(`SELECT COUNT(*) c FROM ihale_teklifleri WHERE ihale_id = ? AND durum = 'AKTIF'`).get(i.id).c, 1, 'tek aktif teklif');
-  assert.equal(Math.round(L.hesapBakiye(`IHALE:${i.id}`)), yeni);
-  assert.equal(db.prepare(`SELECT COUNT(*) c FROM (SELECT tx_group FROM wallet_ledger GROUP BY tx_group HAVING ROUND(SUM(debit) - SUM(credit), 2) <> 0)`).get().c, 0);
+  assert.equal(Math.round(onceA - await L.bakiye(a.id)), yeni, 'yalnızca son teklif emanette');
+  assert.equal((await db.get(`SELECT COUNT(*) c FROM ihale_teklifleri WHERE ihale_id = ? AND durum = 'AKTIF'`, i.id)).c, 1, 'tek aktif teklif');
+  assert.equal(Math.round(await L.hesapBakiye(`IHALE:${i.id}`)), yeni);
+  assert.equal((await db.get(`SELECT COUNT(*) c FROM (SELECT tx_group FROM wallet_ledger GROUP BY tx_group HAVING ROUND(SUM(debit) - SUM(credit), 2) <> 0) AS x`)).c, 0);
 });
 
 test('ihale: önde olunan ihale parsel sınırına sayılır (sınırdaki lider başka parsel alamaz, sınırdaki oyuncu teklif veremez)', async () => {
@@ -78,7 +78,7 @@ test('ihale: önde olunan ihale parsel sınırına sayılır (sınırdaki lider 
   const i = (await (await oyuncu('ihd'))('/api/ihale')).veri.ihaleler.find((x) => x.durum === 'ACIK');
   assert.ok(i, 'açık ihale');
   const a = await oyuncu('iha3'), b = await oyuncu('ihb3');
-  const ust = db.prepare(`SELECT MAX(tutar) m FROM ihale_teklifleri WHERE ihale_id = ? AND durum = 'AKTIF'`).get(i.id).m;
+  const ust = (await db.get(`SELECT MAX(tutar) m FROM ihale_teklifleri WHERE ihale_id = ? AND durum = 'AKTIF'`, i.id)).m;
   const tutar = ust ? Math.ceil(ust * (1 + I.artis)) : i.taban;
   H.maxParsel = 1;
   try {
@@ -91,28 +91,28 @@ test('ihale: önde olunan ihale parsel sınırına sayılır (sınırdaki lider 
     assert.equal(r.durum, 409);
     assert.match(r.veri.hata, /ihale/);
     // İhale bitince A tarlayı alır (kendi ihalesi sınırdan düşülür)
-    db.prepare('UPDATE ihaleler SET bitis = ? WHERE id = ?').run(Date.now() - 1, i.id);
-    ihale.sonuclandir();
+    await db.run('UPDATE ihaleler SET bitis = ? WHERE id = ?', Date.now() - 1, i.id);
+    await ihale.sonuclandir();
   } finally { H.maxParsel = eskiSinir; }
-  assert.equal(db.prepare('SELECT owner_user_id FROM parcels WHERE id = ?').get(i.parsel).owner_user_id, a.id);
-  assert.equal(db.prepare('SELECT durum FROM ihaleler WHERE id = ?').get(i.id).durum, 'SATILDI');
+  assert.equal((await db.get('SELECT owner_user_id FROM parcels WHERE id = ?', i.parsel)).owner_user_id, a.id);
+  assert.equal((await db.get('SELECT durum FROM ihaleler WHERE id = ?', i.id)).durum, 'SATILDI');
 });
 
 test('fiyat alarmı: hedef yönü kendiliğinden; endeks hedefe ulaşınca bir kez bildirim; sınır', async () => {
   const c = await oyuncu('alarmci');
   const h = hucreBul('TARIM');
   await c(`/api/parsel/${h}/edin`, {});
-  const bolge = db.prepare('SELECT region_id FROM parcels WHERE id = ?').get(h).region_id;
-  require('../server/piyasa').endeksKaydet(Date.now());
-  const e = require('../server/piyasa').endeksSerisi('MAHALLE', bolge, 1).endeks;
+  const bolge = (await db.get('SELECT region_id FROM parcels WHERE id = ?', h)).region_id;
+  await require('../server/piyasa').endeksKaydet(Date.now());
+  const e = (await require('../server/piyasa').endeksSerisi('MAHALLE', bolge, 1)).endeks;
   assert.ok(e > 0);
   const r = (await c('/api/alarm', { bolgeId: bolge, hedef: Math.floor(e) - 1 })).veri;
   assert.equal(r.yon, 'ASAGI');
   const yukari = (await c('/api/alarm', { bolgeId: bolge, hedef: e + 50 })).veri;
   assert.equal(yukari.yon, 'YUKARI');
   // Aşağı alarmın hedefi zaten karşılanmış sayılsın: hedefi endeksin üstüne çek
-  db.prepare('UPDATE fiyat_alarmlari SET hedef = ? WHERE id = ?').run(e + 1, r.id);
-  alarm.alarmBakim(Date.now() + 120_000);
+  await db.run('UPDATE fiyat_alarmlari SET hedef = ? WHERE id = ?', e + 1, r.id);
+  await alarm.alarmBakim(Date.now() + 120_000);
   const l = (await c('/api/alarm')).veri;
   assert.ok(l.find((x) => x.id === r.id).tetiklendi);
   assert.ok(!l.find((x) => x.id === yukari.id).tetiklendi);
@@ -123,36 +123,36 @@ test('fiyat alarmı: hedef yönü kendiliğinden; endeks hedefe ulaşınca bir k
 // Testin kendi ihalesi (haftanın 3 ihalesi önceki testlerde tükenir): boş bir tarım parseli, gelecekte biter
 async function ozelIhale() {
   const pid = await require('../server/harita/parsel').parselHazirla(hucreBul('TARIM'));
-  const id = db.prepare('INSERT INTO ihaleler (hafta, parcel_id, set_kod, taban, bitis) VALUES (?, ?, ?, ?, ?)').run(-1, pid, 'TEST', 100, Date.now() + 3600_000).lastInsertRowid;
+  const id = (await db.run('INSERT INTO ihaleler (hafta, parcel_id, set_kod, taban, bitis) VALUES (?, ?, ?, ?, ?)', -1, pid, 'TEST', 100, Date.now() + 3600_000)).lastInsertRowid;
   return { id, pid };
 }
 
 test('ihale: hesabını silen oyuncunun teklifi iade edilir, emanette akçe kalmaz, ihaleyi kazanamaz', async () => {
   const { id, pid } = await ozelIhale();
   const a = await oyuncu('ihsil');
-  const once = L.bakiye(a.id);
+  const once = await L.bakiye(a.id);
   assert.equal((await a(`/api/ihale/${id}/teklif`, { tutar: 150 })).durum, 200);
-  assert.equal(Math.round(L.hesapBakiye(`IHALE:${id}`)), 150);
+  assert.equal(Math.round(await L.hesapBakiye(`IHALE:${id}`)), 150);
   assert.equal((await a('/api/hesap/sil', { sifre: 'parola123', onayMetni: 'SİL' })).durum, 200);
-  assert.equal(Math.round(L.hesapBakiye(`IHALE:${id}`)), 0, 'emanet boşaldı');
-  assert.equal(Math.round(L.bakiye(a.id)), Math.round(once), 'teklif silinen hesaba iade edildi');
-  assert.equal(db.prepare(`SELECT durum FROM ihale_teklifleri WHERE ihale_id = ? AND user_id = ?`).get(id, a.id).durum, 'IADE');
-  db.prepare('UPDATE ihaleler SET bitis = ? WHERE id = ?').run(Date.now() - 1, id);
-  ihale.sonuclandir();
-  assert.equal(db.prepare('SELECT owner_user_id FROM parcels WHERE id = ?').get(pid).owner_user_id, null);
-  assert.equal(db.prepare('SELECT durum FROM ihaleler WHERE id = ?').get(id).durum, 'SATILMADI');
+  assert.equal(Math.round(await L.hesapBakiye(`IHALE:${id}`)), 0, 'emanet boşaldı');
+  assert.equal(Math.round(await L.bakiye(a.id)), Math.round(once), 'teklif silinen hesaba iade edildi');
+  assert.equal((await db.get(`SELECT durum FROM ihale_teklifleri WHERE ihale_id = ? AND user_id = ?`, id, a.id)).durum, 'IADE');
+  await db.run('UPDATE ihaleler SET bitis = ? WHERE id = ?', Date.now() - 1, id);
+  await ihale.sonuclandir();
+  assert.equal((await db.get('SELECT owner_user_id FROM parcels WHERE id = ?', pid)).owner_user_id, null);
+  assert.equal((await db.get('SELECT durum FROM ihaleler WHERE id = ?', id)).durum, 'SATILMADI');
 });
 
 test('ihale: askıdaki oyuncunun teklifi sonuçlanırken atlanır ve iade edilir; sıradaki geçerli teklif yoksa satılmaz', async () => {
   const { id, pid } = await ozelIhale();
   const b = await oyuncu('ihaski');
-  const once = L.bakiye(b.id);
+  const once = await L.bakiye(b.id);
   assert.equal((await b(`/api/ihale/${id}/teklif`, { tutar: 120 })).durum, 200);
-  db.prepare(`UPDATE users SET status = 'SUSPENDED' WHERE id = ?`).run(b.id);
-  db.prepare('UPDATE ihaleler SET bitis = ? WHERE id = ?').run(Date.now() - 1, id);
-  ihale.sonuclandir();
-  assert.equal(db.prepare('SELECT owner_user_id FROM parcels WHERE id = ?').get(pid).owner_user_id, null);
-  assert.equal(db.prepare('SELECT durum FROM ihaleler WHERE id = ?').get(id).durum, 'SATILMADI');
-  assert.equal(Math.round(L.bakiye(b.id)), Math.round(once), 'teklif iade');
-  assert.equal(Math.round(L.hesapBakiye(`IHALE:${id}`)), 0);
+  await db.run(`UPDATE users SET status = 'SUSPENDED' WHERE id = ?`, b.id);
+  await db.run('UPDATE ihaleler SET bitis = ? WHERE id = ?', Date.now() - 1, id);
+  await ihale.sonuclandir();
+  assert.equal((await db.get('SELECT owner_user_id FROM parcels WHERE id = ?', pid)).owner_user_id, null);
+  assert.equal((await db.get('SELECT durum FROM ihaleler WHERE id = ?', id)).durum, 'SATILMADI');
+  assert.equal(Math.round(await L.bakiye(b.id)), Math.round(once), 'teklif iade');
+  assert.equal(Math.round(await L.hesapBakiye(`IHALE:${id}`)), 0);
 });

@@ -26,13 +26,13 @@ let c, uid, parsel;
 test('kayıt ve tarla: eylemler TP kazandırır', async () => {
   c = istemci();
   assert.equal((await c('/api/kayit', { email: 'ciftci@test.local', sifre: 'parola123', ad: 'Çiftçi', dogumYili: 1990, kosullarOnay: true, kvkkOnay: true })).durum, 201);
-  uid = db.prepare(`SELECT id FROM users WHERE email = 'ciftci@test.local'`).get().id;
+  uid = (await db.get(`SELECT id FROM users WHERE email = 'ciftci@test.local'`)).id;
   parsel = hucreBul('TARIM');
   assert.equal((await c(`/api/parsel/${parsel}/edin`, {})).durum, 200);
   assert.equal((await c(`/api/parsel/${parsel}/ek`, { urun: 'BUGDAY' })).durum, 200);
   await bekle(20);   // TP olay yolundan (işlem sonrası) yazılır
-  assert.equal(db.prepare(`SELECT tp FROM users WHERE id = ?`).get(uid).tp, SEVIYE.tp.PARCEL_ACQUIRED + SEVIYE.tp.CROP_PLANTED);
-  assert.ok(db.prepare(`SELECT COUNT(*) c FROM tp_kayitlari WHERE user_id = ? AND region_id IS NOT NULL`).get(uid).c >= 2);
+  assert.equal((await db.get(`SELECT tp FROM users WHERE id = ?`, uid)).tp, SEVIYE.tp.PARCEL_ACQUIRED + SEVIYE.tp.CROP_PLANTED);
+  assert.ok((await db.get(`SELECT COUNT(*) c FROM tp_kayitlari WHERE user_id = ? AND region_id IS NOT NULL`, uid)).c >= 2);
 });
 
 test('seviye formülü ve seviye kilidi', async () => {
@@ -49,21 +49,21 @@ test('seviye formülü ve seviye kilidi', async () => {
 });
 
 test('seviye ödülü: birikmiş seviyeler tek seferde, ikinci kez alınamaz', async () => {
-  db.prepare(`UPDATE users SET tp = 130 WHERE id = ?`).run(uid);   // seviye 3
-  const once = L.bakiye(uid);
+  await db.run(`UPDATE users SET tp = 130 WHERE id = ?`, uid);   // seviye 3
+  const once = await L.bakiye(uid);
   const r = await c('/api/seviye-odul', {});
   assert.equal(r.durum, 200);
   assert.equal(r.veri.tutar, SEVIYE.seviyeOdulu(2) + SEVIYE.seviyeOdulu(3));
-  assert.equal(L.bakiye(uid), L.yuvarla(once + r.veri.tutar));
+  assert.equal((await L.bakiye(uid)), L.yuvarla(once + r.veri.tutar));
   assert.equal((await c('/api/seviye-odul', {})).durum, 409);
 });
 
 test('günlük ödül: günde bir kez', async () => {
-  const once = L.bakiye(uid);
+  const once = await L.bakiye(uid);
   const r = await c('/api/gunluk-odul', {});
   assert.equal(r.durum, 200);
   assert.equal(r.veri.seri, 1);
-  assert.equal(L.bakiye(uid), L.yuvarla(once + r.veri.akce));
+  assert.equal((await L.bakiye(uid)), L.yuvarla(once + r.veri.akce));
   assert.equal((await c('/api/gunluk-odul', {})).durum, 409);
 });
 
@@ -74,11 +74,11 @@ test('kümes: yemle (eksik yem satın alınır) → hazır olunca topla → yumu
   const kumes = kart.yapilar.find((y) => y.tip === 'KUMES');
   assert.equal(kumes.durum, 'ACTIVE');
   assert.equal(kumes.hayvan.durum, 'AC');
-  const once = L.bakiye(uid);
+  const once = await L.bakiye(uid);
   const b = await c(`/api/yapi/${kumes.id}/besle`, {});
   assert.equal(b.durum, 200);
   assert.equal(b.veri.yemSatin, HAYVANLAR.KUMES.yem);
-  assert.ok(L.bakiye(uid) < once);
+  assert.ok((await L.bakiye(uid)) < once);
   assert.equal((await c(`/api/yapi/${kumes.id}/besle`, {})).durum, 409, 'tok hayvan yeniden yemlenmez');
   assert.equal((await c(`/api/yapi/${kumes.id}/topla`, {})).durum, 409, 'vakti gelmeden toplanmaz');
   await bekle(260);
@@ -88,7 +88,7 @@ test('kümes: yemle (eksik yem satın alınır) → hazır olunca topla → yumu
   assert.equal(harita.features.find((f) => f.properties.id === parsel).properties.hh, 1);
   const t = await c(`/api/yapi/${kumes.id}/topla`, {});
   assert.equal(t.durum, 200);
-  assert.equal(L.envanterMiktar(uid, 'YUMURTA'), HAYVANLAR.KUMES.miktar);
+  assert.equal((await L.envanterMiktar(uid, 'YUMURTA')), HAYVANLAR.KUMES.miktar);
   kart = (await c(`/api/parsel/${parsel}`)).veri;
   assert.equal(kart.yapilar.find((y) => y.tip === 'KUMES').hayvan.durum, 'AC');
   // Başkasının barınağı yemlenemez
@@ -103,15 +103,15 @@ test('sipariş panosu: dolu başlar, eksik ürünle teslim edilemez, tamamlanın
   const s = o.siparisler.liste[0];
   assert.ok(s.odul > 0 && s.tp > 0 && s.kalemler.length >= 1);
   // Önceki testlerden kalan ürünler (ör. yumurta) siparişi karşılamasın: envanteri boşalt
-  for (const i of L.envanter(uid)) L.envanterDegis(uid, i.item_id, -i.miktar, 'test');
+  await db.tx(async () => { for (const i of await L.envanter(uid)) await L.envanterDegis(uid, i.item_id, -i.miktar, 'test'); });
   const eksik = await c(`/api/siparis/${s.id}/teslim`, {});
   assert.ok([409].includes(eksik.durum));
-  for (const k of s.kalemler) L.envanterDegis(uid, k.kod, k.adet, 'test');
-  const once = L.bakiye(uid);
+  await db.tx(async () => { for (const k of s.kalemler) await L.envanterDegis(uid, k.kod, k.adet, 'test'); });
+  const once = await L.bakiye(uid);
   const t = await c(`/api/siparis/${s.id}/teslim`, {});
   assert.equal(t.durum, 200);
-  assert.equal(L.bakiye(uid), L.yuvarla(once + s.odul));
-  for (const k of s.kalemler) assert.ok(L.envanterMiktar(uid, k.kod) >= 0);
+  assert.equal((await L.bakiye(uid)), L.yuvarla(once + s.odul));
+  for (const k of s.kalemler) assert.ok((await L.envanterMiktar(uid, k.kod)) >= 0);
   const r = o.siparisler.liste[1];
   assert.equal((await c(`/api/siparis/${r.id}/reddet`, {})).durum, 200);
   const sonra = (await c('/api/ciftlik')).veri.siparisler.liste;
@@ -120,11 +120,11 @@ test('sipariş panosu: dolu başlar, eksik ürünle teslim edilemez, tamamlanın
 });
 
 test('süsler: satın alınır, yuvaya yerleşir, haritada görünür; seviyesi yetmeyen kilitli', async () => {
-  const once = L.bakiye(uid);
+  const once = await L.bakiye(uid);
   const r = await c(`/api/parsel/${parsel}/sus`, { tur: 'KORKULUK' });
   assert.equal(r.durum, 200);
   assert.equal(r.veri.yuva, 0);
-  assert.equal(L.bakiye(uid), L.yuvarla(once - SUSLER.KORKULUK.fiyat));
+  assert.equal((await L.bakiye(uid)), L.yuvarla(once - SUSLER.KORKULUK.fiyat));
   const kart = (await c(`/api/parsel/${parsel}`)).veri;
   assert.deepEqual(kart.susler.map((s) => s.tur), ['KORKULUK']);
   const harita = (await c(`/api/harita/parseller?bbox=${kart.konum.lon - 0.001},${kart.konum.lat - 0.001},${kart.konum.lon + 0.001},${kart.konum.lat + 0.001}`)).veri;

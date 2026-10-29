@@ -34,31 +34,35 @@ function odulYazisi(o) {
 
 // ---------- Puan: oyun eylemleri (işlem bittikten sonra olay yolundan)
 const q = {
-  npc: db.prepare('SELECT is_npc FROM users WHERE id = ?'),
-  gunluk: db.prepare(`INSERT INTO yol_gunluk (user_id, gun, eylem, adet) VALUES (?, ?, ?, 1)
-    ON CONFLICT (user_id, gun, eylem) DO UPDATE SET adet = adet + 1 RETURNING adet`),
-  puanEkle: db.prepare(`INSERT INTO yol_puanlari (user_id, donem, puan) VALUES (?, ?, ?)
-    ON CONFLICT (user_id, donem) DO UPDATE SET puan = puan + excluded.puan`),
-  puan: db.prepare('SELECT puan FROM yol_puanlari WHERE user_id = ? AND donem = ?'),
-  alinanlar: db.prepare('SELECT kademe FROM yol_odulleri WHERE user_id = ? AND donem = ?'),
-  odulYaz: db.prepare('INSERT OR IGNORE INTO yol_odulleri (user_id, donem, kademe, at) VALUES (?, ?, ?, ?)'),
+  npc: db.sorgu('SELECT is_npc FROM users WHERE id = ?'),
+  gunluk: db.sorgu(`INSERT INTO yol_gunluk (user_id, gun, eylem, adet) VALUES (?, ?, ?, 1)
+    ON CONFLICT (user_id, gun, eylem) DO UPDATE SET adet = yol_gunluk.adet + 1 RETURNING adet`),   // tablo adıyla: Postgres'te yalın ad belirsiz
+  puanEkle: db.sorgu(`INSERT INTO yol_puanlari (user_id, donem, puan) VALUES (?, ?, ?)
+    ON CONFLICT (user_id, donem) DO UPDATE SET puan = yol_puanlari.puan + excluded.puan`),
+  puan: db.sorgu('SELECT puan FROM yol_puanlari WHERE user_id = ? AND donem = ?'),
+  alinanlar: db.sorgu('SELECT kademe FROM yol_odulleri WHERE user_id = ? AND donem = ?'),
+  odulYaz: db.sorgu('INSERT OR IGNORE INTO yol_odulleri (user_id, donem, kademe, at) VALUES (?, ?, ?, ?)'),
 };
+// Kendi işlemini açar (çağıran işlemdeyse kayıt noktası olur)
 function puanVer(userId, eylem, t = Date.now()) {
   const p = Y.puanlar[eylem];
-  if (!p || !userId || q.npc.get(userId)?.is_npc) return 0;
-  if (q.gunluk.get(userId, gunAnahtari(t), eylem).adet > Y.gunlukTavan) return 0;
-  q.puanEkle.run(userId, donem(t).kod, p);
-  return p;
+  if (!p || !userId) return Promise.resolve(0);
+  return db.tx(async () => {
+    if ((await q.npc.get(userId))?.is_npc) return 0;
+    if ((await q.gunluk.get(userId, gunAnahtari(t), eylem)).adet > Y.gunlukTavan) return 0;
+    await q.puanEkle.run(userId, donem(t).kod, p);
+    return p;
+  });
 }
 yol.on('eylem', ({ eylem, aktor }) => {
-  try { puanVer(aktor, eylem); } catch { /* kullanıcı silinmiş olabilir */ }
+  puanVer(aktor, eylem).catch(() => { /* kullanıcı silinmiş olabilir */ });
 });
 
 // ---------- Durum ve ödül alma
-function durumu(userId, t = Date.now()) {
+async function durumu(userId, t = Date.now()) {
   const d = donem(t);
-  const puan = q.puan.get(userId, d.kod)?.puan || 0;
-  const alinan = new Set(q.alinanlar.all(userId, d.kod).map((r) => r.kademe));
+  const puan = (await q.puan.get(userId, d.kod))?.puan || 0;
+  const alinan = new Set((await q.alinanlar.all(userId, d.kod)).map((r) => r.kademe));
   const kademeler = Array.from({ length: Y.kademe }, (_, i) => {
     const n = i + 1;
     return { n, esik: esik(n), odul: odulYazisi(Y.odul(n)), buyuk: n % 5 === 0, alindi: alinan.has(n), acik: puan >= esik(n) };
@@ -75,26 +79,27 @@ function durumu(userId, t = Date.now()) {
 }
 
 // /api/ben için kısa özet (rozet ve görev şeridi ipucu)
-function ozet(userId, t = Date.now()) {
-  const d = donem(t), puan = q.puan.get(userId, d.kod)?.puan || 0;
+async function ozet(userId, t = Date.now()) {
+  const d = donem(t), puan = (await q.puan.get(userId, d.kod))?.puan || 0;
   let ulasilan = 0;
   while (ulasilan < Y.kademe && puan >= esik(ulasilan + 1)) ulasilan++;
-  return { puan, ulasilan, alinabilir: ulasilan - q.alinanlar.all(userId, d.kod).length };
+  return { puan, ulasilan, alinabilir: ulasilan - (await q.alinanlar.all(userId, d.kod)).length };
 }
 
-const kademeAl = (userId, d, n, t) => {
-  const puan = q.puan.get(userId, d.kod)?.puan || 0;
+// İşlem içinde çağrılır
+const kademeAl = async (userId, d, n, t) => {
+  const puan = (await q.puan.get(userId, d.kod))?.puan || 0;
   if (puan < esik(n)) throw new OyunHatasi(409, `Bu kademe için ${esik(n)} puan gerekiyor (sende ${puan})`, 'YETERSIZ_PUAN');
-  if (q.odulYaz.run(userId, d.kod, n, t).changes !== 1) throw new OyunHatasi(409, 'Bu kademenin ödülünü zaten aldın', 'ALINDI');
+  if ((await q.odulYaz.run(userId, d.kod, n, t)).changes !== 1) throw new OyunHatasi(409, 'Bu kademenin ödülünü zaten aldın', 'ALINDI');
   const o = Y.odul(n), tx = L.yeniTx();
-  if (o.akce) L.odul(userId, o.akce, `Sezon yolu ${n}. kademe`, tx);
-  if (o.esya) L.envanterDegis(userId, o.esya[0], o.esya[1], `Sezon yolu ${n}. kademe`, tx);
-  if (o.kozmetik) db.prepare('INSERT OR IGNORE INTO kozmetikler (user_id, kod, created_at) VALUES (?, ?, ?)').run(userId, o.kozmetik, t);
-  L.denetim({ aktor: userId, eylem: 'SEASON_PATH_REWARD', varlik: `YOL:${d.kod}:${n}`, sonra: o });
+  if (o.akce) await L.odul(userId, o.akce, `Sezon yolu ${n}. kademe`, tx);
+  if (o.esya) await L.envanterDegis(userId, o.esya[0], o.esya[1], `Sezon yolu ${n}. kademe`, tx);
+  if (o.kozmetik) await db.run('INSERT OR IGNORE INTO kozmetikler (user_id, kod, created_at) VALUES (?, ?, ?)', userId, o.kozmetik, t);
+  await L.denetim({ aktor: userId, eylem: 'SEASON_PATH_REWARD', varlik: `YOL:${d.kod}:${n}`, sonra: o });
   return o;
 };
 // kademe verilirse o kademe, verilmezse açık ve alınmamış bütün kademeler
-const odulAl = db.transaction((userId, govde = {}) => {
+const odulAl = (userId, govde = {}) => db.tx(async () => {
   const t = Date.now(), d = donem(t);
   let liste;
   if (govde.kademe != null) {
@@ -102,14 +107,14 @@ const odulAl = db.transaction((userId, govde = {}) => {
     if (typeof n !== 'number' || !Number.isInteger(n) || n < 1 || n > Y.kademe) throw new OyunHatasi(400, 'Geçersiz kademe');
     liste = [n];
   } else {
-    const alinan = new Set(q.alinanlar.all(userId, d.kod).map((r) => r.kademe));
-    const puan = q.puan.get(userId, d.kod)?.puan || 0;
+    const alinan = new Set((await q.alinanlar.all(userId, d.kod)).map((r) => r.kademe));
+    const puan = (await q.puan.get(userId, d.kod))?.puan || 0;
     liste = Array.from({ length: Y.kademe }, (_, i) => i + 1).filter((n) => puan >= esik(n) && !alinan.has(n));
     if (!liste.length) throw new OyunHatasi(409, 'Alınacak ödül yok', 'BOS');
   }
   const toplam = { akce: 0, esya: [], kozmetik: [] };
   for (const n of liste) {
-    const o = kademeAl(userId, d, n, t);
+    const o = await kademeAl(userId, d, n, t);
     toplam.akce += o.akce || 0;
     if (o.esya) toplam.esya.push(o.esya);
     if (o.kozmetik) toplam.kozmetik.push(KOZMETIK[o.kozmetik].ad);

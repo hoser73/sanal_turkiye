@@ -41,7 +41,9 @@ test('sağlık ucu, istek kimliği ve istemci hata raporu; hata listesi yalnızc
   assert.equal((await c('/api/yonetim/hatalar')).durum, 401);
 });
 
-test('yedek ve geri yükleme: bütünlük denetimi, kuru çalıştırma, kenara alma', async () => {
+// Yedek/geri yükleme ve Postgres'e aktarma SQLite dosyası üzerinde çalışır (Postgres'te yedek pg_dump ile alınır)
+const yalnizSqlite = { skip: db.tur !== 'sqlite' && 'SQLite dosyasına özgü' };
+test('yedek ve geri yükleme: bütünlük denetimi, kuru çalıştırma, kenara alma', yalnizSqlite, async () => {
   const c = istemci();
   await c('/api/kayit', { email: 'yedek@test.local', sifre: 'parola123', dogumYili: 1990, kosullarOnay: true, kvkkOnay: true, ad: 'Yedekçi' });
   await c(`/api/parsel/${hucreBul('TARIM')}/edin`, {});
@@ -66,18 +68,24 @@ test('yedek ve geri yükleme: bütünlük denetimi, kuru çalıştırma, kenara 
   fs.rmSync(hedef, { recursive: true, force: true });
 });
 
-test('Postgres dışa aktarımı: şema, CSV ve parsel geometrisi üretilir', () => {
-  const { sema, disaAktar } = require('../scripts/postgres-aktar');
+// Şema üretimi veri dosyasından bağımsızdır (bellek içi SQLite): iki kipte de sınanır
+test('Postgres şeması: PostGIS, benzersizlik, geometri ve tetikleyiciler üretilir', () => {
+  const { sema } = require('../scripts/postgres-aktar');
   const s = sema();
   assert.match(s, /CREATE EXTENSION IF NOT EXISTS postgis/);
   assert.match(s, /CREATE TABLE IF NOT EXISTS "users"[\s\S]*UNIQUE \("email"\)/);
   assert.match(s, /"geom" geometry\(Polygon, 4326\)/);
   assert.match(s, /CREATE TRIGGER audit_no_update/);
+});
+
+test('Postgres dışa aktarımı: CSV ve parsel geometrisi üretilir', yalnizSqlite, async () => {
+  const { disaAktar } = require('../scripts/postgres-aktar');
   const dizin = fs.mkdtempSync(path.join(os.tmpdir(), 'st-pg-'));
-  const ozet = disaAktar(dizin);
-  assert.equal(ozet.users, db.prepare(`SELECT COUNT(*) c FROM users`).get().c);
+  // Uygulamanın tutamacıyla, işlem içinde: arka plandaki bir işlemin yarım yazdıkları dışa aktarılmasın
+  const ozet = await db.tx(async () => disaAktar(dizin, db.sqlite));
+  assert.equal(ozet.users, (await db.get(`SELECT COUNT(*) c FROM users`)).c);
   const geo = fs.readFileSync(path.join(dizin, 'parcels_geom.csv'), 'utf8').trim().split('\n');
-  assert.equal(geo.length, db.prepare(`SELECT COUNT(*) c FROM parcels`).get().c);
+  assert.equal(geo.length, (await db.get(`SELECT COUNT(*) c FROM parcels`)).c);
   assert.match(geo[0], /POLYGON\(\([\d. ,]+\)\)/);
   assert.match(fs.readFileSync(path.join(dizin, 'yukle.sql'), 'utf8'), /\\copy "wallet_ledger"/);
   fs.rmSync(dizin, { recursive: true, force: true });

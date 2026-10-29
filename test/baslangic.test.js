@@ -19,7 +19,7 @@ const istemci = istemciUret(() => taban);
 const kayit = async (ad) => {
   const c = istemci();
   await c('/api/kayit', { email: `${ad}@test.local`, sifre: 'parola123', ad, dogumYili: 1990, kosullarOnay: true, kvkkOnay: true });
-  return { c, id: db.prepare(`SELECT id FROM users WHERE email = ?`).get(`${ad}@test.local`).id };
+  return { c, id: (await db.get(`SELECT id FROM users WHERE email = ?`, `${ad}@test.local`)).id };
 };
 
 test('yeni oyuncu tarlasını hediye alır; bakiye değişmez, ilk görev biter, ikinci kez alınamaz', async () => {
@@ -52,11 +52,11 @@ test('silinen hesabın e-postasıyla açılan hesap: başlangıç tarlası hediy
   assert.equal((await A.c('/api/hesap/sil', { sifre: 'parola123', onayMetni: 'SİL' })).durum, 200);
   const B = await kayit('donguci');
   const L = require('../server/lib/ledger');
-  assert.equal(L.bakiye(B.id), 0, 'hoş geldin hibesi yok');
-  db.transaction(() => L.odul(B.id, 100_000, 'test sermayesi'))();
+  assert.equal(await L.bakiye(B.id), 0, 'hoş geldin hibesi yok');
+  await db.tx(() => L.odul(B.id, 100_000, 'test sermayesi'));
   const r = await B.c('/api/baslangic/tarla', {});
   assert.equal(r.durum, 200, JSON.stringify(r.veri));
   assert.equal(r.veri.hediye, 0);
-  assert.equal(db.prepare(`SELECT COUNT(*) c FROM wallet_ledger WHERE user_id = ? AND reason = 'Başlangıç tarlası hediyesi'`).get(B.id).c, 0);
-  assert.ok(L.bakiye(B.id) < 100_000, 'tahsis bedeli oyuncunun akçesinden');
+  assert.equal((await db.get(`SELECT COUNT(*) c FROM wallet_ledger WHERE user_id = ? AND reason = 'Başlangıç tarlası hediyesi'`, B.id)).c, 0);
+  assert.ok(await L.bakiye(B.id) < 100_000, 'tahsis bedeli oyuncunun akçesinden');
 });

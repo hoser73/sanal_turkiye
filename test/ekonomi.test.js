@@ -25,7 +25,7 @@ async function oyuncu(ad) {
   c.id = (await c('/api/ben')).veri.kullanici.id;
   return c;
 }
-const urunVer = (userId, urun, adet) => db.transaction(() => L.envanterDegis(userId, urun, adet, 'Test stoku'))();
+const urunVer = (userId, urun, adet) => db.tx(() => L.envanterDegis(userId, urun, adet, 'Test stoku'));
 const stok = (userId, urun) => L.envanterMiktar(userId, urun);
 
 test('olgun ekin önce taze kalır, sonra verimi düşer, sonunda tarlada çürür', async () => {
@@ -33,9 +33,9 @@ test('olgun ekin önce taze kalır, sonra verimi düşer, sonunda tarlada çür�
   const h1 = hucreBul('TARIM');
   assert.equal((await c(`/api/parsel/${h1}/edin`, {})).durum, 200);
   assert.equal((await c(`/api/parsel/${h1}/ek`, { urun: 'BUGDAY' })).durum, 200);
-  const kaydir = (ms) => db.prepare(`UPDATE crops SET planted_at = planted_at - ?, ready_at = ready_at - ? WHERE parcel_id = ? AND status = 'GROWING'`).run(ms, ms, h1);
+  const kaydir = (ms) => db.run(`UPDATE crops SET planted_at = planted_at - ?, ready_at = ready_at - ? WHERE parcel_id = ? AND status = 'GROWING'`, ms, ms, h1);
   // Bozulma süresinin yarısı: verim ~%65
-  kaydir(BOZULMA.tazeMs + BOZULMA.bozulmaMs / 2 + 500);
+  await kaydir(BOZULMA.tazeMs + BOZULMA.bozulmaMs / 2 + 500);
   const kart = (await c(`/api/parsel/${h1}`)).veri;
   assert.equal(kart.ekin.tazelik, 'BOZULUYOR');
   assert.ok(kart.ekin.verimOrani > 0.6 && kart.ekin.verimOrani < 0.7);
@@ -43,12 +43,12 @@ test('olgun ekin önce taze kalır, sonra verimi düşer, sonunda tarlada çür�
   assert.ok(r.miktar > 0 && r.verimOrani < 0.7);
 
   assert.equal((await c(`/api/parsel/${h1}/ek`, { urun: 'DOMATES' })).durum, 200);
-  kaydir(BOZULMA.tazeMs + BOZULMA.bozulmaMs + 10 * 60_000);
+  await kaydir(BOZULMA.tazeMs + BOZULMA.bozulmaMs + 10 * 60_000);
   assert.equal((await c(`/api/parsel/${h1}`)).veri.ekin.tazelik, 'CURUDU');
-  const once = stok(c.id, 'DOMATES');
+  const once = await stok(c.id, 'DOMATES');
   const cur = (await c(`/api/parsel/${h1}/hasat`, {})).veri;
   assert.equal(cur.curudu, true);
-  assert.equal(stok(c.id, 'DOMATES'), once);
+  assert.equal(await stok(c.id, 'DOMATES'), once);
   assert.equal((await c(`/api/parsel/${h1}`)).veri.ekin, null, 'tarla temizlendi');
 });
 
@@ -57,7 +57,7 @@ test('yapılar yıpranır; eşiğin altında etkisi kesilir; bakım ücretli ve 
   const h = hucreBul('TARIM');
   await c(`/api/parsel/${h}/edin`, {});
   assert.equal((await c(`/api/parsel/${h}/insaat`, { tip: 'SULAMA_HATTI' })).durum, 200);
-  db.prepare(`UPDATE structures SET status = 'ACTIVE', completed_at = ? WHERE parcel_id = ?`).run(Date.now() - 25 * BAKIM.gunMs, h);
+  await db.run(`UPDATE structures SET status = 'ACTIVE', completed_at = ? WHERE parcel_id = ?`, Date.now() - 25 * BAKIM.gunMs, h);
   const kart = (await c(`/api/parsel/${h}`)).veri;
   const y = kart.yapilar[0];
   assert.equal(y.saglik, 100 - 25 * BAKIM.yipranmaGunluk);
@@ -80,9 +80,9 @@ test('yapılar yıpranır; eşiğin altında etkisi kesilir; bakım ücretli ve 
 test('depodaki ürün oyun günü başına bozulur; bildirim gelir', async () => {
   const c = await oyuncu('depocu');
   await c('/api/ben');   // bozulma sayacı başlar
-  urunVer(c.id, 'DOMATES', 100);
-  urunVer(c.id, 'BUGDAY', 100);
-  db.prepare(`UPDATE users SET bozulma_gun = bozulma_gun - 2 WHERE id = ?`).run(c.id);
+  await urunVer(c.id, 'DOMATES', 100);
+  await urunVer(c.id, 'BUGDAY', 100);
+  await db.run(`UPDATE users SET bozulma_gun = bozulma_gun - 2 WHERE id = ?`, c.id);
   const ben = (await c('/api/ben')).veri;
   const domates = ben.envanter.find((i) => i.item_id === 'DOMATES');
   assert.equal(domates.miktar, 100 - Math.floor(100 * (1 - (1 - BOZULMA.envanterGunluk.DOMATES) ** 2)));
@@ -95,11 +95,11 @@ test('depodaki ürün oyun günü başına bozulur; bildirim gelir', async () =>
 test('borsa: fiyat-zaman önceliği, bekleyen emrin fiyatından eşleşme, fark iadesi, ücret, kendi emriyle eşleşmeme', async () => {
   const satici = await oyuncu('satici'), alici = await oyuncu('alici'), ucuncu = await oyuncu('ucuncu');
   await satici('/api/ben'); await ucuncu('/api/ben');
-  urunVer(satici.id, 'BUGDAY', 200);
-  urunVer(ucuncu.id, 'BUGDAY', 50);
+  await urunVer(satici.id, 'BUGDAY', 200);
+  await urunVer(ucuncu.id, 'BUGDAY', 50);
   assert.equal((await satici('/api/borsa/emir', { urun: 'BUGDAY', yon: 'SAT', fiyat: 9, miktar: 10 })).durum, 400, 'fiyat bandı dışında');
   const s1 = (await satici('/api/borsa/emir', { urun: 'BUGDAY', yon: 'SAT', fiyat: 1.6, miktar: 50 })).veri;
-  assert.equal(stok(satici.id, 'BUGDAY'), 150, 'satış emri ürünü kilitler');
+  assert.equal(await stok(satici.id, 'BUGDAY'), 150, 'satış emri ürünü kilitler');
   // Kendi alış emri kendi satışıyla eşleşmez
   const kendi = (await satici('/api/borsa/emir', { urun: 'BUGDAY', yon: 'AL', fiyat: 1.6, miktar: 5 })).veri;
   assert.equal(kendi.dolan, 0);
@@ -110,7 +110,7 @@ test('borsa: fiyat-zaman önceliği, bekleyen emrin fiyatından eşleşme, fark 
   const a1 = (await alici('/api/borsa/emir', { urun: 'BUGDAY', yon: 'AL', fiyat: 2, miktar: 30 })).veri;
   assert.equal(a1.dolan, 30);
   assert.deepEqual(a1.islemler.map((i) => [i.miktar, i.fiyat]), [[20, 1.5], [10, 1.6]]);
-  assert.equal(stok(alici.id, 'BUGDAY'), 30);
+  assert.equal(await stok(alici.id, 'BUGDAY'), 30);
   assert.equal((await alici('/api/ben')).veri.bakiye, bakiye0 - 46, '20×1.5 + 10×1.6 = 46; limit farkı iade');
   const ucretUcuncu = 0.6, gelir = 30 - ucretUcuncu;
   assert.equal((await ucuncu('/api/ben')).veri.bakiye, 500 + gelir);
@@ -120,25 +120,25 @@ test('borsa: fiyat-zaman önceliği, bekleyen emrin fiyatından eşleşme, fark 
   assert.equal(defter.sonIslemler[0].fiyat, 1.6);
   // İptal: kalan ürün ve kilitli akçe iade edilir
   assert.equal((await satici(`/api/borsa/emir/${s1.id}/iptal`, {})).durum, 200);
-  assert.equal(stok(satici.id, 'BUGDAY'), 190);
+  assert.equal(await stok(satici.id, 'BUGDAY'), 190);
   assert.equal((await alici(`/api/borsa/emir/${s2.id}/iptal`, {})).durum, 404, 'başkasının emri');
   // Kapalı emirlerin emanet hesapları sıfırlanmıştır
-  const emanetler = db.prepare(`SELECT account, ROUND(SUM(credit) - SUM(debit), 2) b FROM wallet_ledger WHERE account LIKE 'ESCROW:EMIR:%' GROUP BY account`).all();
-  const acik = new Set(db.prepare(`SELECT id FROM urun_emirleri WHERE durum = 'ACIK'`).all().map((e) => `ESCROW:EMIR:${e.id}`));
+  const emanetler = await db.all(`SELECT account, ROUND(SUM(credit) - SUM(debit), 2) b FROM wallet_ledger WHERE account LIKE 'ESCROW:EMIR:%' GROUP BY account`);
+  const acik = new Set((await db.all(`SELECT id FROM urun_emirleri WHERE durum = 'ACIK'`)).map((e) => `ESCROW:EMIR:${e.id}`));
   for (const e of emanetler) if (!acik.has(e.account)) assert.equal(e.b, 0, e.account);
 });
 
 test('borsa: süresi dolan emir iade edilir; ekonomi paneli yalnızca yetkiliye açık', async () => {
   const c = await oyuncu('suresi');
   await c('/api/ben');
-  urunVer(c.id, 'ELMA', 20);
+  await urunVer(c.id, 'ELMA', 20);
   const e = (await c('/api/borsa/emir', { urun: 'ELMA', yon: 'SAT', fiyat: 2, miktar: 20, gun: 1 })).veri;
-  db.prepare(`UPDATE urun_emirleri SET expires_at = ? WHERE id = ?`).run(Date.now() - 1, e.id);
+  await db.run(`UPDATE urun_emirleri SET expires_at = ? WHERE id = ?`, Date.now() - 1, e.id);
   await c('/api/borsa');
-  assert.equal(db.prepare(`SELECT durum FROM urun_emirleri WHERE id = ?`).get(e.id).durum, 'SURESI_DOLDU');
-  assert.equal(stok(c.id, 'ELMA'), 20);
+  assert.equal((await db.get(`SELECT durum FROM urun_emirleri WHERE id = ?`, e.id)).durum, 'SURESI_DOLDU');
+  assert.equal(await stok(c.id, 'ELMA'), 20);
   assert.equal((await c('/api/yonetim/ekonomi')).durum, 403);
-  const panel = require('../server/ekonomi').ekonomiPaneli();
+  const panel = await require('../server/ekonomi').ekonomiPaneli();
   assert.ok(panel.ozet.arz > 0);
   assert.ok(panel.ozet.yakilan7 > 0);
   assert.ok(panel.kaynaklar.some((k) => k.sebep === 'Borsa işlem ücreti'));
@@ -149,40 +149,40 @@ test('borsa: süresi dolan emir iade edilir; ekonomi paneli yalnızca yetkiliye 
 test('envantere giren ürün (hasat, hediye, toplama …) geçmiş günlerin bozulmasına uğramaz; eski stok bozulur', async () => {
   const c = await oyuncu('gecikmis');
   await c('/api/ben');
-  urunVer(c.id, 'DOMATES', 100);
-  db.prepare('UPDATE users SET bozulma_gun = bozulma_gun - 4 WHERE id = ?').run(c.id);   // 4 gün uğramadı
-  urunVer(c.id, 'DOMATES', 100);   // bugün gelen 100 domates
+  await urunVer(c.id, 'DOMATES', 100);
+  await db.run('UPDATE users SET bozulma_gun = bozulma_gun - 4 WHERE id = ?', c.id);   // 4 gün uğramadı
+  await urunVer(c.id, 'DOMATES', 100);   // bugün gelen 100 domates
   const eski = 100 - Math.floor(100 * (1 - (1 - BOZULMA.envanterGunluk.DOMATES) ** 4));
-  assert.equal(stok(c.id, 'DOMATES'), eski + 100);
+  assert.equal(await stok(c.id, 'DOMATES'), eski + 100);
   await c('/api/ben');
-  assert.equal(stok(c.id, 'DOMATES'), eski + 100, 'bugün gelenler bir daha bozulmaz');
+  assert.equal(await stok(c.id, 'DOMATES'), eski + 100, 'bugün gelenler bir daha bozulmaz');
 });
 
 test('borsa: bugün alınan ürün alıcının geçmiş günlerdeki bozulmasına uğramaz', async () => {
   const alici = await oyuncu('tazealici'), satici = await oyuncu('tazesatici');
   await satici('/api/ben');
-  urunVer(satici.id, 'DOMATES', 100);
+  await urunVer(satici.id, 'DOMATES', 100);
   assert.equal((await alici('/api/borsa/emir', { urun: 'DOMATES', yon: 'AL', fiyat: 2, miktar: 100, gun: 7 })).durum, 200);
-  db.prepare('UPDATE users SET bozulma_gun = bozulma_gun - 5 WHERE id = ?').run(alici.id);   // alıcı 5 gün uğramadı
+  await db.run('UPDATE users SET bozulma_gun = bozulma_gun - 5 WHERE id = ?', alici.id);   // alıcı 5 gün uğramadı
   assert.equal((await satici('/api/borsa/emir', { urun: 'DOMATES', yon: 'SAT', fiyat: 2, miktar: 100, gun: 7 })).veri.dolan, 100);
   await alici('/api/ben');
-  assert.equal(stok(alici.id, 'DOMATES'), 100);
+  assert.equal(await stok(alici.id, 'DOMATES'), 100);
 });
 
 test('borsa: satış emrinde bekleyen ürün de bozulur; iptalde açık kalınan günlerin bozulması düşülür', async () => {
   const c = await oyuncu('bekleyen');
   await c('/api/ben');
-  urunVer(c.id, 'DOMATES', 100);
+  await urunVer(c.id, 'DOMATES', 100);
   const e = (await c('/api/borsa/emir', { urun: 'DOMATES', yon: 'SAT', fiyat: 4, miktar: 100, gun: 7 })).veri;
-  db.prepare('UPDATE urun_emirleri SET created_at = created_at - ? WHERE id = ?').run(3 * BOZULMA.gunMs, e.id);
-  db.prepare('UPDATE users SET bozulma_gun = bozulma_gun - 3 WHERE id = ?').run(c.id);   // depo da 3 gündür işlenmedi
+  await db.run('UPDATE urun_emirleri SET created_at = created_at - ? WHERE id = ?', 3 * BOZULMA.gunMs, e.id);
+  await db.run('UPDATE users SET bozulma_gun = bozulma_gun - 3 WHERE id = ?', c.id);   // depo da 3 gündür işlenmedi
   const r = await c(`/api/borsa/emir/${e.id}/iptal`, {});
   assert.equal(r.durum, 200);
-  const emir = db.prepare('SELECT created_at, closed_at FROM urun_emirleri WHERE id = ?').get(e.id);
+  const emir = await db.get('SELECT created_at, closed_at FROM urun_emirleri WHERE id = ?', e.id);
   const gun = Math.floor(emir.closed_at / BOZULMA.gunMs) - Math.floor(emir.created_at / BOZULMA.gunMs);
   const bozulan = Math.floor(100 * (1 - (1 - BOZULMA.envanterGunluk.DOMATES) ** gun));
   assert.ok(bozulan > 0);
   assert.equal(r.veri.bozulan, bozulan);
-  assert.equal(stok(c.id, 'DOMATES'), 100 - bozulan, 'iade edilen ürün bir daha bozulmaz');
+  assert.equal(await stok(c.id, 'DOMATES'), 100 - bozulan, 'iade edilen ürün bir daha bozulmaz');
   assert.equal((await c('/api/ben')).veri.envanter.find((i) => i.item_id === 'DOMATES').miktar, 100 - bozulan);
 });

@@ -32,24 +32,24 @@ const etkinlikAktifMi = (kod, t = Date.now()) => aktifEtkinlik(t)?.kod === kod;
 
 // Türkiye geneli sayaç herkese açık uçtan sorgulanır: 60 sn önbellek
 const ortakOnbellek = new Map();
-function sayac(eylem, bas, bit, userId = null) {
+async function sayac(eylem, bas, bit, userId = null) {
   if (!userId) {
     const k = `${eylem}|${bas}`, o = ortakOnbellek.get(k);
     if (o && Date.now() - o.at < 60_000) return o.c;
-    const c = sayacHam(eylem, bas, bit, null);
+    const c = await sayacHam(eylem, bas, bit, null);
     ortakOnbellek.set(k, { c, at: Date.now() });
     return c;
   }
   return sayacHam(eylem, bas, bit, userId);
 }
-function sayacHam(eylem, bas, bit, userId) {
+async function sayacHam(eylem, bas, bit, userId) {
   return userId
-    ? db.prepare(`SELECT COUNT(*) c FROM audit_events WHERE actor_id = ? AND action = ? AND created_at >= ? AND created_at < ?`).get(userId, eylem, sqlZaman(bas), sqlZaman(bit)).c
-    : db.prepare(`SELECT COUNT(*) c FROM audit_events a JOIN users u ON u.id = a.actor_id WHERE u.is_npc = 0 AND a.action = ? AND a.created_at >= ? AND a.created_at < ?`)
-      .get(eylem, sqlZaman(bas), sqlZaman(bit)).c;
+    ? (await db.get(`SELECT COUNT(*) c FROM audit_events WHERE actor_id = ? AND action = ? AND created_at >= ? AND created_at < ?`, userId, eylem, sqlZaman(bas), sqlZaman(bit))).c
+    : (await db.get(`SELECT COUNT(*) c FROM audit_events a JOIN users u ON u.id = a.actor_id WHERE u.is_npc = 0 AND a.action = ? AND a.created_at >= ? AND a.created_at < ?`,
+      eylem, sqlZaman(bas), sqlZaman(bit))).c;
 }
 
-function durum(userId = null, t = Date.now()) {
+async function durum(userId = null, t = Date.now()) {
   const e = aktifEtkinlik(t);
   if (!e) {
     // Sıradaki etkinlik (bilgi için)
@@ -60,13 +60,14 @@ function durum(userId = null, t = Date.now()) {
     }).filter((x) => x.bas > t).sort((a, b) => a.bas - b.bas)[0];
     return { aktif: null, sonraki };
   }
-  const alinan = new Set(userId ? db.prepare(`SELECT gorev FROM etkinlik_odulleri WHERE user_id = ? AND etkinlik = ? AND yil = ?`).all(userId, e.kod, e.yil).map((r) => r.gorev) : []);
-  const gorevler = e.gorevler.map((g, i) => {
-    const ilerleme = userId ? Math.min(g.hedef, sayac(g.eylem, e.bas, e.bit, userId)) : 0;
-    return { sira: i, ad: g.ad, hedef: g.hedef, ilerleme, odul: g.odul, tp: g.tp, alindi: alinan.has(i), alinabilir: !!userId && ilerleme >= g.hedef && !alinan.has(i) };
-  });
-  const ortakToplam = sayac(e.ortak.eylem, e.bas, e.bit);
-  const katki = userId ? sayac(e.ortak.eylem, e.bas, e.bit, userId) : 0;
+  const alinan = new Set(userId ? (await db.all(`SELECT gorev FROM etkinlik_odulleri WHERE user_id = ? AND etkinlik = ? AND yil = ?`, userId, e.kod, e.yil)).map((r) => r.gorev) : []);
+  const gorevler = [];
+  for (const [i, g] of e.gorevler.entries()) {
+    const ilerleme = userId ? Math.min(g.hedef, await sayac(g.eylem, e.bas, e.bit, userId)) : 0;
+    gorevler.push({ sira: i, ad: g.ad, hedef: g.hedef, ilerleme, odul: g.odul, tp: g.tp, alindi: alinan.has(i), alinabilir: !!userId && ilerleme >= g.hedef && !alinan.has(i) });
+  }
+  const ortakToplam = await sayac(e.ortak.eylem, e.bas, e.bit);
+  const katki = userId ? await sayac(e.ortak.eylem, e.bas, e.bit, userId) : 0;
   return {
     aktif: { kod: e.kod, ad: e.ad, ikon: e.ikon, renk: e.renk, aciklama: e.aciklama, bas: e.bas, bit: e.bit, kalanMs: e.bit - t, sus: e.sus || null, gorevler,
       ortak: { ad: e.ortak.ad, hedef: e.ortak.hedef, ilerleme: Math.min(e.ortak.hedef, ortakToplam), odul: e.ortak.odul, katki,
@@ -74,9 +75,9 @@ function durum(userId = null, t = Date.now()) {
   };
 }
 
-const odulAl = db.transaction((userId, gorev) => {
+const odulAl = (userId, gorev) => db.tx(async () => {
   // Tek an: etkinliğin bitiş anında durum() ile aktifEtkinlik() farklı sonuç vermesin
-  const t = Date.now(), e = aktifEtkinlik(t), d = durum(userId, t);
+  const t = Date.now(), e = aktifEtkinlik(t), d = await durum(userId, t);
   if (!e || !d.aktif) throw new OyunHatasi(409, 'Şu an etkinlik yok');
   if (typeof gorev !== 'number' || !Number.isInteger(gorev)) throw new OyunHatasi(400, 'Geçersiz görev');
   const g = gorev;
@@ -84,10 +85,13 @@ const odulAl = db.transaction((userId, gorev) => {
   if (!hedef) throw new OyunHatasi(404, 'Görev bulunamadı');
   if (hedef.alindi) throw new OyunHatasi(409, 'Bu ödülü zaten aldın');
   if (!hedef.alinabilir) throw new OyunHatasi(409, g === -1 ? 'Ortak hedefe henüz ulaşılmadı ya da katkın yok' : 'Görev henüz tamamlanmadı');
-  db.prepare(`INSERT INTO etkinlik_odulleri (user_id, etkinlik, yil, gorev, odul, at) VALUES (?, ?, ?, ?, ?, ?)`).run(userId, d.aktif.kod, e.yil, g, hedef.odul, t);
-  L.odul(userId, hedef.odul, `${d.aktif.ad} ödülü: ${hedef.ad}`);
-  L.denetim({ aktor: userId, eylem: 'EVENT_REWARD_CLAIMED', sonra: { etkinlik: d.aktif.kod, gorev: g, odul: hedef.odul } });
-  if (hedef.tp) require('./ciftlik').tpEkle(userId, hedef.tp, 'EVENT_REWARD_CLAIMED');
+  // Koşullu yazma: aynı anda gelen ikinci istek birincil anahtara takılır
+  if ((await db.run(`INSERT OR IGNORE INTO etkinlik_odulleri (user_id, etkinlik, yil, gorev, odul, at) VALUES (?, ?, ?, ?, ?, ?)`, userId, d.aktif.kod, e.yil, g, hedef.odul, t)).changes !== 1) {
+    throw new OyunHatasi(409, 'Bu ödülü zaten aldın');
+  }
+  await L.odul(userId, hedef.odul, `${d.aktif.ad} ödülü: ${hedef.ad}`);
+  await L.denetim({ aktor: userId, eylem: 'EVENT_REWARD_CLAIMED', sonra: { etkinlik: d.aktif.kod, gorev: g, odul: hedef.odul } });
+  if (hedef.tp) await require('./ciftlik').tpEkle(userId, hedef.tp, 'EVENT_REWARD_CLAIMED');
   return { tamam: true, odul: hedef.odul, tp: hedef.tp || 0 };
 });
 

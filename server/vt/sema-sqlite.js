@@ -652,6 +652,9 @@ function semaKur(db) {
   CREATE TABLE IF NOT EXISTS referandum_katilim (ref_id INTEGER NOT NULL REFERENCES referandumlar(id), user_id INTEGER NOT NULL REFERENCES users(id), PRIMARY KEY (ref_id, user_id)) WITHOUT ROWID;
   -- Oy içeriği kimlikten ayrıdır: yalnızca makbuz özeti ve tercih
   CREATE TABLE IF NOT EXISTS referandum_oylari (makbuz_ozeti TEXT PRIMARY KEY, ref_id INTEGER NOT NULL REFERENCES referandumlar(id), oy TEXT NOT NULL) WITHOUT ROWID;
+  CREATE TRIGGER IF NOT EXISTS ref_oy_degismez BEFORE UPDATE ON referandum_oylari BEGIN SELECT RAISE(ABORT, 'oylar değiştirilemez'); END;
+  CREATE TRIGGER IF NOT EXISTS ref_oy_silinmez BEFORE DELETE ON referandum_oylari BEGIN SELECT RAISE(ABORT, 'oylar silinemez'); END;
+  CREATE TRIGGER IF NOT EXISTS ref_katilim_silinmez BEFORE DELETE ON referandum_katilim BEGIN SELECT RAISE(ABORT, 'katılım kaydı silinemez'); END;
   CREATE TABLE IF NOT EXISTS kozmetikler (
     user_id INTEGER NOT NULL REFERENCES users(id), kod TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (user_id, kod)
   ) WITHOUT ROWID;

@@ -27,8 +27,8 @@ test('siyaset kapalıyken uçlar 404, kurallar ayarı bildirir, akışta siyasi 
   }
   assert.equal((await A('/api/secim/1/oy', {})).durum, 404);
   assert.equal((await A('/api/gorevden-alma', {})).durum, 404);
-  L.denetim({ eylem: 'ELECTION_ANNOUNCED', varlik: 'SECIM:1', herkese: true, sonra: {} });
-  L.denetim({ eylem: 'CROP_HARVESTED', varlik: 'PARSEL:x', herkese: true, sonra: {} });
+  await L.denetim({ eylem: 'ELECTION_ANNOUNCED', varlik: 'SECIM:1', herkese: true, sonra: {} });
+  await L.denetim({ eylem: 'CROP_HARVESTED', varlik: 'PARSEL:x', herkese: true, sonra: {} });
   const akis = (await A('/api/akis')).veri;
   assert.ok(!akis.some((a) => a.action === 'ELECTION_ANNOUNCED'));
   assert.ok(akis.some((a) => a.action === 'CROP_HARVESTED'));

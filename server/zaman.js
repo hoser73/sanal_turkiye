@@ -5,11 +5,11 @@ const { YAPILAR, URUNLER } = require('./config/rules');
 
 const ms = (sql) => new Date(String(sql).replace(' ', 'T') + 'Z').getTime();
 
-function parselZamani(parcelId) {
-  const p = require('./oyun').parselGetir(parcelId);
-  const yapilar = db.prepare(`SELECT type, started_at, completed_at, status FROM structures WHERE parcel_id = ? ORDER BY started_at`).all(p.id);
-  const ekinler = db.prepare(`SELECT crop_type, planted_at, ready_at, status, harvested_qty FROM crops WHERE parcel_id = ? ORDER BY planted_at`).all(p.id);
-  const sahiplik = db.prepare(`SELECT o.start_at, o.reason, u.display_name AS ad FROM parcel_ownership o JOIN users u ON u.id = o.user_id WHERE o.parcel_id = ? ORDER BY o.id`).all(p.id);
+async function parselZamani(parcelId) {
+  const p = await require('./oyun').parselGetir(parcelId);
+  const yapilar = await db.all(`SELECT type, started_at, completed_at, status FROM structures WHERE parcel_id = ? ORDER BY started_at`, p.id);
+  const ekinler = await db.all(`SELECT crop_type, planted_at, ready_at, status, harvested_qty FROM crops WHERE parcel_id = ? ORDER BY planted_at`, p.id);
+  const sahiplik = await db.all(`SELECT o.start_at, o.reason, u.display_name AS ad FROM parcel_ownership o JOIN users u ON u.id = o.user_id WHERE o.parcel_id = ? ORDER BY o.id`, p.id);
   const olaylar = [];
   for (const s of sahiplik) olaylar.push({ t: ms(s.start_at), etiket: `${s.ad} ${s.reason === 'TRADE' ? 'satın aldı' : 'edindi'}` });
   for (const y of yapilar) {
@@ -31,10 +31,10 @@ function parselZamani(parcelId) {
 }
 
 // Türkiye geneli: son N günde edinilen parseller (zaman sırasıyla) — haritada "ülke büyüyor" animasyonu
-function ulkeZamani(gun = 30) {
+async function ulkeZamani(gun = 30) {
   const g = Math.min(90, Math.max(1, Number(gun) || 30));
-  return db.prepare(`SELECT p.centroid_lon AS lon, p.centroid_lat AS lat, p.zoning_type AS z, o.start_at FROM parcel_ownership o
-                     JOIN parcels p ON p.id = o.parcel_id WHERE o.start_at >= datetime('now', ?) ORDER BY o.start_at LIMIT 5000`).all(`-${g} days`)
+  return (await db.all(`SELECT p.centroid_lon AS lon, p.centroid_lat AS lat, p.zoning_type AS z, o.start_at FROM parcel_ownership o
+                     JOIN parcels p ON p.id = o.parcel_id WHERE o.start_at >= datetime('now', ?) ORDER BY o.start_at LIMIT 5000`, `-${g} days`))
     .map((r) => ({ lon: r.lon, lat: r.lat, z: r.z, t: ms(r.start_at) }));
 }
 

@@ -26,36 +26,40 @@ async function npcSeedEt({ sessiz = false } = {}) {
     const oyun = require('./oyun');
     let yeni = 0;
     for (const n of NPCLER) {
-      if (db.prepare('SELECT 1 FROM users WHERE display_name = ? AND is_npc = 1').get(n.ad)) continue;
+      if (await db.get('SELECT 1 FROM users WHERE display_name = ? AND is_npc = 1', n.ad)) continue;
       try {
         const kimlikler = await hucreAra(n.yer[0], n.yer[1], n.imar, n.adet, 3);
         if (!kimlikler.length) continue;
+        // Hücreler (ağdan imar) işlemden önce hazırlanır; işlem yalnızca veritabanı yazar
         for (let k = 0; k < kimlikler.length; k++) kimlikler[k] = await parselHazirla(kimlikler[k]);
         kimlikler.splice(0, kimlikler.length, ...new Set(kimlikler));   // aynı tarlaya düşen hücreler tek parsel
-        db.transaction(() => {
-          const uid = db.prepare('INSERT INTO users (display_name, is_npc) VALUES (?, 1)').run(n.ad).lastInsertRowid;
+        await db.tx(async () => {
+          const uid = (await db.run('INSERT INTO users (display_name, is_npc) VALUES (?, 1)', n.ad)).lastInsertRowid;
           const simdi = Date.now();
-          kimlikler.forEach((id, sira) => {
-            const p = oyun.parselGetir(id);
-            db.prepare(`UPDATE parcels SET owner_user_id = ?, acquired_at = datetime('now'), version = version + 1 WHERE id = ? AND owner_user_id IS NULL`).run(uid, id);
-            db.prepare(`INSERT INTO parcel_ownership (parcel_id, user_id, reason) VALUES (?, ?, 'SEED_NPC')`).run(id, uid);
+          for (const [sira, id] of kimlikler.entries()) {
+            const p = await oyun.parselGetir(id);
+            await db.run(`UPDATE parcels SET owner_user_id = ?, acquired_at = datetime('now'), version = version + 1 WHERE id = ? AND owner_user_id IS NULL`, uid, id);
+            await db.run(`INSERT INTO parcel_ownership (parcel_id, user_id, reason) VALUES (?, ?, 'SEED_NPC')`, id, uid);
             for (const tip of n.yapilar) {
               const y = YAPILAR[tip];
-              if (!y.izin.includes(p.zoning_type) || !oyun.insaatUygunluk(p, tip, db.prepare('SELECT * FROM structures WHERE parcel_id = ?').all(id)).uygun) continue;
-              db.prepare(`INSERT INTO structures (parcel_id, owner_user_id, type, footprint_m2, floor_area_m2, status, started_at, completes_at, completed_at)
-                          VALUES (?, ?, ?, ?, ?, 'ACTIVE', ?, ?, ?)`).run(id, uid, tip, y.taban, y.taban * y.kat, simdi, simdi, simdi);
+              if (!y.izin.includes(p.zoning_type) || !oyun.insaatUygunluk(p, tip, await db.all('SELECT * FROM structures WHERE parcel_id = ?', id)).uygun) continue;
+              await db.run(`INSERT INTO structures (parcel_id, owner_user_id, type, footprint_m2, floor_area_m2, status, started_at, completes_at, completed_at)
+                          VALUES (?, ?, ?, ?, ?, 'ACTIVE', ?, ?, ?)`, id, uid, tip, y.taban, y.taban * y.kat, simdi, simdi, simdi);
             }
             if (n.ekin && p.zoning_type === 'TARIM') {
               const urun = Object.keys(URUNLER)[sira % 3];
-              db.prepare(`INSERT INTO crops (parcel_id, user_id, crop_type, planted_at, ready_at, waterings) VALUES (?, ?, ?, ?, ?, ?)`)
-                .run(id, uid, urun, simdi, simdi + URUNLER[urun].sureMs, URUNLER[urun].sulama);
+              await db.run(`INSERT INTO crops (parcel_id, user_id, crop_type, planted_at, ready_at, waterings) VALUES (?, ?, ?, ?, ?, ?)`,
+                id, uid, urun, simdi, simdi + URUNLER[urun].sureMs, URUNLER[urun].sulama);
             }
-            if (n.ilan && sira === kimlikler.length - 1 && oyun.parselGetir(id).zoning_type !== 'KORUMA') {
-              const fiyat = Math.max(20, Math.round((oyun.birincilBedel(oyun.parselGetir(id)) * 1.5) / 5) * 5);
-              pazar.ilanAc(uid, id, { fiyat, gun: 7, kosul: 'HERKES' });
+            if (n.ilan && sira === kimlikler.length - 1) {
+              const guncel = await oyun.parselGetir(id);
+              if (guncel.zoning_type !== 'KORUMA') {
+                const fiyat = Math.max(20, Math.round((oyun.birincilBedel(guncel) * 1.5) / 5) * 5);
+                await pazar.ilanAc(uid, id, { fiyat, gun: 7, kosul: 'HERKES' });
+              }
             }
-          });
-        })();
+          }
+        });
         yeni++;
       } catch (e) {
         if (!sessiz) console.warn(`Demo komşu yerleştirilemedi (${n.ad}): ${e.message}`);

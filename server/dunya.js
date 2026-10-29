@@ -17,10 +17,10 @@ function mevsim(t = simdi()) {
   return { kod, ad: m.ad, ikon: m.ikon, buyume: m.buyume };
 }
 // plaka verilirse ilin şu anki havası da sayılır: açık, ılık gündüz ekilen açık tarla daha hızlı büyür
-function buyumeKati(urun, seraVar, t = simdi(), plaka = null) {
+async function buyumeKati(urun, seraVar, t = simdi(), plaka = null) {
   if (seraVar) return 1;
   const b = mevsim(t).buyume;
-  const kati = (b[urun] ?? b._) * (plaka ? require('./iklim').gunesKati(plaka, t) : 1);
+  const kati = (b[urun] ?? b._) * (plaka ? await require('./iklim').gunesKati(plaka, t) : 1);
   return Math.round(kati * 100) / 100;
 }
 
@@ -62,44 +62,50 @@ function tahminCikar(x) {
   return saat || yarin ? { saat, yarin } : null;
 }
 
-// Ölçümü kaydet ve oyuna uygula: yağmur açık tarlayı sular (sulama hattı yoksa), don hassas ürünü işaretler (sera korur)
-function uygula(o, t = simdi()) {
+// Ölçümü kaydet ve oyuna uygula: yağmur açık tarlayı sular (sulama hattı yoksa), don hassas ürünü işaretler (sera korur).
+// Tek işlem (havaBakim içinden çağrılınca kayıt noktası)
+const uygula = (o, t = simdi()) => db.tx(async () => {
   const iklim = require('./iklim');
-  db.prepare(`INSERT INTO hava_durumu (plaka, sicaklik, yagis, kod, ruzgar, gunduz, guncellendi, tahmin) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  await db.run(`INSERT INTO hava_durumu (plaka, sicaklik, yagis, kod, ruzgar, gunduz, guncellendi, tahmin) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
               ON CONFLICT(plaka) DO UPDATE SET sicaklik = excluded.sicaklik, yagis = excluded.yagis, kod = excluded.kod, ruzgar = excluded.ruzgar,
-              gunduz = excluded.gunduz, guncellendi = excluded.guncellendi, tahmin = excluded.tahmin`)
-    .run(o.plaka, o.sicaklik, o.yagis, o.kod, o.ruzgar, o.gunduz, t, o.tahmin ? JSON.stringify(o.tahmin) : null);
-  iklim.gecmisKaydet(o, t);
-  const ekinler = db.prepare(`SELECT c.*, (SELECT COUNT(*) FROM structures s WHERE s.parcel_id = c.parcel_id AND s.type = 'SERA' AND s.status = 'ACTIVE') AS sera
+              gunduz = excluded.gunduz, guncellendi = excluded.guncellendi, tahmin = excluded.tahmin`,
+    o.plaka, o.sicaklik, o.yagis, o.kod, o.ruzgar, o.gunduz, t, o.tahmin ? JSON.stringify(o.tahmin) : null);
+  await iklim.gecmisKaydet(o, t);
+  const ekinler = await db.all(`SELECT c.*, (SELECT COUNT(*) FROM structures s WHERE s.parcel_id = c.parcel_id AND s.type = 'SERA' AND s.status = 'ACTIVE') AS sera
                               FROM crops c JOIN parcels p ON p.id = c.parcel_id JOIN regions r ON r.id = p.il_id
-                              WHERE c.status = 'GROWING' AND r.plaka = ?`).all(o.plaka);
+                              WHERE c.status = 'GROWING' AND r.plaka = ?`, o.plaka);
   let sulanan = 0, donan = 0;
   for (const e of ekinler) {
     const u = URUNLER[e.crop_type];
     if (o.yagis >= HAVA.yagmurEsigi && !e.sera && e.waterings < u.sulama && t < e.ready_at
         && (!e.last_watered_at || t - e.last_watered_at >= TARIM.sulamaAraligiMs)) {
-      sulanan += db.prepare(`UPDATE crops SET waterings = waterings + 1, last_watered_at = ?, yagmur_at = ? WHERE id = ? AND waterings = ?`).run(t, t, e.id, e.waterings).changes;
+      sulanan += (await db.run(`UPDATE crops SET waterings = waterings + 1, last_watered_at = ?, yagmur_at = ? WHERE id = ? AND waterings = ?`, t, t, e.id, e.waterings)).changes;
     }
     if (o.sicaklik <= HAVA.donEsigi && !e.don && iklim.ekinEtkilenir(e, 'DON', t, e.sera)) {
-      donan += db.prepare(`UPDATE crops SET don = 1 WHERE id = ?`).run(e.id).changes;
-      bildir(e.user_id, `❄️ Don: ${e.parcel_id} tarlandaki ${u.ad} zarar gördü (verim −%${Math.round((1 - HAVA.donVerimKati) * 100)}). Sera don etkisini önler.`, `parsel:${e.parcel_id}`);
+      const r = await db.run(`UPDATE crops SET don = 1 WHERE id = ? AND don = 0`, e.id);
+      donan += r.changes;
+      if (r.changes) await bildir(e.user_id, `❄️ Don: ${e.parcel_id} tarlandaki ${u.ad} zarar gördü (verim −%${Math.round((1 - HAVA.donVerimKati) * 100)}). Sera don etkisini önler.`, `parsel:${e.parcel_id}`);
     }
   }
-  const afetler = afetleriUygula(o, t);
-  return { sulanan, donan, afetler, uyarilan: o.tahmin ? iklim.uyarilariGonder(o.plaka, o.tahmin, t) : 0 };
-}
+  const afetler = await afetleriUygula(o, t);
+  return { sulanan, donan, afetler, uyarilan: o.tahmin ? await iklim.uyarilariGonder(o.plaka, o.tahmin, t) : 0 };
+});
 
-// Hava kaynaklı afetler: ölçüm eşiği aşarsa ildeki oyuncu varlıkları etkilenir (aynı afet ilde 12 saatte bir)
-function afetleriUygula(o, t) {
+// Hava kaynaklı afetler: ölçüm eşiği aşarsa ildeki oyuncu varlıkları etkilenir (aynı afet ilde 12 saatte bir).
+// Tek işlem: afet kaydı, etkiler ve afet desteği (defter) birlikte yazılır
+const afetleriUygula = (o, t) => db.tx(async () => {
   const turler = [];
   if (o.ruzgar >= AFET.FIRTINA.ruzgarEsigi) turler.push('FIRTINA');
   if (o.yagis >= AFET.SAGANAK.yagisEsigi) turler.push('SAGANAK');
   if (AFET.DOLU.kodlar.includes(o.kod)) turler.push('DOLU');
   if (o.sicaklik >= AFET.SICAK.sicaklikEsigi) turler.push('SICAK');
-  const ilB = db.prepare(`SELECT id, name FROM regions WHERE type = 'IL' AND plaka = ?`).get(o.plaka);
+  if (!turler.length) return [];
+  const ilB = await db.get(`SELECT id, name FROM regions WHERE type = 'IL' AND plaka = ?`, o.plaka);
   const olan = [];
+  // Aynı ilde aynı anda iki tur (çok sunucu) aynı afeti iki kez yazmasın
+  await db.kilit(`afet:${o.plaka}`);
   for (const tur of turler) {
-    if (db.prepare(`SELECT 1 FROM afetler WHERE plaka = ? AND tur = ? AND created_at > ?`).get(o.plaka, tur, t - AFET.tekrarMs)) continue;
+    if (await db.get(`SELECT 1 FROM afetler WHERE plaka = ? AND tur = ? AND created_at > ?`, o.plaka, tur, t - AFET.tekrarMs)) continue;
     const etkilenen = new Map();   // user → adet
     const say = (u) => etkilenen.set(u, (etkilenen.get(u) || 0) + 1);
     const seraVar = `(EXISTS (SELECT 1 FROM structures s WHERE s.parcel_id = c.parcel_id AND s.type = 'SERA' AND s.status = 'ACTIVE') OR COALESCE(c.ortu_bitis, 0) > ${Number(t)} OR c.ilac = 1)`;   // örtü ve bitki koruma ilacı da korur
@@ -107,57 +113,66 @@ function afetleriUygula(o, t) {
     if (tur === 'FIRTINA') {
       // Yıpranma öne alınır: bakım zamanı hasar kadar geriye çekilir
       const geri = Math.round((AFET.FIRTINA.yapiHasari / BAKIM.yipranmaGunluk) * BAKIM.gunMs);
-      for (const y of db.prepare(`SELECT s.* FROM structures s JOIN parcels p ON p.id = s.parcel_id JOIN users u ON u.id = s.owner_user_id
-                                  WHERE p.il_id = ? AND s.status = 'ACTIVE' AND u.is_npc = 0`).all(ilB.id)) {
-        db.prepare(`UPDATE structures SET bakim_at = ? WHERE id = ?`).run((y.bakim_at ?? y.completed_at ?? y.completes_at) - geri, y.id);
+      for (const y of await db.all(`SELECT s.* FROM structures s JOIN parcels p ON p.id = s.parcel_id JOIN users u ON u.id = s.owner_user_id
+                                  WHERE p.il_id = ? AND s.status = 'ACTIVE' AND u.is_npc = 0`, ilB.id)) {
+        await db.run(`UPDATE structures SET bakim_at = ? WHERE id = ?`, (y.bakim_at ?? y.completed_at ?? y.completes_at) - geri, y.id);
         say(y.owner_user_id);
       }
     } else if (tur === 'SAGANAK' || tur === 'DOLU') {
-      for (const e of db.prepare(`${ekinler} AND NOT ${seraVar}`).all(ilB.id)) {
-        db.prepare(`UPDATE crops SET afet_kati = afet_kati * ? WHERE id = ?`).run(AFET[tur].verimKati, e.id);
+      for (const e of await db.all(`${ekinler} AND NOT ${seraVar}`, ilB.id)) {
+        await db.run(`UPDATE crops SET afet_kati = afet_kati * ? WHERE id = ?`, AFET[tur].verimKati, e.id);
         say(e.user_id);
       }
     } else if (tur === 'SICAK') {
       // Olgun ekin ve seralı tarla etkilenmez; sulama hattı kurumayı önler
-      for (const e of db.prepare(`${ekinler} AND c.waterings > 0 AND c.ready_at > ${Number(t)}
-          AND NOT EXISTS (SELECT 1 FROM structures s WHERE s.parcel_id = c.parcel_id AND s.type IN ('SULAMA_HATTI', 'SERA') AND s.status = 'ACTIVE')`).all(ilB.id)) {
-        db.prepare(`UPDATE crops SET waterings = MAX(0, waterings - ?) WHERE id = ?`).run(AFET.SICAK.sulamaKaybi, e.id);
+      for (const e of await db.all(`${ekinler} AND c.waterings > 0 AND c.ready_at > ${Number(t)}
+          AND NOT EXISTS (SELECT 1 FROM structures s WHERE s.parcel_id = c.parcel_id AND s.type IN ('SULAMA_HATTI', 'SERA') AND s.status = 'ACTIVE')`, ilB.id)) {
+        await db.run(`UPDATE crops SET waterings = GREATEST(0, waterings - ?) WHERE id = ?`, AFET.SICAK.sulamaKaybi, e.id);
         say(e.user_id);
       }
     }
     const adet = [...etkilenen.values()].reduce((a, b) => a + b, 0);
-    const afetId = db.prepare(`INSERT INTO afetler (plaka, tur, olcum, etkilenen, created_at) VALUES (?, ?, ?, ?, ?)`)
-      .run(o.plaka, tur, JSON.stringify({ ...o, tahmin: undefined }), adet, t).lastInsertRowid;
-    require('./iklim').afetEtkilenenleri(afetId, [...etkilenen.keys()], o.plaka, t);
-    L.denetim({ eylem: 'WEATHER_EVENT', varlik: `IL:${ilB.id}`, bolge: ilB.id, herkese: true, sonra: { tur, ad: AFET[tur].ad, il: ilB.name, etkilenen: adet } });
+    const afetId = (await db.run(`INSERT INTO afetler (plaka, tur, olcum, etkilenen, created_at) VALUES (?, ?, ?, ?, ?)`,
+      o.plaka, tur, JSON.stringify({ ...o, tahmin: undefined }), adet, t)).lastInsertRowid;
+    await require('./iklim').afetEtkilenenleri(afetId, [...etkilenen.keys()], o.plaka, t);
+    await L.denetim({ eylem: 'WEATHER_EVENT', varlik: `IL:${ilB.id}`, bolge: ilB.id, herkese: true, sonra: { tur, ad: AFET[tur].ad, il: ilB.name, etkilenen: adet } });
     const metin = { FIRTINA: 'yapıların yıprandı; bakım yapmayı unutma', SAGANAK: 'açık tarladaki ekinlerin verim kaybetti', DOLU: 'açık tarladaki ekinlerin zarar gördü', SICAK: 'açık tarlaların kurudu; yeniden sulaman gerekiyor' }[tur];
     const korunma = { FIRTINA: '', SAGANAK: 'Sera, tarla örtüsü ve bitki koruma ilacı korur.', DOLU: 'Sera, tarla örtüsü ve bitki koruma ilacı korur.', SICAK: 'Sera ve sulama hattı korur.' }[tur];
-    for (const [u, n] of etkilenen) bildir(u, `${AFET[tur].ikon} ${require('./lib/turkce').bulunma(ilB.name)} ${AFET[tur].ad.toLocaleLowerCase('tr-TR')}: ${n} varlığın etkilendi — ${metin}.${korunma && ` ${korunma}`}`, null);
+    for (const [u, n] of etkilenen) await bildir(u, `${AFET[tur].ikon} ${require('./lib/turkce').bulunma(ilB.name)} ${AFET[tur].ad.toLocaleLowerCase('tr-TR')}: ${n} varlığın etkilendi — ${metin}.${korunma && ` ${korunma}`}`, null);
     olan.push(tur);
   }
   return olan;
-}
-function sonAfetler(gun = 3) {
-  return db.prepare(`SELECT a.plaka, a.tur, a.etkilenen, a.created_at, r.name AS il FROM afetler a JOIN regions r ON r.type = 'IL' AND r.plaka = a.plaka
-                     WHERE a.created_at > ? ORDER BY a.id DESC LIMIT 30`).all(simdi() - gun * 864e5).map((a) => ({ ...a, ad: AFET[a.tur].ad, ikon: AFET[a.tur].ikon }));
+});
+async function sonAfetler(gun = 3) {
+  return (await db.all(`SELECT a.plaka, a.tur, a.etkilenen, a.created_at, r.name AS il FROM afetler a JOIN regions r ON r.type = 'IL' AND r.plaka = a.plaka
+                     WHERE a.created_at > ? ORDER BY a.id DESC LIMIT 30`, simdi() - gun * 864e5)).map((a) => ({ ...a, ad: AFET[a.tur].ad, ikon: AFET[a.tur].ikon }));
 }
 
-// Tembel bakım: veri bayatsa arka planda yenile (isteği bekletmez)
-function havaBakim() {
-  const son = db.prepare(`SELECT MAX(guncellendi) AS t FROM hava_durumu`).get().t || 0;
-  if (yenileniyor || simdi() - son < HAVA.yenilemeMs) return yenileniyor;
+// Tembel bakım: veri bayatsa yenilemeyi başlatır. Dönen söz yenileme bitince çözülür (yenileme yoksa hemen);
+// bakım turu onu beklemez (index.js), testler bekler. Ağ çağrısı işlem dışında; yazma tek işlemde.
+const sonGuncelleme = async () => (await db.get(`SELECT MAX(guncellendi) AS t FROM hava_durumu`)).t || 0;
+async function havaBakim() {
+  if (yenileniyor) return yenileniyor;
+  if (simdi() - await sonGuncelleme() < HAVA.yenilemeMs) return null;
+  if (yenileniyor) return yenileniyor;   // SELECT beklenirken başka çağrı başlatmış olabilir
   yenileniyor = olcumleriGetir()
-    .then((liste) => { if (liste) db.transaction(() => { const t = simdi(); for (const o of liste) uygula(o, t); })(); })
+    .then((liste) => liste && db.tx(async () => {
+      // Çok sunucu: aynı anda iki örnek yenilediyse ikincisi kilidi alınca güncel veriyi görür ve yazmaz
+      await db.kilit('hava');
+      if (simdi() - await sonGuncelleme() < HAVA.yenilemeMs) return;
+      const t = simdi();
+      for (const o of liste) await uygula(o, t);
+    }))
     .catch((e) => { if (!process.env.SESSIZ) console.warn('Hava verisi alınamadı:', e.message); })
     .finally(() => { yenileniyor = null; });
   return yenileniyor;
 }
-function havaListesi() {
-  const kayitlar = db.prepare(`SELECT h.*, r.name AS il, r.center_lon AS lon, r.center_lat AS lat FROM hava_durumu h JOIN regions r ON r.type = 'IL' AND r.plaka = h.plaka`).all();
+async function havaListesi() {
+  const kayitlar = await db.all(`SELECT h.*, r.name AS il, r.center_lon AS lon, r.center_lat AS lat FROM hava_durumu h JOIN regions r ON r.type = 'IL' AND r.plaka = h.plaka`);
   return {
     mevsim: (({ kod, ad, ikon }) => ({ kod, ad, ikon }))(mevsim()),
     kaynak: 'Open-Meteo.com (CC BY 4.0)',
-    afetler: sonAfetler(),
+    afetler: await sonAfetler(),
     tahminSaat: HAVA.tahminSaat,
     iller: kayitlar.map((h) => {
       const [gIkon, durum] = WMO(h.kod), ikon = gece(gIkon, h);
@@ -171,46 +186,48 @@ function havaListesi() {
 }
 // Açık/az bulutlu gece güneş yerine ay
 const gece = (ikon, h) => (!h.gunduz && (ikon === '☀️' || ikon === '🌤️') ? '🌙' : ikon);
-const ilHavasi = (plaka) => {
-  const h = db.prepare(`SELECT * FROM hava_durumu WHERE plaka = ?`).get(plaka);
+const ilHavasi = async (plaka) => {
+  const h = await db.get(`SELECT * FROM hava_durumu WHERE plaka = ?`, plaka);
   if (!h) return null;
   const [gIkon, durum] = WMO(h.kod), ikon = gece(gIkon, h);
   return { sicaklik: Math.round(h.sicaklik), yagis: h.yagis, ikon, durum, gunduz: !!h.gunduz };
 };
 
 // ---------- Rozetler (albüm ve başarımlar)
-function rozetVer(userId, kod, ad, ikon, aciklama) {
-  const r = db.prepare(`INSERT OR IGNORE INTO rozetler (user_id, kod, ad, ikon, aciklama, created_at) VALUES (?, ?, ?, ?, ?, ?)`).run(userId, kod, ad, ikon, aciklama, simdi());
-  if (r.changes) bildir(userId, `${ikon} Yeni rozet: ${ad}`, null);
+async function rozetVer(userId, kod, ad, ikon, aciklama) {
+  const r = await db.run(`INSERT OR IGNORE INTO rozetler (user_id, kod, ad, ikon, aciklama, created_at) VALUES (?, ?, ?, ?, ?, ?)`, userId, kod, ad, ikon, aciklama, simdi());
+  if (r.changes) await bildir(userId, `${ikon} Yeni rozet: ${ad}`, null);
   return !!r.changes;
 }
 
 // ---------- Memleket / hemşehri
-function memleketSec(userId, plaka) {
+async function memleketSec(userId, plaka) {
   const p = String(plaka || '').padStart(2, '0');
-  const il = db.prepare(`SELECT id, name FROM regions WHERE type = 'IL' AND plaka = ?`).get(p);
+  const il = await db.get(`SELECT id, name FROM regions WHERE type = 'IL' AND plaka = ?`, p);
   if (!il) throw new OyunHatasi(400, 'Geçersiz il');
-  const u = db.prepare(`SELECT memleket_plaka, memleket_at FROM users WHERE id = ?`).get(userId);
-  if (u.memleket_plaka === p) return { tamam: true };
-  if (u.memleket_at && simdi() - u.memleket_at < LIG.memleketBeklemeMs) {
-    throw new OyunHatasi(409, `Memleketini ${Math.ceil((u.memleket_at + LIG.memleketBeklemeMs - simdi()) / 86400000)} gün sonra değiştirebilirsin`);
-  }
-  db.prepare(`UPDATE users SET memleket_plaka = ?, memleket_at = ? WHERE id = ?`).run(p, simdi(), userId);
-  L.denetim({ aktor: userId, eylem: 'HOMETOWN_SET', varlik: `IL:${il.id}`, sonra: { plaka: p } });
-  return { tamam: true, il: il.name };
+  return db.tx(async () => {
+    const u = await db.get(`SELECT memleket_plaka, memleket_at FROM users WHERE id = ? FOR UPDATE`, userId);
+    if (u.memleket_plaka === p) return { tamam: true };
+    if (u.memleket_at && simdi() - u.memleket_at < LIG.memleketBeklemeMs) {
+      throw new OyunHatasi(409, `Memleketini ${Math.ceil((u.memleket_at + LIG.memleketBeklemeMs - simdi()) / 86400000)} gün sonra değiştirebilirsin`);
+    }
+    await db.run(`UPDATE users SET memleket_plaka = ?, memleket_at = ? WHERE id = ?`, p, simdi(), userId);
+    await L.denetim({ aktor: userId, eylem: 'HOMETOWN_SET', varlik: `IL:${il.id}`, sonra: { plaka: p } });
+    return { tamam: true, il: il.name };
+  });
 }
-function memleketBilgisi(plaka, userId) {
+async function memleketBilgisi(plaka, userId) {
   const p = String(plaka || '').padStart(2, '0');
-  const il = db.prepare(`SELECT id, name, plaka FROM regions WHERE type = 'IL' AND plaka = ?`).get(p);
+  const il = await db.get(`SELECT id, name, plaka FROM regions WHERE type = 'IL' AND plaka = ?`, p);
   if (!il) throw new OyunHatasi(404, 'İl bulunamadı');
-  const hemsehri = db.prepare(`SELECT COUNT(*) c FROM users WHERE memleket_plaka = ? AND status = 'ACTIVE' AND is_npc = 0`).get(p).c;
-  const gurbette = db.prepare(`SELECT COUNT(DISTINCT u.id) c FROM users u JOIN parcels pr ON pr.owner_user_id = u.id
-                               WHERE u.memleket_plaka = ? AND pr.il_id <> ?`).get(p, il.id).c;
-  const sira = require('./hasat-yarisi').ilSirasi(il.id);
-  return { il: il.name, plaka: p, hemsehri, gurbette, yarisSirasi: sira?.sira ?? null, yarisPuani: sira?.ilPuani ?? 0, hava: ilHavasi(p),
-    benimMemleketim: userId ? db.prepare(`SELECT memleket_plaka FROM users WHERE id = ?`).get(userId)?.memleket_plaka === p : false };
+  const hemsehri = (await db.get(`SELECT COUNT(*) c FROM users WHERE memleket_plaka = ? AND status = 'ACTIVE' AND is_npc = 0`, p)).c;
+  const gurbette = (await db.get(`SELECT COUNT(DISTINCT u.id) c FROM users u JOIN parcels pr ON pr.owner_user_id = u.id
+                               WHERE u.memleket_plaka = ? AND pr.il_id <> ?`, p, il.id)).c;
+  const sira = await require('./hasat-yarisi').ilSirasi(il.id);
+  return { il: il.name, plaka: p, hemsehri, gurbette, yarisSirasi: sira?.sira ?? null, yarisPuani: sira?.ilPuani ?? 0, hava: await ilHavasi(p),
+    benimMemleketim: userId ? (await db.get(`SELECT memleket_plaka FROM users WHERE id = ?`, userId))?.memleket_plaka === p : false };
 }
-const rozetlerim = (userId) => db.prepare(`SELECT kod, ad, ikon, aciklama, created_at FROM rozetler WHERE user_id = ? ORDER BY id DESC`).all(userId);
+const rozetlerim = (userId) => db.all(`SELECT kod, ad, ikon, aciklama, created_at FROM rozetler WHERE user_id = ? ORDER BY id DESC`, userId);
 
 function rotalar(app, { h, auth }) {
   app.get('/api/hava', h(require('./lib/onbellek').ortakYanit(60_000, () => havaListesi())));

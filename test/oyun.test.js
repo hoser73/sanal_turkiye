@@ -62,7 +62,7 @@ test('parsel iki kullanıcıya aynı anda tahsis edilemez', async () => {
   const p = hucreBul('TARIM');
   const sonuclar = await Promise.all(Array.from({ length: 20 }, (_, i) => (i % 2 ? a : b)(`/api/parsel/${p}/edin`, {})));
   assert.equal(sonuclar.filter((r) => r.durum === 200).length, 1);
-  assert.equal(db.prepare(`SELECT COUNT(*) c FROM parcel_ownership WHERE parcel_id = ? AND end_at IS NULL`).get(p).c, 1);
+  assert.equal((await db.get(`SELECT COUNT(*) c FROM parcel_ownership WHERE parcel_id = ? AND end_at IS NULL`, p)).c, 1);
 });
 
 test('park, koruma alanı ve yol hücreleri edinilemez', async () => {
@@ -73,7 +73,7 @@ test('park, koruma alanı ve yol hücreleri edinilemez', async () => {
 
 let tarla, konut, c;
 // Test için oyun içi hibe (defter üzerinden, dengeli)
-const odulVer = (email, tutar) => require('../server/lib/ledger').odul(db.prepare('SELECT id FROM users WHERE email = ?').get(email).id, tutar, 'Test hibesi');
+const odulVer = (email, tutar) => db.tx(async () => require('../server/lib/ledger').odul((await db.get('SELECT id FROM users WHERE email = ?', email)).id, tutar, 'Test hibesi'));
 test('imar ihlalleri engellenir (tarlaya ev, TAKS aşımı, sahibi olmayan)', async () => {
   tarla = hucreBul('TARIM');
   assert.equal((await a(`/api/parsel/${tarla}/edin`, {})).durum, 200);
@@ -92,7 +92,7 @@ test('imar ihlalleri engellenir (tarlaya ev, TAKS aşımı, sahibi olmayan)', as
   assert.ok(kart.birincilBedel > kart.alan * 0.4, 'konut bedeli il ve yerleşim çekiciliğini içerir');
   assert.equal((await c(`/api/parsel/${konut}/edin`, {})).durum, 200);
   assert.equal((await c(`/api/parsel/${konut}/insaat`, { tip: 'PEYZAJ' })).durum, 200);
-  odulVer('c@test.local', 300);
+  await odulVer('c@test.local', 300);
   assert.equal((await c(`/api/parsel/${konut}/insaat`, { tip: 'EV' })).durum, 200);
   const ikinci = await c(`/api/parsel/${konut}/insaat`, { tip: 'APARTMAN' });
   assert.equal(ikinci.durum, 422);
@@ -113,18 +113,19 @@ test('silinen yapının kimliği yeniden verilse de yeni yapı kurulur ve tamaml
   const ilk = hucreBul('TARIM'), ikinci = hucreBul('TARIM');
   assert.equal((await d(`/api/parsel/${ilk}/edin`, {})).durum, 200);
   assert.equal((await d(`/api/parsel/${ilk}/insaat`, { tip: 'TEL_CIT' })).durum, 200);
-  const eski = db.prepare(`SELECT id FROM structures WHERE parcel_id = ?`).get(ilk).id;
-  assert.equal(eski, db.prepare(`SELECT MAX(id) m FROM structures`).get().m, 'en son kurulan yapı');
+  const eski = (await db.get(`SELECT id FROM structures WHERE parcel_id = ?`, ilk)).id;
+  assert.equal(eski, (await db.get(`SELECT MAX(id) m FROM structures`)).m, 'en son kurulan yapı');
   await bekle(YAPILAR.TEL_CIT.sureMs + 50);
   await d(`/api/parsel/${ilk}`);   // tamamlanma işlenir
-  require('../server/oyun').parseliBosalt(ilk);
+  await db.tx(() => require('../server/oyun').parseliBosalt(ilk));
   assert.equal((await d(`/api/parsel/${ikinci}/edin`, {})).durum, 200);
   const r = await d(`/api/parsel/${ikinci}/insaat`, { tip: 'TEL_CIT' });
   assert.equal(r.durum, 200, JSON.stringify(r.veri));
-  assert.equal(r.veri.yapiId, eski, 'SQLite kimliği yeniden verdi (senaryo gerçekleşti)');
+  // Postgres'te kimlik dizisi geri dönmez: senaryo yalnızca SQLite'ta gerçekleşir; yeni yapının tamamlanması iki motorda da sınanır
+  if (db.tur === 'sqlite') assert.equal(r.veri.yapiId, eski, 'SQLite kimliği yeniden verdi (senaryo gerçekleşti)');
   await bekle(YAPILAR.TEL_CIT.sureMs + 50);
   assert.equal((await d(`/api/parsel/${ikinci}`)).durum, 200);
-  assert.equal(db.prepare(`SELECT status FROM structures WHERE id = ?`).get(eski).status, 'ACTIVE');
+  assert.equal((await db.get(`SELECT status FROM structures WHERE id = ?`, r.veri.yapiId)).status, 'ACTIVE');
 });
 
 test('tarla döngüsü: ek → sula → hasat; çift hasat yok', async () => {
@@ -158,11 +159,11 @@ test('NPC pazarı kuruş hassasiyetinde öder (aşağı yuvarlama ürünü bedav
   const c = istemci();
   await c('/api/kayit', { email: 'kurus@test.local', sifre: 'parola123', dogumYili: 1990, kosullarOnay: true, kvkkOnay: true, ad: 'Kuruş' });
   const id = (await c('/api/ben')).veri.kullanici.id;
-  L.envanterDegis(id, 'BUGDAY', 5, 'test');
-  const once = L.bakiye(id);
+  await db.tx(() => L.envanterDegis(id, 'BUGDAY', 5, 'test'));
+  const once = await L.bakiye(id);
   const r = (await c('/api/pazar/sat', { urun: 'BUGDAY', miktar: 5 })).veri;
   assert.ok(r.tutar > 5 && !Number.isInteger(r.tutar), JSON.stringify(r));
-  assert.equal(L.yuvarla(L.bakiye(id) - once), r.tutar);
+  assert.equal(L.yuvarla(await L.bakiye(id) - once), r.tutar);
   assert.equal(oyun.bugun(Date.parse('2026-01-01T21:30:00Z')), '2026-01-02');
   assert.equal(oyun.bugun(Date.parse('2026-01-01T20:59:00Z')), '2026-01-01');
 });
@@ -185,16 +186,16 @@ test('harita: görünür alandaki sahipli parseller ve imar karosu', async () =>
   assert.ok(ist.find((i) => i.plaka === '42').parsel >= 2);
 });
 
-test('defter tutarlılığı %100: her işlem grubu dengeli', () => {
-  const dengesiz = db.prepare(`SELECT tx_group FROM wallet_ledger GROUP BY tx_group HAVING ABS(SUM(debit) - SUM(credit)) > 0.001`).all();
+test('defter tutarlılığı %100: her işlem grubu dengeli', async () => {
+  const dengesiz = await db.all(`SELECT tx_group FROM wallet_ledger GROUP BY tx_group HAVING ABS(SUM(debit) - SUM(credit)) > 0.001`);
   assert.equal(dengesiz.length, 0);
-  const negatif = db.prepare(`SELECT user_id FROM wallet_ledger WHERE user_id IS NOT NULL GROUP BY user_id HAVING SUM(credit) - SUM(debit) < 0`).all();
+  const negatif = await db.all(`SELECT user_id FROM wallet_ledger WHERE user_id IS NOT NULL GROUP BY user_id HAVING SUM(credit) - SUM(debit) < 0`);
   assert.equal(negatif.length, 0);
 });
 
-test('denetim kaydı değiştirilemez', () => {
-  assert.throws(() => db.prepare(`UPDATE audit_events SET action = 'X'`).run(), /değiştirilemez/);
-  assert.throws(() => db.prepare(`DELETE FROM audit_events`).run(), /silinemez/);
+test('denetim kaydı değiştirilemez', async () => {
+  await assert.rejects(db.run(`UPDATE audit_events SET action = 'X'`), /değiştirilemez/);
+  await assert.rejects(db.run(`DELETE FROM audit_events`), /silinemez/);
 });
 
 test('geçersiz girdiler 400 döner, 500 değil', async () => {

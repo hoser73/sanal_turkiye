@@ -3,7 +3,7 @@
 // Kaynak: Fields of the World (https://fieldsofthe.world, CC-BY-4.0) — Türkiye PMTiles dosyasından yalnızca ilçeyi örten
 // z13 karoları HTTP aralık istekleriyle indirilir (Meram ≈ 240 karo, 8,5 MB) ve data/ftw altında saklanır.
 // Tarla, merkezi deneme ilçesinde olan tarladır; daha önce sahiplenilmiş ya da üzerinde iş olan parseller korunur.
-// Sunucu açıkken çalıştırılabilir (SQLite WAL); istemciler yeni tarlaları sayfa yenilenince görür.
+// Sunucu açıkken çalıştırılabilir (SQLite WAL ya da Postgres); istemciler yeni tarlaları sayfa yenilenince görür.
 const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
@@ -123,16 +123,17 @@ async function okuyucu() {
   // Korunanlar ve kurulum (hücre birimi kutusu)
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (const { tx, ty } of karolar) { x0 = Math.min(x0, tx * 128); y0 = Math.min(y0, ty * 128); x1 = Math.max(x1, tx * 128 + 127); y1 = Math.max(y1, ty * 128 + 127); }
-  const { hucreler: korunanHucre, tarlaKimlikleri } = T.korunanlar([x0, y0, x1, y1]);
+  const { hucreler: korunanHucre, tarlaKimlikleri } = await T.korunanlar([x0, y0, x1, y1]);
   const t0 = Date.now();
   const tum = F.tarlalariKur({ karolar, uygun: (x, y) => !korunanHucre.has(`${x}:${y}`) });
   // Tarla, merkezi deneme ilçesindeyse alınır
   const pilotIdx = new Set(pilot.map((c) => c.idx));
   let son = null;
   const tarlalar = tum.filter((t) => { const c = ilceBul(I.xLon(t.merkez[0]), I.yLat(t.merkez[1]), son); son = c; return c && pilotIdx.has(c.idx); });
-  const yazilan = T.tarlalariYaz(tarlalar, { koru: tarlaKimlikleri });
+  const yazilan = await T.tarlalariYaz(tarlalar, { koru: tarlaKimlikleri });
   const alanlar = tarlalar.map((t) => t.alanHucre * I.hucreAlani(t.capa[0], t.capa[1])).sort((a, b) => a - b);
   console.log(`${yazilan} tarla yazıldı (${((Date.now() - t0) / 1000).toFixed(1)} sn); korunan ${tarlaKimlikleri.size} tarla, ${korunanHucre.size} hücre`);
   if (alanlar.length) console.log(`alan m²: en küçük ${Math.round(alanlar[0])}, ortanca ${Math.round(alanlar[alanlar.length >> 1])}, en büyük ${Math.round(alanlar.at(-1))}`);
   console.log('Kaynak: Fields of the World (fieldsofthe.world), CC-BY-4.0');
+  await db.kapat();
 })().catch((e) => { console.error('Aktarım başarısız:', e.message); process.exit(1); });

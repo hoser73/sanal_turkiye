@@ -11,20 +11,20 @@ const { mahalleBolgesi } = require('./parsel');
 const { OyunHatasi } = require('../lib/ledger');
 
 const q = {
-  ilceSatirlari: db.prepare(`SELECT id, parent_id, code, name, plaka, source_idx, attractiveness FROM regions WHERE type = 'ILCE' AND plaka = ?`),
-  ilce: db.prepare(`SELECT id, parent_id, code, name, plaka, source_idx, attractiveness FROM regions WHERE type = 'ILCE' AND id = ?`),
-  yerler: db.prepare(`SELECT id, ad, sinif, lon, lat FROM yerler WHERE ilce_idx = ?`),
-  tarandi: db.prepare(`SELECT 1 FROM ilce_yer_taramasi WHERE ilce_idx = ?`),
-  taramaYaz: db.prepare(`INSERT OR REPLACE INTO ilce_yer_taramasi (ilce_idx, at) VALUES (?, ?)`),
-  yerYaz: db.prepare(`INSERT OR IGNORE INTO yerler (id, ad, ad_norm, sinif, lon, lat, ilce_idx) VALUES (?, ?, ?, ?, ?, ?, ?)`),
+  ilceSatirlari: db.sorgu(`SELECT id, parent_id, code, name, plaka, source_idx, attractiveness FROM regions WHERE type = 'ILCE' AND plaka = ?`),
+  ilce: db.sorgu(`SELECT id, parent_id, code, name, plaka, source_idx, attractiveness FROM regions WHERE type = 'ILCE' AND id = ?`),
+  yerler: db.sorgu(`SELECT id, ad, sinif, lon, lat FROM yerler WHERE ilce_idx = ?`),
+  tarandi: db.sorgu(`SELECT 1 FROM ilce_yer_taramasi WHERE ilce_idx = ?`),
+  taramaYaz: db.sorgu(`INSERT INTO ilce_yer_taramasi (ilce_idx, at) VALUES (?, ?) ON CONFLICT (ilce_idx) DO UPDATE SET at = excluded.at`),
+  yerYaz: db.sorgu(`INSERT OR IGNORE INTO yerler (id, ad, ad_norm, sinif, lon, lat, ilce_idx) VALUES (?, ?, ?, ?, ?, ?, ?)`),
 };
 
 // ---------- İlin ilçeleri
 const ilceOnbellek = new Map();
-function ilIlceleri(plaka) {
+async function ilIlceleri(plaka) {
   if (!ilPlakadan.has(String(plaka))) throw new OyunHatasi(404, 'İl bulunamadı');
   if (ilceOnbellek.has(plaka)) return ilceOnbellek.get(plaka);
-  const satirlar = new Map(q.ilceSatirlari.all(String(plaka)).map((r) => [r.source_idx, r]));
+  const satirlar = new Map((await q.ilceSatirlari.all(String(plaka))).map((r) => [r.source_idx, r]));
   const features = [];
   ilceler.forEach((c, idx) => {
     if (c.plaka !== String(plaka) || !satirlar.has(idx)) return;
@@ -43,11 +43,11 @@ function ilIlceleri(plaka) {
 const taramada = new Map();
 let taramaSirasi = Promise.resolve();
 async function yerleriTara(idx) {
-  if (SAHTE || q.tarandi.get(idx)) return;
+  if (SAHTE || await q.tarandi.get(idx)) return;
   if (taramada.has(idx)) return taramada.get(idx);
   const c = ilceler[idx];
   const is = (taramaSirasi = taramaSirasi.catch(() => {}).then(async () => {
-    if (q.tarandi.get(idx)) return;
+    if (await q.tarandi.get(idx)) return;
     const [w, s, e, n] = c.bbox, Z = 12, N = 2 ** Z;
     const tx = (lon) => Math.floor(((lon + 180) / 360) * N);
     const ty = (lat) => { const r = (lat * Math.PI) / 180; return Math.floor(((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * N); };
@@ -60,10 +60,10 @@ async function yerleriTara(idx) {
         try { yerleriTopla(await vektorKaro(Z, x, y), Z, x, y, yerler); } catch { eksik++; }
       }));
     }
-    db.transaction(() => {
-      for (const y of yerler.values()) if (geometrideMi(y.lon, y.lat, c.geo)) q.yerYaz.run(y.id, y.ad, normalize(y.ad), y.sinif, y.lon, y.lat, idx);
-      if (!eksik) q.taramaYaz.run(idx, Date.now());
-    })();
+    await db.tx(async () => {
+      for (const y of yerler.values()) if (geometrideMi(y.lon, y.lat, c.geo)) await q.yerYaz.run(y.id, y.ad, normalize(y.ad), y.sinif, y.lon, y.lat, idx);
+      if (!eksik) await q.taramaYaz.run(idx, Date.now());
+    });
   })).finally(() => taramada.delete(idx));
   taramada.set(idx, is);
   return is;
@@ -73,14 +73,14 @@ async function yerleriTara(idx) {
 const mahalleOnbellek = new Map();
 const IZGARA = 200;
 async function ilceMahalleleri(ilceId) {
-  const r = q.ilce.get(Number(ilceId));
+  const r = await q.ilce.get(Number(ilceId));
   if (!r) throw new OyunHatasi(404, 'İlçe bulunamadı');
   const c = ilceler[r.source_idx];
   await yerleriTara(r.source_idx);
-  const yerler = q.yerler.all(r.source_idx).filter((y) => y.sinif in MAHALLE_AGIRLIK);
+  const yerler = (await q.yerler.all(r.source_idx)).filter((y) => y.sinif in MAHALLE_AGIRLIK);
   const anahtar = `${r.id}:${yerler.length}`;
   if (mahalleOnbellek.has(anahtar)) return mahalleOnbellek.get(anahtar);
-  const kalici = db.prepare(`SELECT veri FROM ilce_mahalle_alanlari WHERE ilce_id = ? AND yer_sayisi = ?`).get(r.id, yerler.length);
+  const kalici = await db.get(`SELECT veri FROM ilce_mahalle_alanlari WHERE ilce_id = ? AND yer_sayisi = ?`, r.id, yerler.length);
   if (kalici) { const v = JSON.parse(kalici.veri); mahalleOnbellek.set(anahtar, v); return v; }
 
   const [w, s, e, n] = c.bbox;
@@ -152,21 +152,22 @@ async function ilceMahalleleri(ilceId) {
   const sonuc = { type: 'FeatureCollection', features, ilce: { id: r.id, ad: r.name, bbox: c.bbox, mahalleSayisi: dolgu.size } };
   mahalleOnbellek.set(anahtar, sonuc);
   if (mahalleOnbellek.size > 60) mahalleOnbellek.delete(mahalleOnbellek.keys().next().value);
-  db.prepare(`INSERT OR REPLACE INTO ilce_mahalle_alanlari (ilce_id, yer_sayisi, veri, at) VALUES (?, ?, ?, ?)`).run(r.id, yerler.length, JSON.stringify(sonuc), Date.now());
+  await db.run(`INSERT INTO ilce_mahalle_alanlari (ilce_id, yer_sayisi, veri, at) VALUES (?, ?, ?, ?)
+    ON CONFLICT (ilce_id) DO UPDATE SET yer_sayisi = excluded.yer_sayisi, veri = excluded.veri, at = excluded.at`, r.id, yerler.length, JSON.stringify(sonuc), Date.now());
   return sonuc;
 }
 
 // Haritada tıklanan mahalle: oyun bölgesi varsa kimliği döner; yoksa yalnızca giriş yapmış oyuncu için oluşturulur
 // (parsel edinildiğinde oluşacağı gibi). Ziyaretçi isteği veritabanına satır yazmaz.
-function mahalleBolgesiAc(ilceId, yerId, userId = null) {
-  const r = q.ilce.get(Number(ilceId));
+async function mahalleBolgesiAc(ilceId, yerId, userId = null) {
+  const r = await q.ilce.get(Number(ilceId));
   if (!r) throw new OyunHatasi(404, 'İlçe bulunamadı');
-  const y = db.prepare(`SELECT id, ad, sinif, lon, lat FROM yerler WHERE ilce_idx = ? AND id = ?`).get(r.source_idx, String(yerId ?? ''));
+  const y = await db.get(`SELECT id, ad, sinif, lon, lat FROM yerler WHERE ilce_idx = ? AND id = ?`, r.source_idx, String(yerId ?? ''));
   if (!y) throw new OyunHatasi(404, 'Mahalle bulunamadı');
-  const var_ = db.prepare(`SELECT id FROM regions WHERE code = ?`).get(`${r.code}-${y.id}`);
+  const var_ = await db.get(`SELECT id FROM regions WHERE code = ?`, `${r.code}-${y.id}`);
   if (var_) return { id: var_.id, ad: y.ad };
   if (!userId) return { id: null, ad: y.ad };
-  const id = db.transaction(() => mahalleBolgesi(r, ilceler[r.source_idx], y.lon, y.lat))();
+  const id = await db.tx(() => mahalleBolgesi(r, ilceler[r.source_idx], y.lon, y.lat));
   return { id, ad: y.ad };
 }
 

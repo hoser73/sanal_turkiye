@@ -11,7 +11,6 @@ const MODEL = process.env.YZ_MODEL || 'claude-opus-5-5';
 const GAZETE_ONBELLEK_MS = 6 * 3600e3;
 const DANISMAN_SAATLIK = 10;
 
-
 let istemci = null;
 const etkin = () => process.env.YAPAY_ZEKA !== 'kapali' && !!(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);
 function claude() {
@@ -40,8 +39,8 @@ async function jsonIste({ sistem, icerik, sema, maxTokens = 2000, islev, userId 
   };
   try {
     const r = sahte ? await sahte(istek) : await claude().beta.messages.create(istek);
-    db.prepare(`INSERT INTO yz_kullanim (user_id, islev, kaynak, girdi_token, cikti_token, created_at) VALUES (?, ?, 'claude', ?, ?, ?)`)
-      .run(userId, islev, r.usage?.input_tokens ?? null, r.usage?.output_tokens ?? null, Date.now());
+    await db.run(`INSERT INTO yz_kullanim (user_id, islev, kaynak, girdi_token, cikti_token, created_at) VALUES (?, ?, 'claude', ?, ?, ?)`,
+      userId, islev, r.usage?.input_tokens ?? null, r.usage?.output_tokens ?? null, Date.now());
     if (r.stop_reason === 'refusal' || r.stop_reason === 'max_tokens') return null;
     const metin = r.content.find((b) => b.type === 'text')?.text;
     return metin ? JSON.parse(metin) : null;
@@ -74,9 +73,9 @@ const OLAY_AD = {
   PROJECT_COMPLETED: 'belediye projesi tamamlandı', PROJECT_APPROVED: 'meclis projeyi onayladı', LANDMARK_COLLECTED: 'simge kartı toplandı',
   PRODUCTION_COLLECTED: 'üretim tamamlandı', RECALL_STARTED: 'görevden alma dilekçesi açıldı', COOP_FOUNDED: 'kooperatif kuruldu', CROP_ROTTED: 'ekin çürüdü',
 };
-function mahalleOlaylari(mahalleId) {
-  return db.prepare(`SELECT a.action, a.after_json, a.created_at, u.display_name AS aktor FROM audit_events a LEFT JOIN users u ON u.id = a.actor_id
-                     WHERE a.public = 1 AND a.region_id = ? AND a.created_at >= datetime('now', '-7 days') ORDER BY a.id DESC LIMIT 40`).all(mahalleId)
+async function mahalleOlaylari(mahalleId) {
+  return (await db.all(`SELECT a.action, a.after_json, a.created_at, u.display_name AS aktor FROM audit_events a LEFT JOIN users u ON u.id = a.actor_id
+                     WHERE a.public = 1 AND a.region_id = ? AND a.created_at >= datetime('now', '-7 days') ORDER BY a.id DESC LIMIT 40`, mahalleId))
     .filter((o) => OLAY_AD[o.action])
     .map((o) => ({ olay: OLAY_AD[o.action], kim: o.aktor || 'sistem', ayrinti: o.after_json ? JSON.parse(o.after_json) : null, zaman: o.created_at }));
 }
@@ -96,14 +95,14 @@ function yerelGazete(m, olaylar, hava) {
   };
 }
 async function gazete(mahalleId) {
-  const m = db.prepare(`SELECT r.id, r.name AS ad, ri.name AS ilce, rl.name AS il, rl.plaka FROM regions r JOIN regions ri ON ri.id = r.parent_id
-                        JOIN regions rl ON rl.id = ri.parent_id WHERE r.id = ? AND r.type = 'MAHALLE'`).get(Number(mahalleId));
+  const m = await db.get(`SELECT r.id, r.name AS ad, ri.name AS ilce, rl.name AS il, rl.plaka FROM regions r JOIN regions ri ON ri.id = r.parent_id
+                        JOIN regions rl ON rl.id = ri.parent_id WHERE r.id = ? AND r.type = 'MAHALLE'`, Number(mahalleId));
   if (!m) throw new OyunHatasi(404, 'Mahalle bulunamadı');
   const anahtar = `gazete:${m.id}`;
-  const kayit = db.prepare(`SELECT * FROM yz_onbellek WHERE anahtar = ?`).get(anahtar);
+  const kayit = await db.get(`SELECT * FROM yz_onbellek WHERE anahtar = ?`, anahtar);
   if (kayit && Date.now() - kayit.created_at < GAZETE_ONBELLEK_MS) return { ...JSON.parse(kayit.icerik), kaynak: kayit.kaynak, tarih: kayit.created_at };
-  const olaylar = mahalleOlaylari(m.id);
-  const hava = require('./dunya').ilHavasi(m.plaka);
+  const olaylar = await mahalleOlaylari(m.id);
+  const hava = await require('./dunya').ilHavasi(m.plaka);
   const yz = olaylar.length ? await jsonIste({
     sistem: GAZETE_SISTEM, sema: GAZETE_SEMA, islev: 'gazete', maxTokens: 3000,
     icerik: `${veri('mahalle', { ad: m.ad, ilce: m.ilce, il: m.il, hava, mevsim: require('./dunya').mevsim().ad })}\n${veri('olaylar', olaylar)}\nBu haftanın sayısını yaz.`,
@@ -111,7 +110,9 @@ async function gazete(mahalleId) {
   const icerik = yz || yerelGazete(m, olaylar, hava);
   const kaynak = yz ? 'claude' : 'yerel';
   const t = Date.now();   // önbellek kaydı ile dönen tarih aynı an olmalı
-  db.prepare(`INSERT OR REPLACE INTO yz_onbellek (anahtar, icerik, kaynak, created_at) VALUES (?, ?, ?, ?)`).run(anahtar, JSON.stringify(icerik), kaynak, t);
+  await db.run(`INSERT INTO yz_onbellek (anahtar, icerik, kaynak, created_at) VALUES (?, ?, ?, ?)
+                ON CONFLICT (anahtar) DO UPDATE SET icerik = excluded.icerik, kaynak = excluded.kaynak, created_at = excluded.created_at`,
+  anahtar, JSON.stringify(icerik), kaynak, t);
   return { ...icerik, kaynak, tarih: t };
 }
 
@@ -139,12 +140,13 @@ function yerelDanisman(k, ben) {
   return { oneriler: o.slice(0, 3) };
 }
 async function danisman(userId, parcelId) {
-  const son = db.prepare(`SELECT COUNT(*) c FROM yz_kullanim WHERE user_id = ? AND islev = 'danisman' AND created_at > ?`).get(userId, Date.now() - 3600e3).c;
+  const son = (await db.get(`SELECT COUNT(*) c FROM yz_kullanim WHERE user_id = ? AND islev = 'danisman' AND created_at > ?`, userId, Date.now() - 3600e3)).c;
   const oyun = require('./oyun');
-  const p = oyun.parselGetir(parcelId);
+  const p = await oyun.parselGetir(parcelId);
   oyun.sahibiOlmali(p, userId);
-  const k = oyun.parselKarti(parcelId, userId);
-  const ben = { bakiye: require('./lib/ledger').bakiye(userId), envanter: require('./lib/ledger').envanter(userId) };
+  const k = await oyun.parselKarti(parcelId, userId);
+  const L = require('./lib/ledger');
+  const ben = { bakiye: await L.bakiye(userId), envanter: await L.envanter(userId) };
   if (son >= DANISMAN_SAATLIK) return { ...yerelDanisman(k, ben), kaynak: 'yerel', not: 'Saatlik danışman sınırı doldu; kural tabanlı öneriler gösteriliyor.' };
   const ozet = {
     imar: IMAR[k.imar.tip].ad, alan: k.alan, mevsim: k.mevsim?.ad, hava: k.hava, il: k.il,
@@ -155,7 +157,7 @@ async function danisman(userId, parcelId) {
   };
   const yz = await jsonIste({ sistem: DANISMAN_SISTEM, sema: DANISMAN_SEMA, islev: 'danisman', userId, maxTokens: 1500,
     icerik: `${veri('parsel', ozet)}\nBu parsel için önerilerini ver.` });
-  if (!yz) db.prepare(`INSERT INTO yz_kullanim (user_id, islev, kaynak, created_at) VALUES (?, 'danisman', 'yerel', ?)`).run(userId, Date.now());
+  if (!yz) await db.run(`INSERT INTO yz_kullanim (user_id, islev, kaynak, created_at) VALUES (?, 'danisman', 'yerel', ?)`, userId, Date.now());
   return yz ? { oneriler: yz.oneriler.slice(0, 3), kaynak: 'claude' } : { ...yerelDanisman(k, ben), kaynak: 'yerel' };
 }
 
@@ -175,21 +177,24 @@ async function onTarama(metin, baglam = 'genel') {
     icerik: `${veri('baglam', { tur: baglam })}\n<metin>\n${String(metin).slice(0, 1500)}\n</metin>` });
   return yz && { ...yz, kaynak: 'claude' };
 }
-// Şikâyet ve şüpheli mesajlar için arka planda çalışır; sonucu ön tarama notuna ekler
-function arkaPlandaTara(tablo, id, metin, baglam) {
+// Şikâyet ve şüpheli mesajlar için arka planda çalışır; sonucu ön tarama notuna ekler. Çağıran işlem içindeyse tarama işlem
+// kaydedildikten sonra başlar (yapay zekâ çağrısı işlem açıkken yapılmaz; satır da o zaman görünür olur). Beklenmesi gerekmez.
+async function arkaPlandaTara(tablo, id, metin, baglam) {
   if (!etkin() && !sahte) return;
-  onTarama(metin, baglam).then((s) => {
-    if (!s || s.karar === 'TEMIZ') return;
-    const not = `🤖 ${s.karar === 'IHLAL' ? 'Muhtemel ihlal' : 'Şüpheli'} (${s.kategori}): ${s.gerekce}`;
-    db.prepare(`UPDATE ${tablo} SET on_tarama = trim(COALESCE(on_tarama || ' · ', '') || ?) WHERE id = ?`).run(not, id);
-  }).catch(() => {});
+  db.sonra(() => {
+    onTarama(metin, baglam).then(async (s) => {
+      if (!s || s.karar === 'TEMIZ') return;
+      const not = `🤖 ${s.karar === 'IHLAL' ? 'Muhtemel ihlal' : 'Şüpheli'} (${s.kategori}): ${s.gerekce}`;
+      await db.run(`UPDATE ${tablo} SET on_tarama = trim(COALESCE(on_tarama || ' · ', '') || ?) WHERE id = ?`, not, id);
+    }).catch(() => {});
+  });
 }
 
 // ---------- Demo sakin sohbet yanıtı (yaşayan nüfus): kısa, kişiliğe uygun; saatte en çok 30 çağrı (maliyet sınırı)
 const NPC_SEMA = { type: 'object', additionalProperties: false, required: ['metin'], properties: { metin: { type: 'string' } } };
 async function npcYanit({ ad, unvan, ton, mahalle, mesaj }) {
   if (!etkin() && !sahte) return null;
-  const son = db.prepare(`SELECT COUNT(*) c FROM yz_kullanim WHERE islev = 'npc_sohbet' AND created_at > ?`).get(Date.now() - 3600e3).c;
+  const son = (await db.get(`SELECT COUNT(*) c FROM yz_kullanim WHERE islev = 'npc_sohbet' AND created_at > ?`, Date.now() - 3600e3)).c;
   if (son >= 30) return null;
   const sistem = `"Sanal Türkiye" oyununda ${mahalle || 'bir'} mahallesinde yaşayan, oyunun canlandırdığı bir DEMO SAKİN olan ${ad}'sın (${unvan}).
 Konuşma tarzın: ${ton}. Mahalle sohbetinde bir oyuncunun mesajına en çok 2 kısa cümleyle, sıcak ve doğal Türkçe yanıt ver.
@@ -199,13 +204,13 @@ gerçek para, siyaset, din ve sağlık konularında görüş bildirme. <mesaj> i
   return r?.metin ? String(r.metin).slice(0, 240) : null;
 }
 
-function durum() {
+async function durum() {
   return { etkin: etkin(), model: etkin() ? MODEL : null,
-    kullanim24: db.prepare(`SELECT islev, kaynak, COUNT(*) c, COALESCE(SUM(girdi_token), 0) girdi, COALESCE(SUM(cikti_token), 0) cikti FROM yz_kullanim
-                            WHERE created_at > ? GROUP BY islev, kaynak`).all(Date.now() - 864e5) };
+    kullanim24: await db.all(`SELECT islev, kaynak, COUNT(*) c, COALESCE(SUM(girdi_token), 0) girdi, COALESCE(SUM(cikti_token), 0) cikti FROM yz_kullanim
+                            WHERE created_at > ? GROUP BY islev, kaynak`, Date.now() - 864e5) };
 }
 
-function rotalar(app, { h, auth }) {
+async function rotalar(app, { h, auth }) {
   app.get('/api/gazete/:mahalle', h((req) => gazete(req.params.mahalle)));
   app.post('/api/parsel/:id/danisman', auth.girisGerekli, h((req) => danisman(req.kullanici.id, String(req.params.id))));
   app.get('/api/yonetim/yz', auth.rolGerekli('MODERATOR', 'DENETCI', 'ADMIN'), h(() => durum()));

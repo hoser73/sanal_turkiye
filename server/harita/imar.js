@@ -130,9 +130,11 @@ const SAHTE_ADLAR = ['Yenimahalle', 'Cumhuriyet', 'Fatih', 'Hürriyet', 'Gazi', 
 const bellek = new Map();   // LRU: "kx:ky" → { kod, ilce }
 const BELLEK_MAKS = 3000;
 const q = {
-  oku: db.prepare(`SELECT kod, ilce FROM imar_karolari WHERE kx = ? AND ky = ? AND surum = ?`),
-  yaz: db.prepare(`INSERT OR REPLACE INTO imar_karolari (kx, ky, surum, kod, ilce, kaynak, created_at) VALUES (?, ?, ?, ?, ?, ?, datetime('now'))`),
-  yerYaz: db.prepare(`INSERT OR IGNORE INTO yerler (id, ad, ad_norm, sinif, lon, lat, ilce_idx) VALUES (?, ?, ?, ?, ?, ?, ?)`),
+  oku: db.sorgu(`SELECT kod, ilce FROM imar_karolari WHERE kx = ? AND ky = ? AND surum = ?`),
+  yaz: db.sorgu(`INSERT INTO imar_karolari (kx, ky, surum, kod, ilce, kaynak, created_at) VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+                 ON CONFLICT (kx, ky) DO UPDATE SET surum = excluded.surum, kod = excluded.kod, ilce = excluded.ilce,
+                   kaynak = excluded.kaynak, created_at = excluded.created_at`),
+  yerYaz: db.sorgu(`INSERT OR IGNORE INTO yerler (id, ad, ad_norm, sinif, lon, lat, ilce_idx) VALUES (?, ?, ?, ?, ?, ?, ?)`),
 };
 const ucusta = new Map();
 
@@ -145,7 +147,7 @@ function bellegeKoy(anahtar, deger) {
 async function karoSiniflandir(kx, ky) {
   const anahtar = `${kx}:${ky}`;
   if (bellek.has(anahtar)) { const v = bellek.get(anahtar); bellegeKoy(anahtar, v); return v; }
-  const satir = q.oku.get(kx, ky, IMAR_SURUM);
+  const satir = await q.oku.get(kx, ky, IMAR_SURUM);
   if (satir) {
     const v = { kod: new Uint8Array(satir.kod), ilce: new Uint16Array(new Uint8Array(satir.ilce).buffer) };
     bellegeKoy(anahtar, v);
@@ -193,13 +195,13 @@ async function hesapla(kx, ky) {
   }
 
   // Gazetteer: yerleşim noktalarını ilçeleriyle kaydet (arama + mahalle ataması)
-  db.transaction(() => {
+  await db.tx(async () => {
     for (const y of yerler.values()) {
       const c = ilceBul(y.lon, y.lat);
-      if (c) q.yerYaz.run(y.id, y.ad, normalize(y.ad), y.sinif, y.lon, y.lat, c.idx);
+      if (c) await q.yerYaz.run(y.id, y.ad, normalize(y.ad), y.sinif, y.lon, y.lat, c.idx);
     }
-    q.yaz.run(kx, ky, IMAR_SURUM, Buffer.from(kod), Buffer.from(ilce.buffer), veriSurumu());
-  })();
+    await q.yaz.run(kx, ky, IMAR_SURUM, Buffer.from(kod), Buffer.from(ilce.buffer), veriSurumu());
+  });
   return { kod, ilce };
 }
 
@@ -283,9 +285,9 @@ async function hucreImari(x, y) {
 }
 
 // En yakın yerleşim noktası (aynı ilçede), sınıf ağırlıklı mesafe
-function mahalleBul(lon, lat, ilce) {
-  const yakin = db.prepare(`SELECT id, ad, sinif, lon, lat FROM yerler WHERE ilce_idx = ? AND lon BETWEEN ? AND ? AND lat BETWEEN ? AND ?`)
-    .all(ilce.idx, lon - 0.12, lon + 0.12, lat - 0.1, lat + 0.1);
+async function mahalleBul(lon, lat, ilce) {
+  const yakin = await db.all(`SELECT id, ad, sinif, lon, lat FROM yerler WHERE ilce_idx = ? AND lon BETWEEN ? AND ? AND lat BETWEEN ? AND ?`,
+    ilce.idx, lon - 0.12, lon + 0.12, lat - 0.1, lat + 0.1);
   const kx = Math.cos((lat * Math.PI) / 180);
   let enIyi = null, enIyiD = Infinity;
   for (const y of yakin) {

@@ -47,22 +47,26 @@ function mahalleHucreleri([lon, lat]) {
 }
 
 // Seçim takvimini, şu an verilen aşamanın içinde olacak şekilde geriye kaydır
-function asamayaGetir(secimId, asama) {
-  const s = db.prepare('SELECT * FROM secimler WHERE id = ?').get(secimId);
+async function asamayaGetir(secimId, asama) {
+  const s = await db.get('SELECT * FROM secimler WHERE id = ?', secimId);
   const hedef = { ADAYLIK: s.adaylik_at, KAMPANYA: s.kampanya_at, OYLAMA: s.oylama_at, ITIRAZ: s.itiraz_at, BITTI: s.bitis_at }[asama];
   const kaydir = hedef - Date.now() + 5;
-  db.prepare(`UPDATE secimler SET duyuru_at = duyuru_at - ?, adaylik_at = adaylik_at - ?, kampanya_at = kampanya_at - ?,
-              oylama_at = oylama_at - ?, itiraz_at = itiraz_at - ?, bitis_at = bitis_at - ? WHERE id = ?`)
-    .run(kaydir, kaydir, kaydir, kaydir, kaydir, kaydir, secimId);
-  secim.secimBakim();
-  return db.prepare('SELECT * FROM secimler WHERE id = ?').get(secimId);
+  await db.run(`UPDATE secimler SET duyuru_at = duyuru_at - ?, adaylik_at = adaylik_at - ?, kampanya_at = kampanya_at - ?,
+              oylama_at = oylama_at - ?, itiraz_at = itiraz_at - ?, bitis_at = bitis_at - ? WHERE id = ?`,
+  kaydir, kaydir, kaydir, kaydir, kaydir, kaydir, secimId);
+  await secim.secimBakim();
+  return db.get('SELECT * FROM secimler WHERE id = ?', secimId);
 }
-const eskit = (email) => db.prepare(`UPDATE users SET created_at = datetime('now', '-40 days') WHERE email = ?`).run(email);
+const eskit = (email) => db.run(`UPDATE users SET created_at = datetime('now', '-40 days') WHERE email = ?`, email);
+// Tablo kolonları (iki motorda)
+const kolonlar = async (tablo) => (db.tur === 'sqlite'
+  ? await db.all(`PRAGMA table_info(${tablo})`)
+  : await db.all(`SELECT column_name AS name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = ?`, tablo)).map((k) => k.name);
 
 async function oyuncu(ad, cihaz, hucre) {
   const c = istemci(cihaz);
   assert.equal((await c('/api/kayit', { email: `${ad.toLowerCase()}@test.local`, sifre: 'parola123', dogumYili: 1990, kosullarOnay: true, kvkkOnay: true, ad })).durum, 201);
-  eskit(`${ad.toLowerCase()}@test.local`);
+  await eskit(`${ad.toLowerCase()}@test.local`);
   if (hucre) assert.equal((await c(`/api/parsel/${hucre}/edin`, {})).durum, 200);
   return c;
 }
@@ -85,7 +89,7 @@ test('yeterli sakin olunca mahallede seçim duyurulur', async () => {
   mahalleId = kartlar[0].veri.mahalleId;
   assert.ok(kartlar.every((k) => k.veri.mahalleId === mahalleId), 'dört oyuncu aynı mahallede');
 
-  secim.secimBakim({ zorla: true });
+  await secim.secimBakim({ zorla: true });
   const m = (await A(`/api/mahalle/${mahalleId}`)).veri;
   assert.equal(m.sakinSayisi, 4);
   assert.equal(m.secim.asama, 'DUYURU');
@@ -96,7 +100,7 @@ test('yeterli sakin olunca mahallede seçim duyurulur', async () => {
 });
 
 test('adaylık şartları: sakinlik, itibar, etkinlik; ücret yok', async () => {
-  asamayaGetir(secimId, 'ADAYLIK');
+  await asamayaGetir(secimId, 'ADAYLIK');
   const r = await A(`/api/secim/${secimId}/aday`, { manifesto: MANIFESTO });
   assert.equal(r.durum, 403);
   assert.match(r.veri.hata, /eylem/);
@@ -115,7 +119,7 @@ test('adaylık şartları: sakinlik, itibar, etkinlik; ücret yok', async () => 
 });
 
 test('kampanya başında kütük dondurulur: sonradan parsel alan oy kullanamaz', async () => {
-  asamayaGetir(secimId, 'KAMPANYA');
+  await asamayaGetir(secimId, 'KAMPANYA');
   const m = (await A(`/api/mahalle/${secimId && mahalleId}`)).veri;
   assert.equal(m.secim.asama, 'KAMPANYA');
   assert.equal(m.secim.kutukSayisi, 4);
@@ -125,7 +129,7 @@ test('kampanya başında kütük dondurulur: sonradan parsel alan oy kullanamaz'
 
 let adayA, adayB, makbuzA;
 test('gizli oy: tek hesap tek oy, makbuz yalnızca dahil olduğunu kanıtlar', async () => {
-  asamayaGetir(secimId, 'OYLAMA');
+  await asamayaGetir(secimId, 'OYLAMA');
   const m = (await A(`/api/mahalle/${mahalleId}`)).veri;
   adayA = m.secim.adaylar.find((x) => x.ad === 'Ayla').id;
   adayB = m.secim.adaylar.find((x) => x.ad === 'Baris').id;
@@ -150,19 +154,19 @@ test('gizli oy: tek hesap tek oy, makbuz yalnızca dahil olduğunu kanıtlar', a
   assert.equal((await A(`/api/mahalle/${mahalleId}`)).veri.secim.katilimSayisi, 4);
 });
 
-test('oy kaydı kimlik içermez ve değiştirilemez', () => {
-  const oyKolonlari = db.prepare(`PRAGMA table_info(secim_oylari)`).all().map((k) => k.name);
-  const katilimKolonlari = db.prepare(`PRAGMA table_info(secim_katilim)`).all().map((k) => k.name);
+test('oy kaydı kimlik içermez ve değiştirilemez', async () => {
+  const oyKolonlari = await kolonlar('secim_oylari');
+  const katilimKolonlari = await kolonlar('secim_katilim');
   assert.ok(!oyKolonlari.some((k) => /user|created|zaman/.test(k)), `oy tablosu: ${oyKolonlari}`);
   assert.ok(!katilimKolonlari.some((k) => /aday/.test(k)), `katılım tablosu: ${katilimKolonlari}`);
-  assert.throws(() => db.prepare(`UPDATE secim_oylari SET aday_id = ?`).run(adayB), /değiştirilemez/);
-  assert.throws(() => db.prepare(`DELETE FROM secim_oylari`).run(), /silinemez/);
-  const audit = db.prepare(`SELECT after_json FROM audit_events WHERE action = 'VOTE_CAST'`).all();
+  await assert.rejects(db.run(`UPDATE secim_oylari SET aday_id = ?`, adayB), /değiştirilemez/);
+  await assert.rejects(db.run(`DELETE FROM secim_oylari`), /silinemez/);
+  const audit = await db.all(`SELECT after_json FROM audit_events WHERE action = 'VOTE_CAST'`);
   assert.ok(audit.every((a) => a.after_json === null), 'denetim kaydında oy tercihi yok');
 });
 
 test('oylama bitince sayım, katılım ve aynı cihaz bulgusu açıklanır; itiraz edilebilir', async () => {
-  asamayaGetir(secimId, 'ITIRAZ');
+  await asamayaGetir(secimId, 'ITIRAZ');
   const s = (await A(`/api/mahalle/${mahalleId}`)).veri.secim;
   assert.equal(s.asama, 'ITIRAZ');
   assert.equal(s.sonuc.toplam, 4);
@@ -182,7 +186,7 @@ test('oylama bitince sayım, katılım ve aynı cihaz bulgusu açıklanır; itir
 });
 
 test('şüpheli katılım farkı değiştiremiyorsa sonuç kesinleşir, muhtar devralır', async () => {
-  asamayaGetir(secimId, 'BITTI');
+  await asamayaGetir(secimId, 'BITTI');
   const m = (await A(`/api/mahalle/${mahalleId}`)).veri;
   assert.equal(m.secim.asama, 'SONUCLANDI');
   assert.equal(m.muhtar.ad, 'Ayla');
@@ -192,8 +196,8 @@ test('şüpheli katılım farkı değiştiremiyorsa sonuç kesinleşir, muhtar d
   assert.match(m.secim.itirazlar[0].yanit, /yeniden sayım/i);
   const akis = (await A('/api/akis')).veri;
   assert.ok(akis.some((a) => a.action === 'ELECTION_CLOSED' && a.after.kazanan === 'Ayla'));
-  secim.secimBakim({ zorla: true });
-  assert.equal(db.prepare(`SELECT COUNT(*) c FROM secimler WHERE region_id = ? AND asama = 'DUYURU'`).get(mahalleId).c, 0, 'görev sürerken yeni seçim yok');
+  await secim.secimBakim({ zorla: true });
+  assert.equal((await db.get(`SELECT COUNT(*) c FROM secimler WHERE region_id = ? AND asama = 'DUYURU'`, mahalleId)).c, 0, 'görev sürerken yeni seçim yok');
 });
 
 test('muhtar yetkileri: duyuru ve vaat takibi yalnızca muhtara açık', async () => {
@@ -217,17 +221,17 @@ test('şüpheli oylar sonucu değiştirebilecekse seçim iptal edilir', async ()
   await etkinOl(G, h[0]);
   await etkinOl(H, h[3]);
   const mid = (await G(`/api/parsel/${h[0]}`)).veri.mahalleId;
-  secim.secimBakim({ zorla: true });
+  await secim.secimBakim({ zorla: true });
   const sid = (await G(`/api/mahalle/${mid}`)).veri.secim.id;
-  asamayaGetir(sid, 'ADAYLIK');
+  await asamayaGetir(sid, 'ADAYLIK');
   assert.equal((await G(`/api/secim/${sid}/aday`, { manifesto: MANIFESTO })).durum, 200);
   assert.equal((await H(`/api/secim/${sid}/aday`, { manifesto: MANIFESTO })).durum, 200);
-  asamayaGetir(sid, 'OYLAMA');
+  await asamayaGetir(sid, 'OYLAMA');
   const adaylar = (await G(`/api/mahalle/${mid}`)).veri.secim.adaylar;
   const g = adaylar.find((x) => x.ad === 'Gul').id, hh = adaylar.find((x) => x.ad === 'Hakan').id;
   for (const [c, a] of [[G, g], [H, hh], [K, g]]) assert.equal((await c(`/api/secim/${sid}/oy`, { adayId: a })).durum, 200);
-  asamayaGetir(sid, 'ITIRAZ');
-  asamayaGetir(sid, 'BITTI');
+  await asamayaGetir(sid, 'ITIRAZ');
+  await asamayaGetir(sid, 'BITTI');
   const m = (await G(`/api/mahalle/${mid}`)).veri;
   assert.equal(m.secim.asama, 'IPTAL');
   assert.match(m.secim.iptalSebebi, /Şüpheli katılım \(2\).*\(1\)/);
@@ -240,10 +244,10 @@ test('aday çıkmazsa seçim kapanır, geçici yönetim sürer', async () => {
   const oyuncular = [];
   for (const [i, ad] of ['Lale', 'Mert', 'Nil'].entries()) oyuncular.push(await oyuncu(ad, ad, h[i * 3]));
   const mid = (await oyuncular[0](`/api/parsel/${h[0]}`)).veri.mahalleId;
-  secim.secimBakim({ zorla: true });
+  await secim.secimBakim({ zorla: true });
   const sid = (await oyuncular[0](`/api/mahalle/${mid}`)).veri.secim.id;
-  asamayaGetir(sid, 'ADAYLIK');
-  asamayaGetir(sid, 'KAMPANYA');
+  await asamayaGetir(sid, 'ADAYLIK');
+  await asamayaGetir(sid, 'KAMPANYA');
   const m = (await oyuncular[0](`/api/mahalle/${mid}`)).veri;
   assert.equal(m.secim.asama, 'ADAY_YOK');
   assert.equal(m.muhtar, null);
@@ -253,7 +257,7 @@ test('az sakinli mahallede seçim açılmaz; gerekçe gösterilir', async () => 
   const h = mahalleHucreleri([38.39, 40.90]);   // Giresun
   const P = await oyuncu('Pinar', 'p', h[0]);
   const mid = (await P(`/api/parsel/${h[0]}`)).veri.mahalleId;
-  secim.secimBakim({ zorla: true });
+  await secim.secimBakim({ zorla: true });
   const m = (await P(`/api/mahalle/${mid}`)).veri;
   assert.equal(m.secim, null);
   // Yaşayan nüfus açıkken demo sakinler yerleşince seçim kendiliğinden açılır; kapalıyken eşik açıklanır
@@ -267,14 +271,14 @@ test('kampanyada tüm adaylar çekilirse oylama açılmaz; boş pusula ve ilk oy
   await oyuncu('Tuna', 't', h[6]);
   await etkinOl(R, h[0]);
   const mid = (await R(`/api/parsel/${h[0]}`)).veri.mahalleId;
-  secim.secimBakim({ zorla: true });
+  await secim.secimBakim({ zorla: true });
   const sid = (await R(`/api/mahalle/${mid}`)).veri.secim.id;
-  asamayaGetir(sid, 'ADAYLIK');
+  await asamayaGetir(sid, 'ADAYLIK');
   assert.equal((await R(`/api/secim/${sid}/aday`, { manifesto: MANIFESTO })).durum, 200);
-  asamayaGetir(sid, 'KAMPANYA');
+  await asamayaGetir(sid, 'KAMPANYA');
   assert.equal((await R(`/api/secim/${sid}/adaylik-geri`, {})).durum, 200);
-  const s = asamayaGetir(sid, 'OYLAMA');
+  const s = await asamayaGetir(sid, 'OYLAMA');
   assert.equal(s.asama, 'ADAY_YOK');
   assert.equal((await S(`/api/secim/${sid}/oy`, { secimler: {} })).durum, 409);
-  assert.ok(!db.prepare(`SELECT 1 FROM quest_progress q JOIN users u ON u.id = q.user_id WHERE u.email = 'selim@test.local' AND q.quest_code = 'ILK_OY'`).get());
+  assert.ok(!await db.get(`SELECT 1 FROM quest_progress q JOIN users u ON u.id = q.user_id WHERE u.email = 'selim@test.local' AND q.quest_code = 'ILK_OY'`));
 });

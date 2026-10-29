@@ -7,13 +7,12 @@ const rateLimit = require('express-rate-limit');
 const hizSiniri = (ayar) => rateLimit({ standardHeaders: 'draft-8', legacyHeaders: false, ...ayar,
   handler: (_req, res) => res.status(429).json({ hata: 'Çok fazla istek; biraz sonra tekrar dene', kod: 'HIZ_SINIRI' }) });
 
-require('./db');
+const db = require('./db');
 const { seedEt } = require('./seed');
 const auth = require('./auth');
 const oyun = require('./oyun');
 const pazar = require('./pazar');
 const piyasa = require('./piyasa');
-piyasa.hazineId(true);   // Hazine (oyunun alıcısı) hesabı açılışta hazır olsun
 const arama = require('./arama');
 const secim = require('./secim');
 const belediye = require('./belediye');
@@ -44,7 +43,8 @@ const { gunluk, istekGunlugu, sonHatalar } = require('./lib/gunluk');
 const { ortakYanit } = require('./lib/onbellek');   // herkese aynı uçlar: kısa süreli önbellek
 const { metin, sayi } = require('./lib/girdi');
 
-seedEt();
+// Veritabanı (Postgres'te bağlantı + şema), Hazine (oyunun alıcısı) hesabı ve temel veri hazırlanır; API istekleri bunu bekler
+const vtHazir = db.baslat().then(() => piyasa.hazineId(true)).then(() => seedEt());
 
 const app = express();
 if (process.env.NODE_ENV === 'production') app.set('trust proxy', 1);
@@ -102,34 +102,50 @@ app.use(['/api/oyuncu-adi'], hizSiniri({ windowMs: 15 * 60_000, limit: kimlikSin
 // Kaba kuvvet ve e-posta bombalamasına karşı: sıfırlama, doğrulama, 2FA ve kritik hesap işlemleri
 app.use(['/api/sifre', '/api/eposta', '/api/giris/2fa', '/api/2fa', '/api/hesap/sil'],
   hizSiniri({ windowMs: 15 * 60_000, limit: kimlikSiniri(20) }));
+app.use('/api/', (_req, _res, next) => { vtHazir.then(() => next(), next); });
 // Oturum yalnızca API isteklerinde okunur (statik dosyalar için her seferinde oturum sorgusu yapılmaz)
-app.use((req, res, next) => (req.path.startsWith('/api/') ? auth.kimlik(req, res, next) : next()));
+app.use((req, res, next) => {
+  if (!req.path.startsWith('/api/')) return next();
+  Promise.resolve().then(() => auth.kimlik(req, res, next)).catch(next);
+});
 // Siyaset kapalıyken (OZELLIK.siyaset) seçim, muhtarlık ve belediye uçları kapalıdır
 const SIYASI_YOLLAR = /^\/api\/(secim|vaat|proje|talep|mahalle|mahallelerim|belediye|belediyelerim|referandum|gorevden-alma|harita\/secimler|harita\/belediyeler)(\/|$)/i;   // Express yönlendirmesi büyük/küçük harf ayırmaz
 app.use((req, _res, next) => (OZELLIK.siyaset || !SIYASI_YOLLAR.test(req.path) ? next() : next(new OyunHatasi(404, 'Bu bölüm şimdilik kapalı', 'KAPALI'))));
 // Bakım işleri (süresi dolan inşaat, ilan, seçim, proje, borsa emri, hava, kira, referandum…). Eskiden her /api
 // isteğinde hepsi çalışıyordu (her istekte bir düzine tablo taraması). Artık en sık BAKIM_ARALIGI_MS'de bir (varsayılan
 // 1 sn; testte 0 = her istekte) ve ayrıca zamanlayıcıyla; her iş ayrı korunur: biri hata verirse istekler düşmez.
+// Tur db.tekOrnek ile çalışır: süreç içinde tek kopya, çok sunucuda aynı anda tek örnek (Postgres danışma kilidi; kilidi
+// başka sunucu tutuyorsa tur atlanır).
 const BAKIM_ARALIGI = Number(process.env.BAKIM_ARALIGI_MS ?? 1000);
 const BAKIM_ISLERI = [
   ['inşaat', () => oyun.bekleyenleriIsle()], ['pazar', () => pazar.pazarBakim()], ['seçim', () => secim.secimBakim()],
   ['belediye', () => belediye.belediyeBakim()], ['görevden alma', () => moderasyon.gorevdenAlmaBakim()], ['borsa', () => ekonomi.borsaBakim()],
-  ['hava', () => dunya.havaBakim()],
+  // Hava yenilemesi ağdan veri çeker: tur (ve istek) onu beklemez; havaBakim kendi tekrarını ve hatasını yönetir
+  ['hava', () => { dunya.havaBakim().catch((e) => gunluk.error('bakım işi başarısız', { is: 'hava', hata: e })); }],
   ['lojistik', () => lojistik.lojistikBakim()], ['kira', () => kira.kiraBakim()], ['referandum', () => referandum.referandumBakim()],
   ['endeks', () => piyasa.endeksBakim()], ['hazine', () => piyasa.hazineBakim()], ['hasat yarışı', () => require('./hasat-yarisi').yarisBakim()], ['ihale', () => require('./ihale').ihaleBakim()], ['fiyat alarmı', () => require('./alarm').alarmBakim()],
 ].filter(([ad]) => OZELLIK.siyaset || !['seçim', 'belediye', 'görevden alma', 'referandum'].includes(ad));   // siyaset kapalıyken döngüler durur
+const bakimTuru = () => db.tekOrnek('bakim', async () => {
+  for (const [ad, is] of BAKIM_ISLERI) {
+    try { await is(); } catch (e) { gunluk.error('bakım işi başarısız', { is: ad, hata: e }); }
+  }
+});
 let sonBakim = 0;
+// Tur başlatılırsa söz döner (hiçbir zaman reddedilmez), aralık dolmadıysa null
 function bakim() {
   const t = Date.now();
-  if (BAKIM_ARALIGI && t - sonBakim < BAKIM_ARALIGI) return;
+  if (BAKIM_ARALIGI && t - sonBakim < BAKIM_ARALIGI) return null;
   sonBakim = t;
-  for (const [ad, is] of BAKIM_ISLERI) {
-    try { is(); } catch (e) { gunluk.error('bakım işi başarısız', { is: ad, hata: e }); }
-  }
-  posta.postaBakim().catch(() => {});   // başarısız e-postaları arka planda yeniden dene
+  db.tekOrnek('posta', () => posta.postaBakim()).catch(() => {});   // başarısız e-postaları arka planda yeniden dene
+  return bakimTuru().catch((e) => gunluk.error('bakım turu başarısız', { hata: e }));
 }
-app.use('/api/', (req, _res, next) => { if (!req.path.startsWith('/karo/')) bakim(); next(); });
-if (BAKIM_ARALIGI) setInterval(bakim, BAKIM_ARALIGI).unref();   // kimse istek atmasa da süreler işlesin
+// İstek, başlattığı bakım turunu bekler (süresi dolan işler isteğin gördüğü veriye yansısın)
+app.use('/api/', (req, _res, next) => {
+  const tur = req.path.startsWith('/karo/') ? null : bakim();
+  if (tur) tur.then(() => next());
+  else next();
+});
+if (BAKIM_ARALIGI) setInterval(() => { vtHazir.then(bakim, () => {}); }, BAKIM_ARALIGI).unref();   // kimse istek atmasa da süreler işlesin
 
 // Sync ve async işleyicilerin hatalarını tek yerde toplayan sarmalayıcı
 const h = (fn) => (req, res, next) => {
@@ -243,13 +259,13 @@ app.get('/api/parsel/:id', hazir(async (req) => {
   const uidVeya = req.kullanici?.id ?? null;
   const { x, y } = koordinatlar(id);
   const komsu = await komsuImarlari(x, y);
-  return { ...oyun.parselKarti(id, uidVeya, komsu), pazar: pazar.parselPazarBilgisi(id, uidVeya) };
+  return { ...await oyun.parselKarti(id, uidVeya, komsu), pazar: await pazar.parselPazarBilgisi(id, uidVeya) };
 }));
 app.get('/api/akis', h(ortakYanit(3000, (req) => oyun.haberAkisi({ ilId: Number(req.query.il) || null }), (req) => String(Number(req.query.il) || ''))));
 app.get('/api/pazar', h(ortakYanit(5000, () => oyun.pazarDurumu())));
 // Oyun içi piyasa: Türkiye ve mahalle endeksleri, bölge endeks serisi, oyuncunun portföy kâr/zararı (piyasa.js)
 app.get('/api/piyasa', h(ortakYanit(30000, () => piyasa.piyasaOzeti())));
-app.get('/api/piyasa/endeks', h(ortakYanit(30000, (req) => piyasa.bolgeEndeksi(metin(req.query.tur), req.query.id) || { seri: [] },
+app.get('/api/piyasa/endeks', h(ortakYanit(30000, async (req) => (await piyasa.bolgeEndeksi(metin(req.query.tur), req.query.id)) || { seri: [] },
   (req) => `${metin(req.query.tur)}:${Number(req.query.id) || 0}`)));
 app.get('/api/portfoy', auth.girisGerekli, h((req) => piyasa.portfoy(uid(req))));
 app.post('/api/parsel/:id/hazineye-sat', auth.dogrulanmisGerekli, hazir((req) => piyasa.hazineyeSat(uid(req), parselId(req), req.body)));
@@ -278,8 +294,8 @@ function siyasiRotalar() {
   app.get('/api/secim/:id/yeniden-say', agirSinir, h(ortakYanit(30000, (req) => secim.yenidenSay(req.params.id), (req) => String(Number(req.params.id) || 0))));
   app.post('/api/secim/:id/aday', auth.dogrulanmisGerekli, h((req) => secim.adayOl(uid(req), req.params.id, req.body)));
   app.post('/api/secim/:id/adaylik-geri', auth.dogrulanmisGerekli, h((req) => secim.adaylikGeriCek(uid(req), req.params.id)));
-  app.post('/api/secim/:id/oy', auth.dogrulanmisGerekli, h((req) =>
-    secim.oyVer(uid(req), req.params.id, req.body, secim.cihazOzeti(req.ip, req.get('user-agent')))));
+  app.post('/api/secim/:id/oy', auth.dogrulanmisGerekli, h(async (req) =>
+    secim.oyVer(uid(req), req.params.id, req.body, await secim.cihazOzeti(req.ip, req.get('user-agent')))));
   app.post('/api/secim/:id/makbuz', h((req) => secim.makbuzDogrula(req.params.id, req.body?.makbuz)));
   app.post('/api/secim/:id/itiraz', auth.dogrulanmisGerekli, h((req) => secim.itirazEt(uid(req), req.params.id, req.body)));
   app.post('/api/mahalle/:id/duyuru', auth.dogrulanmisGerekli, h((req) => secim.duyuruYap(uid(req), req.params.id, req.body)));
@@ -298,7 +314,7 @@ if (OZELLIK.siyaset) siyasiRotalar();
 
 // ---- Oyuncu eylemleri
 // Misafir için 200 + null: istemci oturum durumunu hata üretmeden öğrenir
-app.get('/api/ben', h((req) => (req.kullanici ? { ...oyun.oyuncuOzeti(uid(req)), pazar: pazar.pazarOzeti(uid(req)), hesap: auth.hesapDurumu(uid(req)), yol: require('./mevsim-yolu').ozet(uid(req)), sandik: require('./sandik').ozet(uid(req)), siparis: ciftlik.siparisOzeti(uid(req)), miniEtkinlik: require('./mini-etkinlik').aktif() }
+app.get('/api/ben', h(async (req) => (req.kullanici ? { ...await oyun.oyuncuOzeti(uid(req)), pazar: await pazar.pazarOzeti(uid(req)), hesap: await auth.hesapDurumu(uid(req)), yol: await require('./mevsim-yolu').ozet(uid(req)), sandik: await require('./sandik').ozet(uid(req)), siparis: await ciftlik.siparisOzeti(uid(req)), miniEtkinlik: require('./mini-etkinlik').aktif() }
   : req.ikinciAdimBekleyen ? { ikinciAdimBekleniyor: true } : null)));
 app.get('/api/cuzdan', auth.girisGerekli, h((req) => oyun.cuzdanHareketleri(uid(req))));
 app.post('/api/parsel/:id/edin', auth.girisGerekli, hazir((req) => oyun.parselEdin(uid(req), parselId(req))));
@@ -378,11 +394,13 @@ app.use((err, _req, res, _next) => {
   res.status(500).json({ hata: 'Sunucu hatası', istekKimligi: _req.istekId });
 });
 
-auth.eskiOturumlariTemizle();
-setInterval(auth.eskiOturumlariTemizle, 6 * 3600 * 1000).unref();
+const oturumTemizle = () => db.tekOrnek('oturum-temizligi', () => auth.eskiOturumlariTemizle()).catch((e) => gunluk.warn('oturum temizliği', { hata: e }));
+vtHazir.then(oturumTemizle, () => {});
+setInterval(oturumTemizle, 6 * 3600 * 1000).unref();
 
 // Demo komşular ağdan imar verisi ister; sunucuyu bekletmeden arka planda yerleşir
-app.hazir = npcSeedEt({ sessiz: !!process.env.SESSIZ }).catch((e) => console.warn('Demo komşular:', e.message));
+app.hazir = vtHazir.then(() => npcSeedEt({ sessiz: !!process.env.SESSIZ }).catch((e) => console.warn('Demo komşular:', e.message)));
+app.vtHazir = vtHazir;
 
 const PORT = Number(process.env.PORT || 3400);
 app.canliBagla = canli.bagla;
@@ -395,18 +413,20 @@ if (require.main === module) {
     process.stderr.write(`\nSunucu başlatılmadı: ${denetim.hatalar.length} yapılandırma hatası (bkz. .env.ornek, docs/yayina-alma.md)\n`);
     process.exit(1);
   }
-  const sunucu = app.listen(PORT, () => gunluk.info(`Sanal Türkiye → http://localhost:${PORT}`, { port: PORT, surum: require('../package.json').version }));
+  vtHazir.catch((e) => { gunluk.error('veritabanı açılamadı', { hata: e }); setTimeout(() => process.exit(1), 200); });
+  const sunucu = app.listen(PORT, () => gunluk.info(`Sanal Türkiye → http://localhost:${PORT}`, { port: PORT, surum: require('../package.json').version, veritabani: db.tur }));
   process.on('unhandledRejection', (e) => gunluk.error('yakalanmamış söz reddi', { hata: e }));
   // Tutarsız durumda çalışmaya devam etmemek için kaydedip çık; süreç yöneticisi (systemd/pm2) yeniden başlatır
   process.on('uncaughtException', (e) => { gunluk.error('yakalanmamış istisna', { hata: e }); setTimeout(() => process.exit(1), 200); });
-  canli.bagla(sunucu);
-  nufus.baslat();   // yaşayan nüfus: gerçek oyuncusu az mahallelerde demo sakinler
-  require('./hatirlatma').baslat();   // geri çağıran bildirimler (hasat, hayvan, sipariş)
-  require('./gelisim').baslat();   // işçiler: olgun ekini hasat eder, susuz tarlayı sular, hayvanları yemler
+  canli.bagla(sunucu).catch((e) => gunluk.error('canlı bağlantı kurulamadı', { hata: e }));
+  const arkaPlan = (ad, fn) => vtHazir.then(fn).catch((e) => gunluk.error('arka plan işi başlatılamadı', { is: ad, hata: e }));
+  arkaPlan('nüfus', () => nufus.baslat());   // yaşayan nüfus: gerçek oyuncusu az mahallelerde demo sakinler
+  arkaPlan('hatırlatma', () => require('./hatirlatma').baslat());   // geri çağıran bildirimler (hasat, hayvan, sipariş)
+  arkaPlan('gelişim', () => require('./gelisim').baslat());   // işçiler: olgun ekini hasat eder, susuz tarlayı sular, hayvanları yemler
   // Düzenli kapanış (docker stop / systemd): yeni bağlantıları kes, veritabanını kapat
   const kapat = (sinyal) => {
     gunluk.info('kapanıyor', { sinyal });
-    sunucu.close(() => { try { require('./db').close(); } catch { /* zaten kapalı */ } process.exit(0); });
+    sunucu.close(() => { db.kapat().catch(() => {}).finally(() => process.exit(0)); });
     setTimeout(() => process.exit(0), 8000).unref();
   };
   process.on('SIGTERM', () => kapat('SIGTERM'));

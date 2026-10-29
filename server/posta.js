@@ -3,7 +3,6 @@
 // ve artan aralıklarla yeniden denenir (1 dk, 5 dk, 30 dk, 2 sa); dördüncü denemeden sonra HATA olarak bırakılır.
 const db = require('./db');
 
-
 const GONDEREN = () => process.env.POSTA_GONDEREN || 'Sanal Türkiye <bildirim@sanalturkiye.test>';
 const BEKLEMELER = [60_000, 5 * 60_000, 30 * 60_000, 2 * 3600_000];
 let tasiyici = null, tasiyiciUrl = null;
@@ -34,55 +33,71 @@ ${not ? `<p style="margin:18px 0 0;font-size:12px;color:#66706f">${kacis(not)}</
 </table></td></tr></table></body></html>`;
 }
 
+// İletiyi sahiplenip gönderir. Sahiplenme koşullu UPDATE'tir (durum BEKLIYOR → GONDERILIYOR): çok sunuculu kurulumda aynı
+// ileti iki kez gönderilmez. SMTP bağlantısı hiçbir veritabanı işlemi açıkken yapılmaz.
 async function tesimEt(id) {
-  const m = db.prepare(`SELECT * FROM giden_postalar WHERE id = ?`).get(id);
   const t = smtp();
-  if (!m || !t) return false;
+  if (!t) return false;
+  // Süreç gönderim sırasında ölürse ileti bir dakika sonra yeniden kuyruğa döner (postaBakim)
+  const m = await db.get(`UPDATE giden_postalar SET durum = 'GONDERILIYOR', sonraki = ? WHERE id = ? AND durum = 'BEKLIYOR' RETURNING *`,
+    Date.now() + BEKLEMELER[0], id);
+  if (!m) return false;
   try {
     await t.sendMail({ from: GONDEREN(), to: m.alici, subject: m.konu, text: m.govde, html: m.html || undefined });
-    db.prepare(`UPDATE giden_postalar SET durum = 'GONDERILDI', deneme = deneme + 1, hata = NULL, sonraki = NULL WHERE id = ?`).run(id);
+    await db.run(`UPDATE giden_postalar SET durum = 'GONDERILDI', deneme = deneme + 1, hata = NULL, sonraki = NULL WHERE id = ?`, id);
     return true;
   } catch (e) {
     const deneme = m.deneme + 1;
     const son = deneme >= BEKLEMELER.length;
-    db.prepare(`UPDATE giden_postalar SET durum = ?, deneme = ?, hata = ?, sonraki = ? WHERE id = ?`)
-      .run(son ? 'HATA' : 'BEKLIYOR', deneme, String(e.message).slice(0, 300), son ? null : Date.now() + BEKLEMELER[deneme - 1], id);
+    await db.run(`UPDATE giden_postalar SET durum = ?, deneme = ?, hata = ?, sonraki = ? WHERE id = ?`,
+      son ? 'HATA' : 'BEKLIYOR', deneme, String(e.message).slice(0, 300), son ? null : Date.now() + BEKLEMELER[deneme - 1], id);
     require('./lib/gunluk').gunluk.warn('e-posta gönderilemedi', { id, deneme, hataIletisi: e.message });
     return false;
   }
 }
 
 // ileti: düz metin; secenek: { baslik, paragraflar, dugme: { metin, url }, not } → HTML sürümü
-async function gonder(alici, konu, metin, secenek = null) {
+// arkaPlan: ileti kuyruğa yazılınca dönülür, SMTP gönderimi arkadan yapılır (istek SMTP'yi beklemez). Veritabanı işlemi
+// içinden çağrılırsa da gönderim işlem kaydedildikten sonraya ertelenir (geri alınan işlemin postası gitmez).
+async function gonder(alici, konu, metin, secenek = null, { arkaPlan = false } = {}) {
   const html = secenek ? htmlSablon({ baslik: secenek.baslik || konu, ...secenek }) : null;
   const t = smtp();
-  const id = db.prepare(`INSERT INTO giden_postalar (alici, konu, govde, html, durum, created_at) VALUES (?, ?, ?, ?, ?, datetime('now'))`)
-    .run(alici, konu, metin, html, t ? 'BEKLIYOR' : 'GELISTIRME').lastInsertRowid;
+  // sonraki: ilk gönderimden önce süreç ölürse kuyruk bir dakika sonra yeniden dener
+  const id = (await db.run(`INSERT INTO giden_postalar (alici, konu, govde, html, durum, sonraki, created_at) VALUES (?, ?, ?, ?, ?, ?, datetime('now'))`,
+    alici, konu, metin, html, t ? 'BEKLIYOR' : 'GELISTIRME', t ? Date.now() + BEKLEMELER[0] : null)).lastInsertRowid;
   if (!t) {
     if (process.env.NODE_ENV === 'production') require('./lib/gunluk').gunluk.error('SMTP_URL tanımlı değil; e-posta gönderilemedi', { id });
     else if (!process.env.SESSIZ) console.log(`✉️  [geliştirme posta kutusu] ${alici} — ${konu}`);
     return { id, gonderildi: false };
   }
+  if (arkaPlan || db.islemde()) {
+    db.sonra(() => { tesimEt(id).catch((e) => console.warn('E-posta gönderimi başarısız:', e.message)); });
+    return { id, gonderildi: false };
+  }
   return { id, gonderildi: await tesimEt(id) };
 }
 
-// Kuyruk: vakti gelen başarısız iletileri yeniden dener (bakım ara katmanından ve zamanlayıcıdan çağrılır)
+// Kuyruk: vakti gelen başarısız iletileri yeniden dener (bakım ara katmanından ve zamanlayıcıdan çağrılır). Çok sunucuda
+// birden çok örnek aynı anda çalışabilir: tesimEt her iletiyi koşullu sahiplenir, aynı ileti iki kez gitmez.
 let calisiyor = false;
 async function postaBakim() {
   if (calisiyor || !smtp()) return 0;
   calisiyor = true;
   let n = 0;
   try {
-    for (const m of db.prepare(`SELECT id FROM giden_postalar WHERE durum = 'BEKLIYOR' AND sonraki IS NOT NULL AND sonraki <= ? LIMIT 20`).all(Date.now())) {
+    const t = Date.now();
+    // Gönderim sırasında yarıda kalan (süreç ölen) iletiler kuyruğa geri döner
+    await db.run(`UPDATE giden_postalar SET durum = 'BEKLIYOR' WHERE durum = 'GONDERILIYOR' AND sonraki <= ?`, t);
+    for (const m of await db.all(`SELECT id FROM giden_postalar WHERE durum = 'BEKLIYOR' AND sonraki IS NOT NULL AND sonraki <= ? ORDER BY id LIMIT 20`, t)) {
       if (await tesimEt(m.id)) n++;
     }
   } finally { calisiyor = false; }
   return n;
 }
 
-function gelistirmeKutusu(limit = 30) {
-  return db.prepare(`SELECT id, alici, konu, govde, durum, created_at FROM giden_postalar ORDER BY id DESC LIMIT ?`).all(limit);
+async function gelistirmeKutusu(limit = 30) {
+  return db.all(`SELECT id, alici, konu, govde, durum, created_at FROM giden_postalar ORDER BY id DESC LIMIT ?`, limit);
 }
-const kuyrukDurumu = () => Object.fromEntries(db.prepare(`SELECT durum, COUNT(*) c FROM giden_postalar GROUP BY durum`).all().map((r) => [r.durum, r.c]));
+const kuyrukDurumu = async () => Object.fromEntries((await db.all(`SELECT durum, COUNT(*) c FROM giden_postalar GROUP BY durum`)).map((r) => [r.durum, r.c]));
 
 module.exports = { gonder, postaBakim, gelistirmeKutusu, kuyrukDurumu, htmlSablon };

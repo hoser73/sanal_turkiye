@@ -55,7 +55,8 @@ test('örnek veri: kayıt, parsel edinme, ekim, ilan ve teklif', async () => {
 test('şema ve veri PostgreSQL + PostGIS üzerinde kurulur ve yüklenir (yukle.sql adım adım)', { skip: PG && 'Postgres kipinde veri zaten Postgres\'te' }, async () => {
   const { disaAktar } = require('../scripts/postgres-aktar');
   dizin = fs.mkdtempSync(path.join(os.tmpdir(), 'st-pgaktar-'));
-  const ozet = disaAktar(dizin, db.sqlite);
+  // Uygulamanın tutamacıyla, işlem içinde: arka plandaki bir işlemin yarım yazdıkları dışa aktarılmasın
+  const ozet = await db.tx(async () => disaAktar(dizin, db.sqlite));
   await pg.exec(fs.readFileSync(path.join(dizin, 'sema.sql'), 'utf8'));
   // yukle.sql: psql meta komutları (\set, \i, \copy) PGlite'ta COPY … FROM '/dev/blob' karşılığına çevrilir
   for (const satir of fs.readFileSync(path.join(dizin, 'yukle.sql'), 'utf8').split('\n').map((x) => x.trim()).filter(Boolean)) {

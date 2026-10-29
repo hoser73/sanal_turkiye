@@ -40,17 +40,17 @@ async function oyuncu(ad = `oyuncu${++sayac}`, ek = {}) {
   assert.equal((await c('/api/kayit', { email: `${ad}@test.local`, sifre: 'parola123', dogumYili: 1990, kosullarOnay: true, kvkkOnay: true, ad, ...ek })).durum, 201);
   c.id = (await c('/api/ben')).veri.kullanici.id;
   // Balık 3., çarşı 4. seviyede açılır (SEVIYE_KILIDI)
-  db.prepare('UPDATE users SET tp = ? WHERE id = ?').run(require('../server/config/rules').SEVIYE.katsayi * 4 * 3, c.id);
+  await db.run('UPDATE users SET tp = ? WHERE id = ?', require('../server/config/rules').SEVIYE.katsayi * 4 * 3, c.id);
   return c;
 }
 async function yonetici() {
   const c = await oyuncu('patron');
-  db.prepare(`UPDATE users SET rol = 'ADMIN' WHERE id = ?`).run(c.id);
+  await db.run(`UPDATE users SET rol = 'ADMIN' WHERE id = ?`, c.id);
   const kur = (await c('/api/2fa/kur', {})).veri;
   await c('/api/2fa/etkinlestir', { kod: totp.kodUret(kur.sir) });
   return c;
 }
-const ekin = (id) => db.prepare(`SELECT * FROM crops WHERE parcel_id = ? AND status = 'GROWING'`).get(id);
+const ekin = (id) => db.get(`SELECT * FROM crops WHERE parcel_id = ? AND status = 'GROWING'`, id);
 const LOGO = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
 
 test('işletmeler: her türden tek işletme, varsayılan adlar; vitrin; şubeler her il merkezinde', async () => {
@@ -81,30 +81,30 @@ test('sponsor markası: yalnızca yönetici; doğrulama; sözleşme bitince vars
   assert.equal(r.durum, 200, JSON.stringify(r.veri));
   const b = (await o('/api/carsi')).veri.isletmeler.find((m) => m.kategori === 'BANKA');
   assert.equal(b.ad, 'Örnek Bank'); assert.equal(b.sponsor, true); assert.equal(b.logo, LOGO); assert.equal(b.web, 'https://ornek.example/');
-  assert.ok(db.prepare(`SELECT 1 FROM audit_events WHERE action = 'BUSINESS_BRAND_UPDATED'`).get());
+  assert.ok((await db.get(`SELECT 1 FROM audit_events WHERE action = 'BUSINESS_BRAND_UPDATED'`)));
   // Sözleşme biterse varsayılana döner
-  db.prepare(`UPDATE isletmeler SET sozlesme_bit = ? WHERE kategori = 'BANKA'`).run(Date.now() - 1000);
-  assert.equal(carsi.marka('BANKA').ad, CARSI.kategoriler.BANKA.ad);
-  assert.equal(carsi.marka('BANKA').sponsor, false);
+  await db.run(`UPDATE isletmeler SET sozlesme_bit = ? WHERE kategori = 'BANKA'`, Date.now() - 1000);
+  assert.equal((await carsi.marka('BANKA')).ad, CARSI.kategoriler.BANKA.ad);
+  assert.equal((await carsi.marka('BANKA')).sponsor, false);
   // Gerçek şubeler
   assert.equal((await y('/api/yonetim/isletme/MARKET/subeler', { subeler: [{ ad: 'Kadıköy', lon: 29.03, lat: 40.99 }, { ad: 'Meram', lon: 32.43, lat: 37.84 }] }, 'PUT')).durum, 200);
   assert.equal((await y('/api/yonetim/isletme/MARKET/subeler', { subeler: [{ ad: 'Paris', lon: 2.35, lat: 48.85 }] }, 'PUT')).durum, 400, 'Türkiye dışı');
-  assert.equal(carsi.subeler().filter((s) => s.kategori === 'MARKET').length, 2);
+  assert.equal((await carsi.subeler()).filter((s) => s.kategori === 'MARKET').length, 2);
   const liste = (await y('/api/yonetim/isletmeler')).veri;
   assert.equal(liste.find((x) => x.kategori === 'MARKET').gercekSube, 2);
   assert.equal((await y('/api/yonetim/isletme/BANKA', { sifirla: true }, 'PUT')).durum, 200);
-  assert.equal(carsi.marka('BANKA').ad, CARSI.kategoriler.BANKA.ad);
+  assert.equal((await carsi.marka('BANKA')).ad, CARSI.kategoriler.BANKA.ad);
 });
 
 test('dükkân: satın alma akçe düşer, paket sarf verir, kalıcı ürün bir kez; NPC tüccar dükkân ürünü almaz', async () => {
   const c = await oyuncu();
-  const once = L.bakiye(c.id);
+  const once = await L.bakiye(c.id);
   const r = await c('/api/carsi/satin-al', { urun: 'GUBRE', adet: 3 });
   assert.equal(r.durum, 200);
-  assert.equal(L.yuvarla(once - L.bakiye(c.id)), CARSI.urunler.GUBRE.fiyat * 3);
-  assert.equal(L.envanterMiktar(c.id, 'GUBRE'), 3);
+  assert.equal(L.yuvarla(once - (await L.bakiye(c.id))), CARSI.urunler.GUBRE.fiyat * 3);
+  assert.equal((await L.envanterMiktar(c.id, 'GUBRE')), 3);
   await c('/api/carsi/satin-al', { urun: 'KARIDES_PAKETI' });
-  assert.equal(L.envanterMiktar(c.id, 'YEM_KARIDES'), 10);
+  assert.equal((await L.envanterMiktar(c.id, 'YEM_KARIDES')), 10);
   assert.equal((await c('/api/carsi/satin-al', { urun: 'ORGU_MISINA' })).durum, 200);
   assert.equal((await c('/api/carsi/satin-al', { urun: 'ORGU_MISINA' })).durum, 409, 'kalıcı ürün bir kez');
   for (const [u, a] of [['YOK', 1], ['GUBRE', 0], ['GUBRE', 21], ['GUBRE', 1.5]]) assert.equal((await c('/api/carsi/satin-al', { urun: u, adet: a })).durum, 400);
@@ -116,37 +116,37 @@ test('zirai bayi: gübre hasadı %20 artırır; ilaç dondan korur; aşı barın
   const c = await oyuncu();
   const h1 = hucreBul('TARIM'), h2 = hucreBul('TARIM');
   for (const h of [h1, h2]) { await c(`/api/parsel/${h}/edin`, {}); await c(`/api/parsel/${h}/ek`, { urun: 'DOMATES' }); }
-  db.prepare(`UPDATE parcels SET area_m2 = 600 WHERE id IN (?, ?)`).run(h1, h2);
+  await db.run(`UPDATE parcels SET area_m2 = 600 WHERE id IN (?, ?)`, h1, h2);
   await c('/api/carsi/satin-al', { urun: 'GUBRE' }); await c('/api/carsi/satin-al', { urun: 'ILAC' });
   assert.equal((await c('/api/carsi/kullan', { urun: 'GUBRE', parselId: h1 })).durum, 200);
   assert.equal((await c('/api/carsi/kullan', { urun: 'GUBRE', parselId: h1 })).durum, 409, 'gübre yok / zaten verildi');
   assert.equal((await c('/api/carsi/kullan', { urun: 'ILAC', parselId: h1 })).durum, 200);
-  assert.equal(ekin(h1).gubre, 1); assert.equal(ekin(h1).ilac, 1);
+  assert.equal((await ekin(h1)).gubre, 1); assert.equal((await ekin(h1)).ilac, 1);
   assert.equal((await c(`/api/parsel/${h1}`)).veri.ekin.gubre, true);
-  const plaka = db.prepare(`SELECT r.plaka FROM parcels p JOIN regions r ON r.id = p.il_id WHERE p.id = ?`).get(h1).plaka;
-  dunya.uygula({ plaka, sicaklik: -3, yagis: 0, kod: 3, ruzgar: 5, gunduz: 0 });
-  assert.equal(ekin(h1).don, 0, 'ilaç dondan korur');
-  assert.equal(ekin(h2).don, 1);
-  db.prepare(`UPDATE crops SET don = 0, ready_at = ?, waterings = 3 WHERE parcel_id IN (?, ?) AND status = 'GROWING'`).run(Date.now() - 1000, h1, h2);
+  const plaka = (await db.get(`SELECT r.plaka FROM parcels p JOIN regions r ON r.id = p.il_id WHERE p.id = ?`, h1)).plaka;
+  await dunya.uygula({ plaka, sicaklik: -3, yagis: 0, kod: 3, ruzgar: 5, gunduz: 0 });
+  assert.equal((await ekin(h1)).don, 0, 'ilaç dondan korur');
+  assert.equal((await ekin(h2)).don, 1);
+  await db.run(`UPDATE crops SET don = 0, ready_at = ?, waterings = 3 WHERE parcel_id IN (?, ?) AND status = 'GROWING'`, Date.now() - 1000, h1, h2);
   // Olgun ekine ilaç işe yaramaz: reddedilir, stoktan düşmez
   await c('/api/carsi/satin-al', { urun: 'ILAC' });
   assert.equal((await c('/api/carsi/kullan', { urun: 'ILAC', parselId: h2 })).durum, 409);
-  assert.equal(L.envanterMiktar(c.id, 'ILAC'), 1);
+  assert.equal((await L.envanterMiktar(c.id, 'ILAC')), 1);
   const m1 = (await c(`/api/parsel/${h1}/hasat`, {})).veri.miktar, m2 = (await c(`/api/parsel/${h2}/hasat`, {})).veri.miktar;
   assert.equal(m1, Math.round(m2 * (1 + CARSI.etki.gubreBonus)));
   // Aşı
   const h3 = hucreBul('TARIM');
-  L.odul(c.id, 200, 'test');   // ilk görev ödülleri tur sürerken ödenmez (tur verir); bu oyuncu turu açmadı
+  await db.tx(() => L.odul(c.id, 200, 'test'));   // ilk görev ödülleri tur sürerken ödenmez (tur verir); bu oyuncu turu açmadı
   const ed3 = await c(`/api/parsel/${h3}/edin`, {});
   assert.equal(ed3.durum, 200, JSON.stringify(ed3.veri));
   const t = Date.now();
-  const yid = db.prepare(`INSERT INTO structures (parcel_id, owner_user_id, type, status, started_at, completes_at, completed_at) VALUES (?, ?, 'KUMES', 'ACTIVE', ?, ?, ?)`).run(h3, c.id, t, t, t).lastInsertRowid;
+  const yid = (await db.run(`INSERT INTO structures (parcel_id, owner_user_id, type, status, started_at, completes_at, completed_at) VALUES (?, ?, 'KUMES', 'ACTIVE', ?, ?, ?)`, h3, c.id, t, t, t)).lastInsertRowid;
   await c('/api/carsi/satin-al', { urun: 'ASI' });
   const asi = await c('/api/carsi/kullan', { urun: 'ASI', yapiId: yid });   // aşı barınağa
   assert.equal(asi.durum, 200, JSON.stringify(asi.veri));
-  L.envanterDegis(c.id, 'YEM', 20, 'test');
+  await db.tx(() => L.envanterDegis(c.id, 'YEM', 20, 'test'));
   assert.equal((await c(`/api/yapi/${yid}/besle`, {})).durum, 200);
-  db.prepare(`UPDATE hayvan_bakim SET hazir_at = ? WHERE structure_id = ?`).run(Date.now() - 1, yid);
+  await db.run(`UPDATE hayvan_bakim SET hazir_at = ? WHERE structure_id = ?`, Date.now() - 1, yid);
   const top = (await c(`/api/yapi/${yid}/topla`, {})).veri;
   assert.equal(top.asili, true);
   assert.equal(top.miktar, require('../server/config/rules').HAYVANLAR.KUMES.miktar + CARSI.etki.asiEk);
@@ -154,28 +154,28 @@ test('zirai bayi: gübre hasadı %20 artırır; ilaç dondan korur; aşı barın
 
 test('nalbur: kalıp seti inşaatı kısaltır, bakım kiti bakımı ücretsiz yapar, örtü stoktan serilir', async () => {
   const c = await oyuncu();
-  L.odul(c.id, 2000, 'test bakiyesi');   // sera ve ikinci tarla
+  await db.tx(() => L.odul(c.id, 2000, 'test bakiyesi'));   // sera ve ikinci tarla
   const h = hucreBul('TARIM');
   await c(`/api/parsel/${h}/edin`, {});
   await c('/api/carsi/satin-al', { urun: 'KALIP_SETI' });
   // Kısa inşaatta (tel çit) kalıp seti harcanmaz
   const cit = (await c(`/api/parsel/${h}/insaat`, { tip: 'TEL_CIT' })).veri;
-  assert.equal(cit.kalip, false); assert.equal(L.envanterMiktar(c.id, 'KALIP_SETI'), 1);
+  assert.equal(cit.kalip, false); assert.equal((await L.envanterMiktar(c.id, 'KALIP_SETI')), 1);
   const ins = (await c(`/api/parsel/${h}/insaat`, { tip: 'SERA' })).veri;
   assert.equal(ins.kalip, true, JSON.stringify(ins));
-  const s = db.prepare(`SELECT * FROM structures WHERE id = ?`).get(ins.yapiId);
+  const s = await db.get(`SELECT * FROM structures WHERE id = ?`, ins.yapiId);
   assert.ok(Math.abs((s.completes_at - s.started_at) - YAPILAR.SERA.sureMs * (1 - CARSI.etki.kalipKisalma)) < 5);
-  assert.equal(L.envanterMiktar(c.id, 'KALIP_SETI'), 0);
-  const yipran = (id) => db.prepare(`UPDATE structures SET status = 'ACTIVE', completed_at = ?, bakim_at = ? WHERE id = ?`).run(Date.now() - 864e5 * 5, Date.now() - 864e5 * 5, id);
+  assert.equal((await L.envanterMiktar(c.id, 'KALIP_SETI')), 0);
+  const yipran = (id) => db.run(`UPDATE structures SET status = 'ACTIVE', completed_at = ?, bakim_at = ? WHERE id = ?`, Date.now() - 864e5 * 5, Date.now() - 864e5 * 5, id);
   // Bakım bedeli kitin fiyatından düşükse kit harcanmaz (tel çit)
-  yipran(cit.yapiId);
+  await yipran(cit.yapiId);
   await c('/api/carsi/satin-al', { urun: 'BAKIM_KITI' });
   const ucuz = (await c(`/api/parsel/${h}/bakim`, {})).veri;
-  assert.equal(ucuz.kit, false); assert.ok(ucuz.tutar > 0 && ucuz.tutar <= CARSI.urunler.BAKIM_KITI.fiyat); assert.equal(L.envanterMiktar(c.id, 'BAKIM_KITI'), 1);
-  yipran(ins.yapiId);
-  const once = L.bakiye(c.id);
+  assert.equal(ucuz.kit, false); assert.ok(ucuz.tutar > 0 && ucuz.tutar <= CARSI.urunler.BAKIM_KITI.fiyat); assert.equal((await L.envanterMiktar(c.id, 'BAKIM_KITI')), 1);
+  await yipran(ins.yapiId);
+  const once = await L.bakiye(c.id);
   const b = (await c(`/api/parsel/${h}/bakim`, {})).veri;
-  assert.equal(b.kit, true); assert.equal(b.tutar, 0); assert.equal(L.bakiye(c.id), once);
+  assert.equal(b.kit, true); assert.equal(b.tutar, 0); assert.equal((await L.bakiye(c.id)), once);
   const h2 = hucreBul('TARIM');   // seralı tarlaya örtü serilmez
   await c(`/api/parsel/${h2}/edin`, {});
   await c(`/api/parsel/${h2}/ek`, { urun: 'BUGDAY' });
@@ -187,26 +187,26 @@ test('nalbur: kalıp seti inşaatı kısaltır, bakım kiti bakımı ücretsiz y
 test('balık takımı: karides paketi ve sahte yem stoktan; misina koparsa sahte yem gider; örgü misina ve karbon kamış', async () => {
   const c = await oyuncu();
   await c('/api/carsi/satin-al', { urun: 'KARIDES_PAKETI' });
-  const once = L.bakiye(c.id);
+  const once = await L.bakiye(c.id);
   const a = (await c('/api/balik/at', { lon: 29, lat: 41, yem: 'KARIDES' })).veri;
-  assert.equal(a.yemStok, true); assert.equal(L.bakiye(c.id), once); assert.equal(L.envanterMiktar(c.id, 'YEM_KARIDES'), 9);
+  assert.equal(a.yemStok, true); assert.equal((await L.bakiye(c.id)), once); assert.equal((await L.envanterMiktar(c.id, 'YEM_KARIDES')), 9);
   await c('/api/carsi/satin-al', { urun: 'SAHTE_YEM_TAKIMI' });
   await c('/api/carsi/satin-al', { urun: 'ORGU_MISINA' }); await c('/api/carsi/satin-al', { urun: 'KARBON_KAMIS' });
-  const once2 = L.bakiye(c.id);
+  const once2 = await L.bakiye(c.id);
   const s = (await c('/api/balik/at', { lon: 29, lat: 41, yem: 'SAHTE', misina: 'ORTA' })).veri;
-  assert.equal(s.yemStok, true); assert.equal(L.bakiye(c.id), once2, 'sahte yem takımıyla atış ücretsiz');
-  db.prepare(`UPDATE balik_atislari SET isirma = ? WHERE id = ?`).run(Date.now(), s.id);
+  assert.equal(s.yemStok, true); assert.equal((await L.bakiye(c.id)), once2, 'sahte yem takımıyla atış ücretsiz');
+  await db.run(`UPDATE balik_atislari SET isirma = ? WHERE id = ?`, Date.now(), s.id);
   const cek = (await c(`/api/balik/${s.id}/cek`, {})).veri;
   assert.equal(cek.takildi, true);
   assert.ok(cek.dayanim > 1, 'örgü misina dayanımı artırır');
   assert.equal(cek.sarmaHiz, CARSI.etki.kamisSarma);
   await c(`/api/balik/${s.id}/cikar`, { basari: false, neden: 'koptu' });
-  assert.equal(L.envanterMiktar(c.id, 'SAHTE_YEM_TAKIMI'), 0, 'koptu: sahte yem kayboldu');
+  assert.equal((await L.envanterMiktar(c.id, 'SAHTE_YEM_TAKIMI')), 0, 'koptu: sahte yem kayboldu');
 });
 
 test('seviye kilidi: çarşı 4. seviyeden önce satmaz', async () => {
   const c = await oyuncu();
-  db.prepare('UPDATE users SET tp = 0 WHERE id = ?').run(c.id);
+  await db.run('UPDATE users SET tp = 0 WHERE id = ?', c.id);
   const r = await c('/api/carsi/satin-al', { urun: 'GUBRE', adet: 1 });
   assert.equal(r.durum, 403);
   assert.equal(r.veri.kod, 'SEVIYE');
@@ -214,19 +214,19 @@ test('seviye kilidi: çarşı 4. seviyeden önce satmaz', async () => {
 
 test('banka: vadeli hesap (bozdurunca faiz yok, vadesinde getiri), üst sınır', async () => {
   const c = await oyuncu();
-  const once = L.bakiye(c.id);
+  const once = await L.bakiye(c.id);
   const v1 = await c('/api/banka/vadeli', { tutar: 100 });
   assert.equal(v1.durum, 200);
-  assert.equal(L.bakiye(c.id), L.yuvarla(once - 100));
+  assert.equal((await L.bakiye(c.id)), L.yuvarla(once - 100));
   assert.equal((await c('/api/banka/vadeli', { tutar: 10 })).durum, 400, 'en az');
   assert.equal((await c('/api/banka/vadeli', { tutar: CARSI.banka.vadeliMaks })).durum, 409, 'üst sınır');
   const bozdur = (await c(`/api/banka/vadeli/${v1.veri.id}/kapat`, {})).veri;
-  assert.equal(bozdur.bozuldu, true); assert.equal(bozdur.faiz, 0); assert.equal(L.bakiye(c.id), once);
+  assert.equal(bozdur.bozuldu, true); assert.equal(bozdur.faiz, 0); assert.equal((await L.bakiye(c.id)), once);
   const v2 = (await c('/api/banka/vadeli', { tutar: 200 })).veri;
-  db.prepare(`UPDATE banka_vadeli SET vade = ? WHERE id = ?`).run(Date.now() - 1, v2.id);
+  await db.run(`UPDATE banka_vadeli SET vade = ? WHERE id = ?`, Date.now() - 1, v2.id);
   const kapat = (await c(`/api/banka/vadeli/${v2.id}/kapat`, {})).veri;
   assert.equal(kapat.faiz, L.yuvarla(200 * CARSI.banka.vadeliFaiz));
-  assert.equal(L.bakiye(c.id), L.yuvarla(once + kapat.faiz));
+  assert.equal((await L.bakiye(c.id)), L.yuvarla(once + kapat.faiz));
   assert.equal((await c(`/api/banka/vadeli/${v2.id}/kapat`, {})).durum, 409);
   const ozet = (await c('/api/banka')).veri;
   assert.ok(ozet.uyari.includes('nakde çevrilemez'));
