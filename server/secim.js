@@ -17,8 +17,6 @@ const { SECIM, ITIBAR, BELEDIYE, HESAP, NUFUS } = require('./config/rules');
 const L = require('./lib/ledger');
 const { OyunHatasi } = L;
 
-// Ara seçim: belediye başkanlığı dönem ortasında boşalırsa yalnızca başkanlık seçilir, meclis görevde kalır
-if (!db.prepare(`PRAGMA table_info(secimler)`).all().some((k) => k.name === 'ara')) db.exec(`ALTER TABLE secimler ADD COLUMN ara INTEGER NOT NULL DEFAULT 0`);
 
 const AKTIF = ['DUYURU', 'ADAYLIK', 'KAMPANYA', 'OYLAMA', 'ITIRAZ'];
 const AKTIF_SQL = `('DUYURU','ADAYLIK','KAMPANYA','OYLAMA','ITIRAZ')`;

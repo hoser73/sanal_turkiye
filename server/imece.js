@@ -9,22 +9,6 @@ const { OyunHatasi } = L;
 const { IMECE: I, LIG, URUNLER } = require('./config/rules');
 const { yol } = require('./lib/olaylar');
 
-db.exec(`
-CREATE TABLE IF NOT EXISTS imece (
-  id INTEGER PRIMARY KEY, hafta INTEGER NOT NULL, a_id INTEGER NOT NULL REFERENCES users(id), b_id INTEGER NOT NULL REFERENCES users(id),
-  durum TEXT NOT NULL DEFAULT 'DAVET',   -- DAVET / AKTIF / BITTI / RED
-  puan_a INTEGER NOT NULL DEFAULT 0, puan_b INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, kabul_at INTEGER
-);
-CREATE INDEX IF NOT EXISTS ix_imece_a ON imece(a_id, hafta, durum);
-CREATE INDEX IF NOT EXISTS ix_imece_b ON imece(b_id, hafta, durum);
-CREATE TABLE IF NOT EXISTS imece_gunluk (
-  user_id INTEGER NOT NULL, gun TEXT NOT NULL, eylem TEXT NOT NULL, adet INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (user_id, gun, eylem)
-) WITHOUT ROWID;
-CREATE TABLE IF NOT EXISTS imece_odul (
-  imece_id INTEGER NOT NULL REFERENCES imece(id), user_id INTEGER NOT NULL, kademe INTEGER NOT NULL, at INTEGER NOT NULL,
-  PRIMARY KEY (imece_id, user_id, kademe)
-) WITHOUT ROWID;
-`);
 
 const HAFTA = 7 * 86_400_000;
 const haftaNo = (t = Date.now()) => Math.floor((t - LIG.baslangic) / HAFTA);

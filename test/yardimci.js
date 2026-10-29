@@ -15,11 +15,19 @@ function ortamKur(ad) {
   process.env.HAVA_KAYNAGI = 'sahte';
   process.env.BAKIM_ARALIGI_MS = '0';
   process.env.ONBELLEK = 'kapali';    // testler süreleri elle ilerletir: bakım her istekte çalışsın
-  process.env.GUNLUK_SESSIZ = '1';      // beklenen hata günlükleri test çıktısını kirletmesin (dosyaya yine yazılır)
+  if (!process.env.TEST_GUNLUK) process.env.GUNLUK_SESSIZ = '1';   // beklenen hata günlükleri test çıktısını kirletmesin (dosyaya yine yazılır; TEST_GUNLUK=1 ile ekrana)
   process.env.HATIRLATMA = 'kapali';     // hatırlatma zamanlayıcısı testte elle çağrılır
   process.env.SIYASET = process.env.SIYASET || 'acik';   // seçim/belediye testleri; kapalı hâli siyaset.test.js sınar
   process.env.MINI_ETKINLIK = 'kapali';   // hafta sonu etkinliği sonuçları değiştirmesin; mini-etkinlik.test.js açar
   process.env.YAPAY_ZEKA = 'kapali';     // testler gerçek API çağırmaz; yz testi sahte yanıt verici takar
+  // VERITABANI=postgres: varsayılan gömülü PGlite (her test dosyası kendi bellek içi veritabanı). Gerçek sunucuda
+  // (DATABASE_URL=postgres://…) her dosya ayrı bir Postgres şemasında çalışır.
+  if (process.env.VERITABANI === 'postgres') {
+    process.env.DATABASE_URL ||= 'pglite://bellek';
+    if (/^postgres(ql)?:/.test(process.env.DATABASE_URL)) process.env.PG_SEMA ||= `test_${ad}_${process.pid}`.toLowerCase().replace(/[^a-z0-9_]/g, '_');
+  }
+  // Dosyanın testleri bitince veritabanı kapanır (havuz / gömülü motor süreci açık tutmasın)
+  require('node:test').after(() => require('../server/db').kapat().catch(() => {}));
   return dizin;
 }
 

@@ -23,6 +23,12 @@ function uretimDenetimi(env = process.env) {
   if (env.SMS_SAGLAYICI !== 'netgsm') uyarilar.push('SMS sağlayıcısı yok; telefon doğrulama kapalı');
   else if (!(env.NETGSM_KULLANICI && env.NETGSM_SIFRE && env.NETGSM_BASLIK)) hatalar.push('SMS_SAGLAYICI=netgsm için NETGSM_KULLANICI, NETGSM_SIFRE ve NETGSM_BASLIK gerekli');
   if (env.TELEFON_ZORUNLU === '1' && env.SMS_SAGLAYICI !== 'netgsm') hatalar.push('TELEFON_ZORUNLU=1 için SMS sağlayıcısı gerekli');
+  const vt = String(env.VERITABANI || 'sqlite').toLowerCase();
+  if (vt === 'postgres') {
+    if (!/^postgres(ql)?:\/\//.test(env.DATABASE_URL || '')) hatalar.push('VERITABANI=postgres için DATABASE_URL postgres:// adresi olmalı (gömülü pglite: üretim için değildir)');
+  } else if (vt === 'sqlite') {
+    uyarilar.push('Veritabanı SQLite: tek sunucu için uygundur; birden çok uygulama örneği için VERITABANI=postgres (docs/postgres-gecisi.md)');
+  } else hatalar.push(`Bilinmeyen VERITABANI: ${env.VERITABANI}`);
   return { hatalar, uyarilar, uretim: true };
 }
 

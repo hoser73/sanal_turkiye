@@ -1,13 +1,41 @@
-# Tek sunucu kurulumu: uygulama + Caddy (otomatik HTTPS, WebSocket vekili). Kullanım: docs/yayina-alma.md
+# Uygulama + PostgreSQL/PostGIS + Caddy (otomatik HTTPS, WebSocket vekili). Kullanım: docs/yayina-alma.md
+# Birden çok uygulama örneği: docker compose up -d --scale uygulama=3 (olaylar LISTEN/NOTIFY ile, bakım işleri danışma
+# kilidiyle tek örnekte; Caddy örnekler arasında dağıtır). Tek örnek SQLite ile de çalışır: VERITABANI=sqlite.
 services:
+  postgres:
+    image: postgis/postgis:18-3.6
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: sanalturkiye
+      POSTGRES_USER: sanalturkiye
+      POSTGRES_PASSWORD: ${POSTGRES_PAROLA:?POSTGRES_PAROLA tanımlı olmalı}
+      # Metin tarihleri ve sıralama bayt düzeninde (SQLite ile aynı davranış)
+      POSTGRES_INITDB_ARGS: --locale=C.UTF-8 --encoding=UTF8
+    volumes:
+      - pgveri:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sanalturkiye -d sanalturkiye"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    # Yalnızca iç ağda; yönetim için: docker compose exec postgres psql -U sanalturkiye
+    expose:
+      - "5432"
   uygulama:
     build: .
     restart: unless-stopped
     env_file: .env
+    environment:
+      VERITABANI: postgres
+      DATABASE_URL: postgres://sanalturkiye:${POSTGRES_PAROLA}@postgres:5432/sanalturkiye
     volumes:
+      # Karo önbelleği, günlükler (veritabanı Postgres'te)
       - veri:/veri
     expose:
       - "3400"
+    depends_on:
+      postgres:
+        condition: service_healthy
   caddy:
     image: caddy:2.8
     restart: unless-stopped
@@ -23,6 +51,7 @@ services:
     depends_on:
       - uygulama
 volumes:
+  pgveri:
   veri:
   caddy_veri:
   caddy_ayar:

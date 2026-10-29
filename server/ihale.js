@@ -9,20 +9,6 @@ const L = require('./lib/ledger');
 const { OyunHatasi } = L;
 const { IHALE: I, KOLEKSIYON, LIG, HESAP } = require('./config/rules');
 
-db.exec(`
-CREATE TABLE IF NOT EXISTS ihaleler (
-  id INTEGER PRIMARY KEY, hafta INTEGER NOT NULL, parcel_id TEXT NOT NULL REFERENCES parcels(id), set_kod TEXT, taban INTEGER NOT NULL,
-  bitis INTEGER NOT NULL, durum TEXT NOT NULL DEFAULT 'ACIK',   -- ACIK / SATILDI / SATILMADI
-  kazanan INTEGER, fiyat INTEGER
-);
-CREATE INDEX IF NOT EXISTS ix_ihale_parsel ON ihaleler(parcel_id, durum);
-CREATE TABLE IF NOT EXISTS ihale_teklifleri (
-  id INTEGER PRIMARY KEY, ihale_id INTEGER NOT NULL REFERENCES ihaleler(id), user_id INTEGER NOT NULL REFERENCES users(id),
-  tutar INTEGER NOT NULL, durum TEXT NOT NULL DEFAULT 'AKTIF', at INTEGER NOT NULL   -- AKTIF / IADE / KAZANDI
-);
-CREATE INDEX IF NOT EXISTS ix_ihale_teklif ON ihale_teklifleri(ihale_id, durum);
-CREATE TABLE IF NOT EXISTS ihale_haftalari (hafta INTEGER PRIMARY KEY, kuruldu_at INTEGER NOT NULL);
-`);
 
 const HAFTA = 7 * 86_400_000;
 const haftaNo = (t = Date.now()) => Math.floor((t - LIG.baslangic) / HAFTA);

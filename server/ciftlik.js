@@ -10,55 +10,6 @@ const { OyunHatasi } = L;
 const simdi = () => Date.now();
 const bul = (tablo, kod) => (typeof kod === 'string' && Object.hasOwn(tablo, kod) ? tablo[kod] : null);
 
-db.exec(`
-CREATE TABLE IF NOT EXISTS hayvan_bakim (
-  structure_id INTEGER PRIMARY KEY REFERENCES structures(id),
-  user_id      INTEGER NOT NULL REFERENCES users(id),
-  durum        TEXT NOT NULL DEFAULT 'AC',        -- AC (yem bekliyor) / BESLENDI
-  beslendi_at  INTEGER,
-  hazir_at     INTEGER
-);
-CREATE TABLE IF NOT EXISTS tp_kayitlari (
-  id        INTEGER PRIMARY KEY,
-  user_id   INTEGER NOT NULL REFERENCES users(id),
-  tp        INTEGER NOT NULL,
-  eylem     TEXT NOT NULL,
-  region_id INTEGER REFERENCES regions(id),
-  at        INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS ix_tp_bolge_at ON tp_kayitlari(region_id, at);
-CREATE INDEX IF NOT EXISTS ix_tp_user ON tp_kayitlari(user_id);
-CREATE TABLE IF NOT EXISTS siparisler (
-  id         INTEGER PRIMARY KEY,
-  user_id    INTEGER NOT NULL REFERENCES users(id),
-  musteri    TEXT NOT NULL,
-  kalemler   TEXT NOT NULL,                      -- {"URUN": adet}
-  odul       REAL NOT NULL,
-  tp         INTEGER NOT NULL,
-  olusturma  INTEGER NOT NULL,
-  son        INTEGER NOT NULL,
-  durum      TEXT NOT NULL DEFAULT 'ACIK',      -- ACIK / TESLIM / REDDEDILDI / SURESI_DOLDU
-  bitis      INTEGER
-);
-CREATE INDEX IF NOT EXISTS ix_siparis_user ON siparisler(user_id, durum);
-CREATE TABLE IF NOT EXISTS parsel_susleri (
-  id        INTEGER PRIMARY KEY,
-  parcel_id TEXT NOT NULL REFERENCES parcels(id),
-  user_id   INTEGER NOT NULL REFERENCES users(id),
-  tur       TEXT NOT NULL,
-  yuva      INTEGER NOT NULL,
-  at        INTEGER NOT NULL,
-  UNIQUE (parcel_id, yuva)
-);
-`);
-function kolonEkle(tablo, kolon, tanim) {
-  if (!db.prepare(`PRAGMA table_info(${tablo})`).all().some((k) => k.name === kolon)) db.exec(`ALTER TABLE ${tablo} ADD COLUMN ${kolon} ${tanim}`);
-}
-kolonEkle('users', 'tp', 'INTEGER NOT NULL DEFAULT 0');
-kolonEkle('users', 'odul_seviye', 'INTEGER NOT NULL DEFAULT 1');      // ödülü alınmış son seviye
-kolonEkle('users', 'gunluk_gun', 'TEXT');                              // son günlük ödül (İstanbul tarihi)
-kolonEkle('users', 'gunluk_seri', 'INTEGER NOT NULL DEFAULT 0');
-kolonEkle('users', 'siparis_sonraki', 'INTEGER');
 
 // ---------- Seviye ve TP
 // Seviye n için gereken toplam TP = katsayı × n × (n − 1) × max(1, n / dikleşme); seviye bu eşiklere göre sayılarak bulunur
@@ -86,8 +37,6 @@ function tpEkle(userId, tp, eylem, bolge = null) {
     require('./pazar').bildir(userId, `⭐ Seviye ${sonra} oldun! Seviye ödülün seni bekliyor.`, 'gorevler');   // bildir canlı kanala da iletir
   }
 }
-// Oyun eylemleri TP kazandırır (işlem bittikten sonra, olay yolu üzerinden)
-db.exec('CREATE INDEX IF NOT EXISTS ix_tp_gun ON tp_kayitlari(user_id, eylem, at)');
 const tpGunSayisi = db.prepare(`SELECT COUNT(*) AS c FROM tp_kayitlari WHERE user_id = ? AND eylem = ? AND at >= ?`);
 yol.on('eylem', ({ eylem, aktor, bolge }) => {
   const tp = SEVIYE.tp[eylem];

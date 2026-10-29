@@ -5,7 +5,6 @@
 // canlıya almadan önce Netgsm'in güncel belgesiyle doğrulanmalıdır.
 const db = require('./db');
 
-db.exec(`CREATE TABLE IF NOT EXISTS giden_smsler (id INTEGER PRIMARY KEY, telefon TEXT NOT NULL, metin TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')))`);
 
 const saglayici = () => process.env.SMS_SAGLAYICI || '';
 const uretim = () => process.env.NODE_ENV === 'production';

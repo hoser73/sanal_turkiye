@@ -6,26 +6,6 @@ const L = require('./lib/ledger');
 const { YORESEL, YORESEL_KURAL, URUNLER } = require('./config/rules');
 const { OyunHatasi } = L;
 
-db.exec(`
-CREATE TABLE IF NOT EXISTS yoresel_uretim (
-  user_id INTEGER NOT NULL REFERENCES users(id),
-  urun    TEXT NOT NULL,
-  gun     TEXT NOT NULL,
-  at      INTEGER NOT NULL,
-  PRIMARY KEY (user_id, urun, gun)
-);
-CREATE TABLE IF NOT EXISTS yoresel_album (
-  user_id INTEGER NOT NULL REFERENCES users(id),
-  urun    TEXT NOT NULL,
-  at      INTEGER NOT NULL,
-  PRIMARY KEY (user_id, urun)
-);
-CREATE TABLE IF NOT EXISTS yoresel_bolge_odul (
-  user_id INTEGER NOT NULL REFERENCES users(id),
-  bolge   TEXT NOT NULL,
-  PRIMARY KEY (user_id, bolge)
-);
-`);
 
 const gun = (t = Date.now()) => new Date(t + 3 * 3600_000).toISOString().slice(0, 10);
 const BOLGELER = [...new Set(Object.values(YORESEL).map((y) => y.bolge))];

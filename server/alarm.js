@@ -5,12 +5,6 @@ const L = require('./lib/ledger');
 const { OyunHatasi } = L;
 const { FIYAT_ALARMI: A } = require('./config/rules');
 
-db.exec(`CREATE TABLE IF NOT EXISTS fiyat_alarmlari (
-  id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), bolge_id INTEGER NOT NULL REFERENCES regions(id),
-  yon TEXT NOT NULL, hedef REAL NOT NULL, created_at INTEGER NOT NULL, tetiklendi_at INTEGER
-);
-CREATE INDEX IF NOT EXISTS ix_alarm_acik ON fiyat_alarmlari(tetiklendi_at, user_id);
-CREATE INDEX IF NOT EXISTS ix_alarm_bolge ON fiyat_alarmlari(bolge_id, tetiklendi_at)`);
 const endeks = (bolgeId) => require('./piyasa').endeksSerisi('MAHALLE', bolgeId, 1).endeks;
 
 const kur = db.transaction((userId, govde = {}) => {

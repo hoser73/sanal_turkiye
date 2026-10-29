@@ -170,7 +170,6 @@ kooperatif.rotalar(app, { h, auth });
 simge.rotalar(app, { h, auth });
 // Komşuluk, yöresel ürünler, etkinlikler, balık tutma, hatırlatmalar
 for (const m of ['./komsuluk', './yoresel', './etkinlik', './balik', './hatirlatma', './iklim', './carsi', './giris-yollari', './tanitim', './baslangic', './gelisim', './sihirbaz', './mevsim-yolu', './hasat-yarisi', './koy-meydani', './bulmaca', './koleksiyon', './yardim', './gazete', './imece', './sandik', './ihale', './alarm']) require(m).rotalar(app, { h, auth, hazir });
-require('./db').indeksleriKur();   // tüm modüllerin tabloları kurulduktan sonra
 yz.rotalar(app, { h, auth });
 kozmetik.rotalar(app, { h, auth });
 zaman.rotalar(app, { h });

@@ -11,12 +11,6 @@ const MODEL = process.env.YZ_MODEL || 'claude-opus-5-5';
 const GAZETE_ONBELLEK_MS = 6 * 3600e3;
 const DANISMAN_SAATLIK = 10;
 
-db.exec(`
-CREATE TABLE IF NOT EXISTS yz_onbellek (anahtar TEXT PRIMARY KEY, icerik TEXT NOT NULL, kaynak TEXT NOT NULL, created_at INTEGER NOT NULL) WITHOUT ROWID;
-CREATE TABLE IF NOT EXISTS yz_kullanim (id INTEGER PRIMARY KEY, user_id INTEGER, islev TEXT NOT NULL, kaynak TEXT NOT NULL,
-  girdi_token INTEGER, cikti_token INTEGER, created_at INTEGER NOT NULL);
-CREATE INDEX IF NOT EXISTS ix_yz_kullanim ON yz_kullanim(user_id, islev, created_at);
-`);
 
 let istemci = null;
 const etkin = () => process.env.YAPAY_ZEKA !== 'kapali' && !!(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);

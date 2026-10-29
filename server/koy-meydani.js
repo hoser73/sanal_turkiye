@@ -8,10 +8,6 @@ const L = require('./lib/ledger');
 const { OyunHatasi } = L;
 const { KOY_MEYDANI: M, URUNLER } = require('./config/rules');
 
-db.exec(`CREATE TABLE IF NOT EXISTS koy_meydani (
-  user_id INTEGER NOT NULL REFERENCES users(id), kod TEXT NOT NULL, bitis INTEGER NOT NULL, created_at INTEGER NOT NULL,
-  PRIMARY KEY (user_id, kod)
-) WITHOUT ROWID`);
 const q = {
   bina: db.prepare('SELECT bitis FROM koy_meydani WHERE user_id = ? AND kod = ?'),
   binalar: db.prepare('SELECT kod, bitis FROM koy_meydani WHERE user_id = ?'),

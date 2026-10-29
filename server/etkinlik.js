@@ -5,19 +5,7 @@ const L = require('./lib/ledger');
 const { ETKINLIKLER } = require('./config/rules');
 const { OyunHatasi } = L;
 
-// İlerleme sorguları denetim kaydını eylem ve zamana göre tarar: dizinler
-db.exec(`CREATE INDEX IF NOT EXISTS ix_audit_eylem_zaman ON audit_events(action, created_at);
-         CREATE INDEX IF NOT EXISTS ix_audit_aktor_eylem ON audit_events(actor_id, action, created_at);`);
 
-db.exec(`CREATE TABLE IF NOT EXISTS etkinlik_odulleri (
-  user_id  INTEGER NOT NULL REFERENCES users(id),
-  etkinlik TEXT NOT NULL,
-  yil      INTEGER NOT NULL,
-  gorev    INTEGER NOT NULL,          -- görev sırası; -1 ortak hedef
-  odul     REAL NOT NULL,
-  at       INTEGER NOT NULL,
-  PRIMARY KEY (user_id, etkinlik, yil, gorev)
-)`);
 
 // Türkiye saatiyle (UTC+3) tarih
 const trTarih = (t) => new Date(t + 3 * 3600_000);

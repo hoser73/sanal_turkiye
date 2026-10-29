@@ -13,25 +13,6 @@ const simdi = () => Date.now();
 const GUN = 24 * 3600 * 1000;
 const bul = (tablo, kod) => (typeof kod === 'string' && Object.hasOwn(tablo, kod) ? tablo[kod] : null);
 
-db.exec(`
-CREATE TABLE IF NOT EXISTS isletmeler (
-  kategori TEXT PRIMARY KEY, ad TEXT NOT NULL, ikon TEXT, logo TEXT, renk TEXT, renk2 TEXT, slogan TEXT, web TEXT,
-  sponsor INTEGER NOT NULL DEFAULT 0, sozlesme_bas INTEGER, sozlesme_bit INTEGER, guncelleyen INTEGER, guncellendi INTEGER
-) WITHOUT ROWID;
-CREATE TABLE IF NOT EXISTS subeler (id INTEGER PRIMARY KEY, kategori TEXT NOT NULL, ad TEXT NOT NULL, lon REAL NOT NULL, lat REAL NOT NULL);
-CREATE INDEX IF NOT EXISTS ix_sube_kategori ON subeler(kategori);
-CREATE TABLE IF NOT EXISTS banka_vadeli (
-  id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), tutar REAL NOT NULL, faiz REAL NOT NULL,
-  bas INTEGER NOT NULL, vade INTEGER NOT NULL, durum TEXT NOT NULL DEFAULT 'ACIK', kapandi_at INTEGER   -- ACIK / KAPANDI / BOZULDU
-);
-CREATE INDEX IF NOT EXISTS ix_vadeli_user ON banka_vadeli(user_id, durum);
-`);
-function kolon(tablo, ad, tanim) {
-  if (!db.prepare(`PRAGMA table_info(${tablo})`).all().some((k) => k.name === ad)) db.exec(`ALTER TABLE ${tablo} ADD COLUMN ${ad} ${tanim}`);
-}
-kolon('crops', 'gubre', 'INTEGER NOT NULL DEFAULT 0');
-kolon('crops', 'ilac', 'INTEGER NOT NULL DEFAULT 0');
-kolon('structures', 'asi_bitis', 'INTEGER');
 
 // ---------- Marka (işletme kimliği)
 function marka(kategori, t = simdi()) {

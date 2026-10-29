@@ -11,15 +11,6 @@ const { SAHTE } = require('./karolar');
 const KENAR = I.KARO_KENAR;
 const etkin = () => !SAHTE;   // sahte karo verisiyle (testler) kapalı
 
-db.exec(`
-CREATE TABLE IF NOT EXISTS tarlalar (
-  id TEXT PRIMARY KEY, kx INTEGER NOT NULL, ky INTEGER NOT NULL, alan_m2 INTEGER NOT NULL,
-  merkez_lon REAL NOT NULL, merkez_lat REAL NOT NULL, yon REAL NOT NULL, uye INTEGER NOT NULL, geom TEXT NOT NULL);
-CREATE INDEX IF NOT EXISTS ix_tarlalar_karo ON tarlalar(kx, ky);
-CREATE TABLE IF NOT EXISTS tarla_hucreleri (x INTEGER NOT NULL, y INTEGER NOT NULL, tarla_id TEXT NOT NULL, PRIMARY KEY (x, y));
-CREATE INDEX IF NOT EXISTS ix_tarla_hucreleri_tarla ON tarla_hucreleri(tarla_id);
-DROP TABLE IF EXISTS tarla_karolari;
-`);
 const q = {
   hucre: db.prepare(`SELECT t.* FROM tarla_hucreleri h JOIN tarlalar t ON t.id = h.tarla_id WHERE h.x = ? AND h.y = ?`),
   tarla: db.prepare(`SELECT * FROM tarlalar WHERE id = ?`),

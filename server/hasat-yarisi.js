@@ -10,29 +10,6 @@ const L = require('./lib/ledger');
 const { HASAT_YARISI: Y, KOOPERATIF, LIG } = require('./config/rules');
 const { yol } = require('./lib/olaylar');
 
-db.exec(`
-CREATE TABLE IF NOT EXISTS koop_yaris (
-  hafta INTEGER NOT NULL, koop_id INTEGER NOT NULL REFERENCES kooperatifler(id), user_id INTEGER NOT NULL REFERENCES users(id),
-  puan INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (hafta, koop_id, user_id)
-) WITHOUT ROWID;
-CREATE INDEX IF NOT EXISTS ix_koop_yaris_koop ON koop_yaris(koop_id, hafta);
-CREATE TABLE IF NOT EXISTS koop_yaris_gunluk (
-  user_id INTEGER NOT NULL, gun TEXT NOT NULL, eylem TEXT NOT NULL, adet INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (user_id, gun, eylem)
-) WITHOUT ROWID;
-CREATE TABLE IF NOT EXISTS koop_yaris_sonuc (
-  hafta INTEGER NOT NULL, koop_id INTEGER NOT NULL, sira INTEGER, puan INTEGER NOT NULL, sandik INTEGER NOT NULL, bonus INTEGER NOT NULL DEFAULT 0,
-  PRIMARY KEY (hafta, koop_id)
-) WITHOUT ROWID;
-CREATE TABLE IF NOT EXISTS koop_yaris_hafta (hafta INTEGER PRIMARY KEY, sonuclandi_at INTEGER NOT NULL);
-CREATE TABLE IF NOT EXISTS koop_yaris_il (
-  hafta INTEGER NOT NULL, il_id INTEGER NOT NULL REFERENCES regions(id), user_id INTEGER NOT NULL REFERENCES users(id),
-  puan INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (hafta, il_id, user_id)
-) WITHOUT ROWID;
-CREATE TABLE IF NOT EXISTS koop_yaris_il_sonuc (
-  hafta INTEGER NOT NULL, il_id INTEGER NOT NULL, sira INTEGER NOT NULL, puan INTEGER NOT NULL, oyuncu INTEGER NOT NULL, il_puani REAL NOT NULL,
-  odul INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (hafta, il_id)
-) WITHOUT ROWID;
-`);
 
 const HAFTA = 7 * 86_400_000, TR_SAAT = 3 * 3600_000;
 const haftaNo = (t = Date.now()) => Math.floor((t - LIG.baslangic) / HAFTA);

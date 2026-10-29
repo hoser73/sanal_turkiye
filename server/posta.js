@@ -3,14 +3,6 @@
 // ve artan aralıklarla yeniden denenir (1 dk, 5 dk, 30 dk, 2 sa); dördüncü denemeden sonra HATA olarak bırakılır.
 const db = require('./db');
 
-function kolonEkle(kolon, tanim) {
-  if (!db.prepare(`PRAGMA table_info(giden_postalar)`).all().some((k) => k.name === kolon)) db.exec(`ALTER TABLE giden_postalar ADD COLUMN ${kolon} ${tanim}`);
-}
-kolonEkle('html', 'TEXT');
-kolonEkle('durum', "TEXT NOT NULL DEFAULT 'GELISTIRME'");   // GELISTIRME / BEKLIYOR / GONDERILDI / HATA
-kolonEkle('deneme', 'INTEGER NOT NULL DEFAULT 0');
-kolonEkle('sonraki', 'INTEGER');
-kolonEkle('hata', 'TEXT');
 
 const GONDEREN = () => process.env.POSTA_GONDEREN || 'Sanal Türkiye <bildirim@sanalturkiye.test>';
 const BEKLEMELER = [60_000, 5 * 60_000, 30 * 60_000, 2 * 3600_000];

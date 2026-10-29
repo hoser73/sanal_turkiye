@@ -18,10 +18,6 @@ const rolu = (userId) => db.prepare(`SELECT rol FROM users WHERE id = ?`).get(us
 const RUTBE = { OYUNCU: 0, MODERATOR: 1, DENETCI: 2, ADMIN: 3 };
 const rutbe = (userId) => RUTBE[rolu(userId)] ?? 0;
 const sqlMs = (s) => new Date(String(s).replace(' ', 'T') + 'Z').getTime();
-// Dilekçe açılırken dondurulan imza kütüğü: o an bölgede parseli olan ve hesabı yeterince eski sakinler
-db.exec(`CREATE TABLE IF NOT EXISTS gorevden_alma_kutuk (
-  dilekce_id INTEGER NOT NULL REFERENCES gorevden_alma(id), user_id INTEGER NOT NULL REFERENCES users(id), PRIMARY KEY (dilekce_id, user_id)
-) WITHOUT ROWID`);
 const yetkililer = () => db.prepare(`SELECT id FROM users WHERE rol IN ('MODERATOR', 'DENETCI', 'ADMIN') AND status = 'ACTIVE'`).all();
 
 // ---------- Şikâyet hedefleri

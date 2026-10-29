@@ -36,16 +36,6 @@ function tarayiciOzeti(ua = '') {
 }
 const ipOzeti = (ip) => ozet(`st-ip:${ip || ''}`).slice(0, 16);
 
-// Sonradan eklenen kullanıcı sütunları (sorgular hazırlanmadan önce): benzersiz ad anahtarı, avatar, passkey ve telefon
-// tekrar_hesap: silinmiş bir hesabın e-postası/telefonuyla açılan hesap (başlangıç hibeleri verilmez);
-// ikiadim_hata/ikiadim_kilit: oturumdan bağımsız hatalı 2FA sayacı ve süreli kilit
-for (const [k, t] of [['ad_anahtar', 'TEXT'], ['avatar', 'TEXT'], ['webauthn_kimlik', 'TEXT'], ['telefon_sifreli', 'TEXT'], ['telefon_ozet', 'TEXT'], ['telefon_dogrulandi_at', 'TEXT'],
-  ['tekrar_hesap', 'INTEGER'], ['ikiadim_hata', 'INTEGER'], ['ikiadim_kilit', 'INTEGER']]) {
-  if (!db.prepare(`PRAGMA table_info(users)`).all().some((c) => c.name === k)) db.exec(`ALTER TABLE users ADD COLUMN ${k} ${t}`);
-}
-// Silinen hesapların e-posta (küçük harf) ve telefon özetleri (tuzlu sha256; düz veri saklanmaz): aynı kimlikle yeniden
-// kayıt olan oyuncu normal oynar ama hoş geldin hibesi, başlangıç tarlası hediyesi ve sihirbaz ödülleri tekrar verilmez
-db.exec(`CREATE TABLE IF NOT EXISTS silinen_kimlikler (ozet TEXT PRIMARY KEY, created_at INTEGER NOT NULL)`);
 const SILINEN_TUZ = () => process.env.SILINEN_KIMLIK_TUZU || 'st-silinen-kimlik-v1';
 const silinenOzeti = (tur, deger) => ozet(`${SILINEN_TUZ()}:${tur}:${String(deger).trim().toLowerCase()}`);
 // telefonOzet: users.telefon_ozet (normalize numaranın özeti)
@@ -187,7 +177,6 @@ function dogrulamaPostasi(u) {
 // ---------- Kayıt / giriş
 // Oyuncu adı benzersizdir (Türkçe büyük/küçük harf duyarsız; boşluklar sadeleşir)
 const adAnahtari = (ad) => String(ad).trim().replace(/\s+/g, ' ').toLocaleLowerCase('tr-TR');
-db.exec(`CREATE INDEX IF NOT EXISTS ix_users_ad_anahtar ON users(ad_anahtar)`);
 for (const u of db.prepare(`SELECT id, display_name FROM users WHERE ad_anahtar IS NULL`).all()) db.prepare(`UPDATE users SET ad_anahtar = ? WHERE id = ?`).run(adAnahtari(u.display_name), u.id);
 const AVATAR_RE = /^t[0-4]-s[0-5]-p[0-5]-g[0-7]$/;   // ten, saç, şapka, giysi (istemci avatar.js)
 function adUygun(ad) {

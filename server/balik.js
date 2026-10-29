@@ -13,20 +13,6 @@ const { ilceBul } = require('./harita/sinirlar');
 const { BALIK, URUNLER } = require('./config/rules');
 const { OyunHatasi } = L;
 
-db.exec(`CREATE TABLE IF NOT EXISTS balik_atislari (
-  id      INTEGER PRIMARY KEY,
-  user_id INTEGER NOT NULL REFERENCES users(id),
-  plaka   TEXT,
-  tur     TEXT NOT NULL,
-  isirma  INTEGER NOT NULL,
-  durum   TEXT NOT NULL DEFAULT 'BEKLIYOR',      -- BEKLIYOR / TUTULDU / KACTI
-  gun     TEXT NOT NULL,
-  at      INTEGER NOT NULL
-)`);
-db.exec(`CREATE INDEX IF NOT EXISTS ix_balik_gun ON balik_atislari(user_id, gun)`);
-for (const [k, tanim] of [['takildi_at', 'INTEGER'], ['agirlik', 'REAL'], ['yem', 'TEXT'], ['derinlik', 'TEXT'], ['misina', 'TEXT'], ['yem_stok', 'INTEGER']]) {
-  if (!db.prepare(`PRAGMA table_info(balik_atislari)`).all().some((c) => c.name === k)) db.exec(`ALTER TABLE balik_atislari ADD COLUMN ${k} ${tanim}`);
-}
 const mucadeleMinMs = (tur) => BALIK.mucadele.tabanMs + (BALIK.turler[tur]?.guc || 1) * BALIK.mucadele.gucMs;
 const gunlukHak = () => BALIK.gunlukAtis + require('./mini-etkinlik').balikEk();   // hafta sonu balık bolluğunda fazladan
 const gun = (t = Date.now()) => new Date(t + 3 * 3600_000).toISOString().slice(0, 10);

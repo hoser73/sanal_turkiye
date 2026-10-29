@@ -24,26 +24,6 @@ const ayar = { fetch: (...a) => fetch(...a) };   // testlerde sahte sağlayıcı
 const TASLAK_CEREZ = 'st_taslak', OAUTH_CEREZ = 'st_oauth';
 const uretim = () => env.NODE_ENV === 'production';
 
-db.exec(`
-CREATE TABLE IF NOT EXISTS oauth_durumlari (state_ozet TEXT PRIMARY KEY, saglayici TEXT NOT NULL, nonce TEXT NOT NULL, dogrulayici TEXT,
-  tarayici_ozet TEXT NOT NULL, mod TEXT NOT NULL, user_id INTEGER, expires_at INTEGER NOT NULL) WITHOUT ROWID;
-CREATE TABLE IF NOT EXISTS kimlik_baglantilari (saglayici TEXT NOT NULL, konu TEXT NOT NULL, user_id INTEGER NOT NULL REFERENCES users(id),
-  email TEXT, created_at INTEGER NOT NULL, PRIMARY KEY (saglayici, konu)) WITHOUT ROWID;
-CREATE INDEX IF NOT EXISTS ix_kimlik_user ON kimlik_baglantilari(user_id);
-CREATE TABLE IF NOT EXISTS kayit_taslaklari (token_ozet TEXT PRIMARY KEY, saglayici TEXT NOT NULL, konu TEXT, email TEXT NOT NULL,
-  email_dogrulandi INTEGER NOT NULL DEFAULT 0, ad_oneri TEXT, passkey TEXT, expires_at INTEGER NOT NULL) WITHOUT ROWID;
-CREATE TABLE IF NOT EXISTS passkeyler (id TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), acik_anahtar BLOB NOT NULL,
-  sayac INTEGER NOT NULL DEFAULT 0, tasima TEXT, ad TEXT, created_at INTEGER NOT NULL, son_kullanim INTEGER) WITHOUT ROWID;
-CREATE INDEX IF NOT EXISTS ix_passkey_user ON passkeyler(user_id);
-CREATE TABLE IF NOT EXISTS webauthn_sorgulari (id TEXT PRIMARY KEY, tur TEXT NOT NULL, challenge TEXT NOT NULL, user_id INTEGER, email TEXT,
-  kullanici_kimligi TEXT, expires_at INTEGER NOT NULL) WITHOUT ROWID;
-CREATE TABLE IF NOT EXISTS telefon_kodlari (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), telefon_ozet TEXT NOT NULL,
-  telefon_sifreli TEXT NOT NULL, kod_ozet TEXT NOT NULL, tuz TEXT NOT NULL, deneme INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL);
-CREATE INDEX IF NOT EXISTS ix_telkod_user ON telefon_kodlari(user_id, created_at);
-CREATE INDEX IF NOT EXISTS ix_telkod_tel ON telefon_kodlari(telefon_ozet, created_at);
-`);
-// users sütunları (webauthn_kimlik, telefon_*) auth.js'de eklenir
-db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS ux_users_telefon ON users(telefon_ozet) WHERE telefon_ozet IS NOT NULL`);
 
 const cerezSecenek = (ek = {}) => ({ httpOnly: true, sameSite: 'lax', secure: uretim(), path: '/', ...ek });
 function eskileriTemizle(t = simdi()) {

@@ -5,11 +5,6 @@
 const db = require('./db');
 const { HATIRLATMA, URUNLER, YAPILAR, HAYVANLAR } = require('./config/rules');
 
-db.exec(`CREATE TABLE IF NOT EXISTS hatirlatmalar (
-  anahtar TEXT PRIMARY KEY,
-  user_id INTEGER NOT NULL REFERENCES users(id),
-  at      INTEGER NOT NULL
-)`);
 
 const trSaat = (t) => new Date(t + 3 * 3600_000).getUTCHours();
 const sessizMi = (t) => { const s = trSaat(t), [a, b] = HATIRLATMA.sessiz; return s >= a || s < b; };

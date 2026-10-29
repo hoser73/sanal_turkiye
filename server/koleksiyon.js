@@ -7,9 +7,6 @@ const L = require('./lib/ledger');
 const { KOLEKSIYON: K } = require('./config/rules');
 const { yol } = require('./lib/olaylar');
 
-db.exec(`CREATE TABLE IF NOT EXISTS koleksiyon_odulleri (
-  user_id INTEGER NOT NULL REFERENCES users(id), kod TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (user_id, kod)
-) WITHOUT ROWID`);
 const q = {
   iller: db.prepare(`SELECT DISTINCT r.plaka FROM parcels p JOIN regions r ON r.id = p.il_id WHERE p.owner_user_id = ?`),
   plaka: db.prepare(`SELECT plaka FROM regions WHERE id = ?`),

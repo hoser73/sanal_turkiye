@@ -1,7 +1,14 @@
-# Caddy: Let's Encrypt ile otomatik HTTPS, sıkıştırma, WebSocket (/canli) dahil tüm istekleri uygulamaya iletir
+# Caddy: Let's Encrypt ile otomatik HTTPS, sıkıştırma, WebSocket (/canli) dahil tüm istekleri uygulamaya iletir.
+# "uygulama" adı Docker DNS'te her örneğe çözülür (--scale); Caddy listeyi 10 sn'de bir yeniler ve sağlıksız örneği atlar.
 {$ALAN_ADI} {
 	encode zstd gzip
-	reverse_proxy uygulama:3400 {
+	reverse_proxy {
+		dynamic a uygulama 3400 {
+			refresh 10s
+		}
+		lb_policy least_conn
+		health_uri /api/saglik
+		health_interval 15s
 		header_up X-Forwarded-Proto {scheme}
 	}
 	log {

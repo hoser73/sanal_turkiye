@@ -10,9 +10,6 @@ const { vektorKaro, SAHTE } = require('./karolar');
 const { mahalleBolgesi } = require('./parsel');
 const { OyunHatasi } = require('../lib/ledger');
 
-db.exec(`CREATE TABLE IF NOT EXISTS ilce_yer_taramasi (ilce_idx INTEGER PRIMARY KEY, at INTEGER NOT NULL)`);
-// Hesaplanan mahalle alanları kalıcı önbellekte: yer sayısı değişmedikçe yeniden hesaplanmaz (sunucu yeniden başlasa da)
-db.exec(`CREATE TABLE IF NOT EXISTS ilce_mahalle_alanlari (ilce_id INTEGER PRIMARY KEY, yer_sayisi INTEGER NOT NULL, veri TEXT NOT NULL, at INTEGER NOT NULL)`);
 const q = {
   ilceSatirlari: db.prepare(`SELECT id, parent_id, code, name, plaka, source_idx, attractiveness FROM regions WHERE type = 'ILCE' AND plaka = ?`),
   ilce: db.prepare(`SELECT id, parent_id, code, name, plaka, source_idx, attractiveness FROM regions WHERE type = 'ILCE' AND id = ?`),

@@ -5,7 +5,6 @@ const L = require('./lib/ledger');
 const { OyunHatasi } = L;
 const { GUNLUK_SANDIK: S, URUNLER } = require('./config/rules');
 
-db.exec('CREATE TABLE IF NOT EXISTS gunluk_sandik (user_id INTEGER PRIMARY KEY REFERENCES users(id), son_at INTEGER NOT NULL)');
 const sonAcilis = (userId) => db.prepare('SELECT son_at FROM gunluk_sandik WHERE user_id = ?').get(userId)?.son_at || 0;
 
 // Hak: son açılıştan bu yana dolan sandık sayısı (en çok S.biriktir). Açılınca saat, kalan hakkı koruyacak kadar ilerler.

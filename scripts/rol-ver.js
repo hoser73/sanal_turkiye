@@ -10,8 +10,13 @@ if (!email || !Object.hasOwn(ROLLER, rol || '')) {
   console.error(`Kullanım: npm run rol -- <e-posta> <${Object.keys(ROLLER).join('|')}>`);
   process.exit(1);
 }
-const u = db.prepare(`SELECT id, rol, totp_aktif FROM users WHERE email = ? AND silindi_at IS NULL`).get(email.trim().toLowerCase());
-if (!u) { console.error('Bu e-postayla hesap yok'); process.exit(1); }
-db.prepare(`UPDATE users SET rol = ? WHERE id = ?`).run(rol, u.id);
-L.denetim({ eylem: 'ROLE_CHANGED', varlik: `USER:${u.id}`, once: { rol: u.rol }, sonra: { rol, kaynak: 'konsol' } });
-console.log(`${email}: ${u.rol} → ${rol}${rol !== 'OYUNCU' && !u.totp_aktif ? '\nNot: panele girebilmesi için hesabında iki adımlı doğrulamayı açması gerekir (YONETICI_2FA_ZORUNLU=0 yalnızca geliştirmede).' : ''}`);
+(async () => {
+  const u = await db.get(`SELECT id, rol, totp_aktif FROM users WHERE email = ? AND silindi_at IS NULL`, email.trim().toLowerCase());
+  if (!u) { console.error('Bu e-postayla hesap yok'); process.exit(1); }
+  await db.tx(async () => {
+    await db.run(`UPDATE users SET rol = ? WHERE id = ?`, rol, u.id);
+    await L.denetim({ eylem: 'ROLE_CHANGED', varlik: `USER:${u.id}`, once: { rol: u.rol }, sonra: { rol, kaynak: 'konsol' } });
+  });
+  console.log(`${email}: ${u.rol} → ${rol}${rol !== 'OYUNCU' && !u.totp_aktif ? '\nNot: panele girebilmesi için hesabında iki adımlı doğrulamayı açması gerekir (YONETICI_2FA_ZORUNLU=0 yalnızca geliştirmede).' : ''}`);
+  await db.kapat();
+})().catch((e) => { console.error(e.message); process.exit(1); });

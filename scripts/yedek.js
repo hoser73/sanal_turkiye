@@ -7,6 +7,12 @@ const path = require('path');
 const zlib = require('zlib');
 const Database = require('better-sqlite3');
 
+// Bu betik SQLite veri dosyası içindir; Postgres'te pg_dump / pg_restore kullanılır (docs/yayina-alma.md)
+if (process.env.VERITABANI === 'postgres' && require.main === module) {
+  console.error('VERITABANI=postgres: %s için pg_dump/pg_restore kullanın (bkz. docs/yayina-alma.md)', 'yedek');
+  process.exit(1);
+}
+
 const arg = (ad, vars) => { const i = process.argv.indexOf(`--${ad}`); return i > 0 ? process.argv[i + 1] : vars; };
 const VERI = process.env.VERI_DIZINI || path.join(__dirname, '..', 'data');
 const KAYNAK = path.join(VERI, 'sanalturkiye-tr.db');

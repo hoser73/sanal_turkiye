@@ -8,20 +8,6 @@ const { OyunHatasi } = L;
 const { MEVSIM_YOLU: Y, MEVSIMLER, URUNLER, KOZMETIK } = require('./config/rules');
 const { yol } = require('./lib/olaylar');
 
-db.exec(`
-CREATE TABLE IF NOT EXISTS yol_puanlari (
-  user_id INTEGER NOT NULL REFERENCES users(id), donem TEXT NOT NULL, puan INTEGER NOT NULL DEFAULT 0,
-  PRIMARY KEY (user_id, donem)
-) WITHOUT ROWID;
-CREATE TABLE IF NOT EXISTS yol_gunluk (
-  user_id INTEGER NOT NULL, gun TEXT NOT NULL, eylem TEXT NOT NULL, adet INTEGER NOT NULL DEFAULT 0,
-  PRIMARY KEY (user_id, gun, eylem)
-) WITHOUT ROWID;
-CREATE TABLE IF NOT EXISTS yol_odulleri (
-  user_id INTEGER NOT NULL REFERENCES users(id), donem TEXT NOT NULL, kademe INTEGER NOT NULL, at INTEGER NOT NULL,
-  PRIMARY KEY (user_id, donem, kademe)
-) WITHOUT ROWID;
-`);
 
 const TR_SAAT = 3 * 3600_000;
 const SONRAKI = { KIS: 3, ILKBAHAR: 6, YAZ: 9, SONBAHAR: 12 };   // bir sonraki mevsimin başladığı ay

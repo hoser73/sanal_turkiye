@@ -1,3 +1,4 @@
 # Günlük yedek (03:30) ve haftalık yedeklerin başka bir diske/nesne deposuna kopyalanması örneği. crontab -e ile ekleyin.
 30 3 * * * cd /opt/sanalturkiye && VERI_DIZINI=/var/lib/sanalturkiye /usr/bin/node scripts/yedek.js --sakla 14 >> /var/log/sanalturkiye-yedek.log 2>&1
-# Docker ile: docker compose exec -T uygulama node scripts/yedek.js --sakla 14
+# Docker (Postgres) ile: günlük pg_dump, 14 gün saklama
+# 30 3 * * * cd /opt/sanalturkiye && docker compose exec -T postgres pg_dump -U sanalturkiye -Fc sanalturkiye > yedekler/sanalturkiye-$(date +\%F).dump && find yedekler -name 'sanalturkiye-*.dump' -mtime +14 -delete

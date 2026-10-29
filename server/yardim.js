@@ -8,18 +8,6 @@ const L = require('./lib/ledger');
 const { OyunHatasi } = L;
 const { YARDIM: Y, URUNLER } = require('./config/rules');
 
-db.exec(`
-CREATE TABLE IF NOT EXISTS yardim_istekleri (
-  id INTEGER PRIMARY KEY, koop_id INTEGER NOT NULL REFERENCES kooperatifler(id), user_id INTEGER NOT NULL REFERENCES users(id),
-  urun TEXT NOT NULL, adet INTEGER NOT NULL, gelen INTEGER NOT NULL DEFAULT 0, durum TEXT NOT NULL DEFAULT 'ACIK',   -- ACIK / TAMAM / KAPANDI
-  created_at INTEGER NOT NULL, bitis INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS ix_yardim_koop ON yardim_istekleri(koop_id, durum);
-CREATE TABLE IF NOT EXISTS yardim_katkilari (
-  istek_id INTEGER NOT NULL REFERENCES yardim_istekleri(id), user_id INTEGER NOT NULL REFERENCES users(id), adet INTEGER NOT NULL, at INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS ix_yardim_katki_user ON yardim_katkilari(user_id, at);
-`);
 
 const simdi = () => Date.now();
 const istenebilir = (kod) => { const u = Object.hasOwn(URUNLER, kod) ? URUNLER[kod] : null; return !!u && !u.dukkan && !u.sarf && !u.balik && !u.yoresel; };

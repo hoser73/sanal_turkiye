@@ -12,10 +12,6 @@ const { OyunHatasi } = L;
 const { YAPILAR, HAYVANLAR, TARIM, OYUN_HIZI } = require('./config/rules');
 const simdi = () => Date.now();
 
-db.exec(`
-CREATE TABLE IF NOT EXISTS isciler (user_id INTEGER PRIMARY KEY REFERENCES users(id), bitis INTEGER NOT NULL, son_tur INTEGER NOT NULL DEFAULT 0);
-CREATE TABLE IF NOT EXISTS gunluk_gorev_odulleri (user_id INTEGER NOT NULL REFERENCES users(id), gun TEXT NOT NULL, odul INTEGER NOT NULL, PRIMARY KEY (user_id, gun));
-`);
 
 const GELISIM = {
   maxSeviye: 5, yukseltKat: 1.5,

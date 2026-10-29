@@ -6,59 +6,8 @@ const L = require('./lib/ledger');
 const { KOMSULUK, URUNLER, TARIM } = require('./config/rules');
 const { OyunHatasi } = L;
 
-db.exec(`
-CREATE TABLE IF NOT EXISTS arkadasliklar (
-  isteyen  INTEGER NOT NULL REFERENCES users(id),
-  hedef    INTEGER NOT NULL REFERENCES users(id),
-  durum    TEXT NOT NULL DEFAULT 'ISTEK',        -- ISTEK / KABUL
-  at       INTEGER NOT NULL,
-  kabul_at INTEGER,
-  PRIMARY KEY (isteyen, hedef)
-);
-CREATE INDEX IF NOT EXISTS ix_arkadas_hedef ON arkadasliklar(hedef, durum);
-CREATE TABLE IF NOT EXISTS yardimlar (
-  id        INTEGER PRIMARY KEY,
-  yardimci  INTEGER NOT NULL REFERENCES users(id),
-  parcel_id TEXT NOT NULL REFERENCES parcels(id),
-  sahip     INTEGER NOT NULL REFERENCES users(id),
-  gun       TEXT NOT NULL,
-  etki      TEXT NOT NULL,
-  at        INTEGER NOT NULL,
-  UNIQUE (yardimci, parcel_id, gun)
-);
-CREATE TABLE IF NOT EXISTS hediyeler (
-  id       INTEGER PRIMARY KEY,
-  gonderen INTEGER NOT NULL REFERENCES users(id),
-  alici    INTEGER NOT NULL REFERENCES users(id),
-  gun      TEXT NOT NULL,
-  icerik   TEXT NOT NULL,
-  durum    TEXT NOT NULL DEFAULT 'BEKLIYOR',    -- BEKLIYOR / ALINDI
-  at       INTEGER NOT NULL,
-  UNIQUE (gonderen, alici, gun)
-);
-CREATE INDEX IF NOT EXISTS ix_hediye_alici ON hediyeler(alici, durum);
-CREATE TABLE IF NOT EXISTS urun_gonderimleri (
-  id       INTEGER PRIMARY KEY,
-  gonderen INTEGER NOT NULL REFERENCES users(id),
-  alici    INTEGER NOT NULL REFERENCES users(id),
-  urun     TEXT NOT NULL,
-  adet     INTEGER NOT NULL,
-  gun      TEXT NOT NULL,
-  at       INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS ix_gonderim_gun ON urun_gonderimleri(gonderen, gun);
--- Arkadaşlık istek geçmişi: silinen istek tekrar tekrar gönderilip bildirim yağdırılamasın
-CREATE TABLE IF NOT EXISTS arkadas_istek_gecmisi (
-  isteyen INTEGER NOT NULL REFERENCES users(id),
-  hedef   INTEGER NOT NULL REFERENCES users(id),
-  at      INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS ix_istek_gecmisi ON arkadas_istek_gecmisi(isteyen, at);
-`);
 
 const gun = (t = Date.now()) => new Date(t + 3 * 3600_000).toISOString().slice(0, 10);   // Türkiye tarihi
-// Hediyenin açıldığı gün (günlük açma sınırı gönderim gününe değil açılış gününe göre sayılır)
-if (!db.prepare(`PRAGMA table_info(hediyeler)`).all().some((k) => k.name === 'alindi_gun')) db.exec(`ALTER TABLE hediyeler ADD COLUMN alindi_gun TEXT`);
 const DEMO_HEDIYE_GUNLUK = 3;   // demo sakin komşulardan günde en çok bu kadar hediye gelir
 const HEDIYE_ARKADASLIK_MS = KOMSULUK.hediyeArkadaslikMs;
 const kullanici = (id) => db.prepare(`SELECT id, display_name AS ad, is_npc AS npc, status FROM users WHERE id = ?`).get(id);

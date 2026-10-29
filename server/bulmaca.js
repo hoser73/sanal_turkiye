@@ -8,20 +8,6 @@ const L = require('./lib/ledger');
 const { OyunHatasi } = L;
 const { BULMACA: B, URUNLER } = require('./config/rules');
 
-db.exec(`
-CREATE TABLE IF NOT EXISTS bulmaca_durum (
-  user_id INTEGER PRIMARY KEY REFERENCES users(id), seviye INTEGER NOT NULL DEFAULT 1, yildiz INTEGER NOT NULL DEFAULT 0
-);
-CREATE TABLE IF NOT EXISTS bulmaca_oyun (
-  id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), seviye INTEGER NOT NULL,
-  basla_at INTEGER NOT NULL, bitis_at INTEGER, durum TEXT NOT NULL DEFAULT 'OYNUYOR',   -- OYNUYOR / KAZANDI / KAYBETTI / BIRAKTI
-  hamle INTEGER, yildiz INTEGER
-);
-CREATE INDEX IF NOT EXISTS ix_bulmaca_oyun ON bulmaca_oyun(user_id, durum);
-CREATE TABLE IF NOT EXISTS bulmaca_gunluk (
-  user_id INTEGER NOT NULL, gun TEXT NOT NULL, odullu INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (user_id, gun)
-) WITHOUT ROWID;
-`);
 
 const gunAnahtari = (t = Date.now()) => new Date(t + 3 * 3600_000).toISOString().slice(0, 10);
 const TURLER = Object.keys(B.taslar);
