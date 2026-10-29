@@ -63,6 +63,8 @@ function envanterMiktar(userId, itemId) {
 }
 function envanterDegis(userId, itemId, delta, sebep, tx = yeniTx()) {
   if (!Number.isInteger(delta) || delta === 0) throw new OyunHatasi(400, 'Geçersiz miktar');
+  // Ürün girmeden önce birikmiş depo bozulması işlenir: yeni gelen ürün geçmiş günlerin bozulmasına uğramaz
+  if (delta > 0) require('../ekonomi').bozulmaGuncelle(userId, itemId);
   if (delta < 0 && envanterMiktar(userId, itemId) < -delta) {
     throw new OyunHatasi(409, 'Envanterde yeterli ürün yok', 'YETERSIZ_URUN');
   }

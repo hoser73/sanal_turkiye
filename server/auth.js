@@ -62,6 +62,13 @@ const tekrarHesapMi = (userId) => !!db.prepare(`SELECT tekrar_hesap FROM users W
 function tekrarIsaretle(userId) {
   if (db.prepare(`UPDATE users SET tekrar_hesap = 1 WHERE id = ? AND COALESCE(tekrar_hesap, 0) = 0`).run(userId).changes) {
     L.denetim({ aktor: userId, eylem: 'REPEAT_IDENTITY', herkese: false });
+    // Kayıttan sonra ortaya çıktıysa (telefon doğrulaması) verilmiş hoş geldin hibesi geri alınır; harcanmış kısmı hariç
+    const hibe = db.prepare(`SELECT MAX(debit, credit) AS t FROM wallet_ledger WHERE account = ? AND reason = 'Hoş geldin hibesi'`).get(L.hesap(userId))?.t || 0;
+    const geri = L.yuvarla(Math.min(hibe, L.bakiye(userId)));
+    if (geri > 0) {
+      L.harca(userId, geri, 'Hoş geldin hibesi geri alındı (silinmiş hesabın kimliği)');
+      require('./pazar').bildir(userId, `Bu telefon numarası daha önce silinmiş bir hesaba ait; hoş geldin hibesi (₳${geri}) geri alındı.`, 'arazilerim');
+    }
   }
 }
 const q = {

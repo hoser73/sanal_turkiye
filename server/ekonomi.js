@@ -44,6 +44,13 @@ function envanterBozulmasi(userId) {
   return { oranlar, ambar, kayip };
 }
 
+// Envantere ürün eklenmeden önce (lib/ledger envanterDegis): işlenmemiş gün varsa bozulmayı şimdi uygula
+function bozulmaGuncelle(userId, itemId) {
+  if (!BOZULMA.envanterGunluk[itemId]) return;
+  const u = db.prepare(`SELECT bozulma_gun FROM users WHERE id = ?`).get(userId);
+  if (u && u.bozulma_gun != null && u.bozulma_gun < Math.floor(simdi() / BOZULMA.gunMs)) envanterBozulmasi(userId);
+}
+
 // ---------- Borsa
 const q = {
   emir: db.prepare(`SELECT * FROM urun_emirleri WHERE id = ?`),
@@ -230,4 +237,4 @@ function rotalar(app, { h, auth }) {
   app.get('/api/yonetim/ekonomi', auth.rolGerekli('MODERATOR', 'DENETCI', 'ADMIN'), h(() => ekonomiPaneli()));
 }
 
-module.exports = { rotalar, envanterBozulmasi, emirVer, emirIptal, borsaBakim, borsa, ekonomiPaneli, gini };
+module.exports = { rotalar, envanterBozulmasi, bozulmaGuncelle, emirVer, emirIptal, borsaBakim, borsa, ekonomiPaneli, gini };

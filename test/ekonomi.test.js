@@ -146,6 +146,18 @@ test('borsa: süresi dolan emir iade edilir; ekonomi paneli yalnızca yetkiliye 
   assert.ok(require('../server/ekonomi').gini([0.01, 0.01, 0.01, 100]) > 0.7);
 });
 
+test('envantere giren ürün (hasat, hediye, toplama …) geçmiş günlerin bozulmasına uğramaz; eski stok bozulur', async () => {
+  const c = await oyuncu('gecikmis');
+  await c('/api/ben');
+  urunVer(c.id, 'DOMATES', 100);
+  db.prepare('UPDATE users SET bozulma_gun = bozulma_gun - 4 WHERE id = ?').run(c.id);   // 4 gün uğramadı
+  urunVer(c.id, 'DOMATES', 100);   // bugün gelen 100 domates
+  const eski = 100 - Math.floor(100 * (1 - (1 - BOZULMA.envanterGunluk.DOMATES) ** 4));
+  assert.equal(stok(c.id, 'DOMATES'), eski + 100);
+  await c('/api/ben');
+  assert.equal(stok(c.id, 'DOMATES'), eski + 100, 'bugün gelenler bir daha bozulmaz');
+});
+
 test('borsa: bugün alınan ürün alıcının geçmiş günlerdeki bozulmasına uğramaz', async () => {
   const alici = await oyuncu('tazealici'), satici = await oyuncu('tazesatici');
   await satici('/api/ben');

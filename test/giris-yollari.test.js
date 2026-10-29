@@ -285,7 +285,11 @@ test('telefon: silinen hesabın numarası yeni hesapta doğrulanınca hesap "tek
   await b('/api/kayit', { email: 'telyeni@test.local', sifre: 'parola123', ...profil('Telefon Yeni') });
   const id = db.prepare(`SELECT id FROM users WHERE email = 'telyeni@test.local'`).get().id;
   assert.ok(!db.prepare(`SELECT tekrar_hesap FROM users WHERE id = ?`).get(id).tekrar_hesap, 'yeni e-posta: işaret yok');
+  const L = require('../server/lib/ledger'), { HESAP } = require('../server/config/rules');
+  assert.equal(L.bakiye(id), HESAP.baslangicBakiye, 'kayıtta hibe verildi');
   const k2 = (await b('/api/telefon/kod', { telefon: '+90 546 777 88 99' })).veri;
   assert.equal((await b('/api/telefon/dogrula', { kod: k2.gelistirmeKodu })).durum, 200);
   assert.equal(db.prepare(`SELECT tekrar_hesap FROM users WHERE id = ?`).get(id).tekrar_hesap, 1);
+  assert.equal(L.bakiye(id), 0, 'silinmiş numara: hoş geldin hibesi geri alındı');
+  assert.ok((await b('/api/bildirimler')).veri.some((x) => x.text.includes('hibesi')));
 });
