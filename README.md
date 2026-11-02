@@ -35,6 +35,16 @@ Ortam değişkenleri (v0.6 eklemeleri): `TABAN_URL` (e-posta bağlantıları; ü
 
 > Not: v0.1–0.2'nin Meram ızgarası ulusal ızgarayla uyumsuz olduğundan eski `data/sanalturkiye.db` dosyası kullanılmaz (silinmedi).
 
+## v0.46 — parsel birleştirme
+
+Yan yana kendi kare parsellerini tek parsel yap (`server/birlestirme.js`, kurallar `rules.js` → `BIRLESTIRME`).
+
+- **Koşullar:** iki parsel de oyuncunun, aynı mahalle ve imarda, kenardan bitişik; ilanda, kirada, ortaklıkta değil, üstünde ekin yok; toplam süs 8'i aşmaz; birleşik parsel en çok **4 parça**. Harç **₳25**. Gerçek tarlalar (deneme ilçesi) birleştirilmez. Birleşim geri alınmaz.
+- **Sonuç:** asıl parselin alanı toplam alan olur: TAKS/KAKS, en az alan (ör. apartman 800 m²), verim ve arsa değeri buna göre. Katılan parselin yapıları (süren üretimleriyle), süsleri asıl parsele geçer; aynı türden tekil yapı iki parselde de varsa ikisi de kalır (yenisi yapılamaz). Katılan parselin alışı, o sahiplikteki yatırımı ve harç asıl parselin alış bedeline eklenir (portföy kâr/zararı bozulmaz).
+- **Kayıt:** katılan parsel `status = 'BIRLESIK'`, sahipsiz, `birlesik_id` asıl parsel; asıl parselde `uye_sayisi`. Katılan hücreye yapılan her istek asıl parsele yönlenir (`parselHazirla`). Parsel sınırları (8 parsel, mahallede 4) hücre sayısıyla sayılır: birleştirme sınırı aşmanın yolu değildir. Parsel devlete dönünce (`parseliBosalt`) birleşim çözülür, parçalar kendi alanlarıyla sahipsiz kalır.
+- **Arayüz:** parsel kartında "🧩 Parsel birleştirme" bölümü (bitişik kendi parselleri, uygun değilse nedeni); tam sayfa çiftlikte yandaki kendi tarlana dokununca "Tek tarla yap" kutusu. Kartta `parca` ve `birlestirme`; `POST /api/parsel/:id/birlestir {uye}`.
+- **Çizim:** haritada asıl parsel bütün dış sınırıyla tek çerçeve (`birlestirme.geometri`); parçalar `uye` işaretli ayrı hücreler olarak da gelir, 2B katmanlar onları atlar, 3B onları asıl parselin ekiniyle yapısız ve boşluksuz çizer. Çiftlikte parçalar parselin devamıdır.
+
 ## v0.45 — ekonomi dengesi, hızlı açılış, ilk 10 dakika
 - **Ekonomi simülasyonu** (`npm run ekonomi-sim -- 30`, `scripts/ekonomi-sim.js`): bot oyuncular (aktif: günde 6 oturum, gündelik: 2, haftalık: haftada 3 gün) geçici bir veritabanında yapay saatle N gün oynar; profil başına bakiye, seviye, parsel ve gelir/gider kalemleri raporlanır. `--seyrek`: tüccarın ortak limiti dolmamış az oyunculu sunucu. Gerçek veritabanına dokunmaz. Not: günlük görev ödülü ve sezon yolu, denetim kayıtları gerçek saatle yazıldığı için simülasyonda sayılmaz (gerçekte aktif oyuncuya günde ~60–100 akçe daha).
 - **Bulgular (30 gün, önce → sonra):** aktif oyuncu seviye 38 / 44.685 akçe → seviye 16 / ~10.000 (yükseltmelere harcanıyor); gündelik seviye 19 / 11.213 → seviye 11 / ~3.500–7.800. Paranın %65'i siparişlerden geliyordu ve sipariş büyüklüğü seviyeyle sınırsız büyüyordu; seviye kilitli her şey aktif oyuncuda ilk gün açılıyordu; 14. günden sonra harcanacak yer kalmıyordu.
@@ -542,6 +552,6 @@ public/js/
 
 1. **Hukuk**: yasal metinlerin hukukçu incelemesi (docs/hukuk-kontrol-listesi.md): veri sorumlusu bilgileri, VERBİS, yurt dışı aktarım dayanakları, demo sakinlerin bilgilendirmesi, OSM türetilmiş veri lisansı.
 2. **PostgreSQL'e geçiş (çalışma zamanı)**: şema ve veri aktarımı doğrulandı; kalan iş uygulama katmanının eşzamanlı better-sqlite3'ten `pg`'ye taşınması, çok sunuculu WebSocket köprüsü (LISTEN/NOTIFY), tembel bakım işleri için danışma kilidi (docs/postgres-gecisi.md).
-3. **İmar değişikliği önerileri** (§3.4) ve bağlayıcı referandum türleri; **parsel birleştirme**.
+3. **İmar değişikliği önerileri** (§3.4) ve bağlayıcı referandum türleri; birleşik parseli ayırma (ifraz).
 4. Kendi karo sunucumuz (PMTiles, docs/karo-sunucusu.md) ve Open-Meteo ticari aboneliği.
 5. Dolu dünyada yük testi; yavaş sorgular için indeks gözden geçirmesi.

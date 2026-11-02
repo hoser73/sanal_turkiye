@@ -37,7 +37,7 @@ async function npcSeedEt({ sessiz = false } = {}) {
           const simdi = Date.now();
           kimlikler.forEach((id, sira) => {
             const p = oyun.parselGetir(id);
-            db.prepare(`UPDATE parcels SET owner_user_id = ?, acquired_at = datetime('now'), version = version + 1 WHERE id = ? AND owner_user_id IS NULL`).run(uid, id);
+            db.prepare(`UPDATE parcels SET owner_user_id = ?, acquired_at = datetime('now'), version = version + 1 WHERE id = ? AND owner_user_id IS NULL AND status = 'ACTIVE'`).run(uid, id);
             db.prepare(`INSERT INTO parcel_ownership (parcel_id, user_id, reason) VALUES (?, ?, 'SEED_NPC')`).run(id, uid);
             for (const tip of n.yapilar) {
               const y = YAPILAR[tip];

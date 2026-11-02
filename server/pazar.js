@@ -37,8 +37,9 @@ const q = {
   bildir: db.prepare(`INSERT INTO notifications (user_id, text, link) VALUES (?, ?, ?)`),
   // Aynı bildirim (metin + bağlantı) yinelenmez: eskisi silinip yenisi en üste yazılır (ör. dönen seçim aşamaları)
   bildirimYineleme: db.prepare(`DELETE FROM notifications WHERE user_id = ? AND text = ? AND IFNULL(link, '') = IFNULL(?, '')`),
-  parselSayisi: db.prepare(`SELECT COUNT(*) AS c FROM parcels WHERE owner_user_id = ?`),
-  mahalleParselSayisi: db.prepare(`SELECT COUNT(*) AS c FROM parcels WHERE owner_user_id = ? AND region_id = ?`),
+  // birleşik parsel hücre sayısı kadar sayılır (birlestirme.js)
+  parselSayisi: db.prepare(`SELECT COALESCE(SUM(1 + uye_sayisi), 0) AS c FROM parcels WHERE owner_user_id = ?`),
+  mahalleParselSayisi: db.prepare(`SELECT COALESCE(SUM(1 + uye_sayisi), 0) AS c FROM parcels WHERE owner_user_id = ? AND region_id = ?`),
 };
 
 // Bildirim metnindeki ham parsel kimliği (TR-0618015-0407079) oyuncunun tanıdığı biçime çevrilir: "Bademli 231/67"

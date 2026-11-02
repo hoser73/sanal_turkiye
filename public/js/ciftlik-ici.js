@@ -259,9 +259,15 @@ export function ciftlikIciKur({ durum, eylemDagit, sunucuSimdi, ayrintiAc, dunya
     if (e?.olgun) dugmeler.push(`<button type="button" class="ci-b altin" data-ci="arazi-is" data-is="hasat" data-parsel="${esc(id)}">🧺 Hasat et</button>`);
     if (p && susuzMu(p)) dugmeler.push(`<button type="button" class="ci-b" data-ci="arazi-is" data-is="sula" data-parsel="${esc(id)}">💧 Sula</button>`);
     if (p && bosMu(p)) dugmeler.push(`<button type="button" class="ci-b altin" data-ci="ek-hedef" data-parsel="${esc(id)}">🌱 Ek</button>`);
+    // Birleştirme: yan yanaysa bu tarla açık parsele katılabilir (tek tapu, toplam alan)
+    const b = durum.kart?.birlestirme, aday = b?.adaylar.find((a) => a.id === id);
+    const birles = !aday ? '' : `<div class="ci-birles"><b>🧩 Tek tarla yap</b>
+      <small>Bu tarlayı ${esc(durum.kart.adaParsel ? `Ada ${durum.kart.adaParsel.ada} / Parsel ${durum.kart.adaParsel.parsel}` : 'açık parselin')} ile birleştir: ${sayi(durum.kart.alan + aday.alan)} m² tek parsel, daha geniş yapılaşma hakkı. Harç ${akce(b.harc)}; geri alınmaz.</small>
+      ${aday.uygun ? `<button type="button" class="ci-b" data-ci="birlestir" data-parsel="${esc(id)}" data-alan="${durum.kart.alan + aday.alan}">🧩 Birleştir · ${akce(b.harc)}</button>` : `<small class="ci-sebep">${esc(aday.sebep)}</small>`}</div>`;
     sayfaAc(`${ust2('🌾', 'Tarlan', alt)}
       <p class="ci-not ${e?.olgun ? 'yesil' : ''}">${durumMetni}</p>
-      ${dugmeler.length ? `<div class="ci-dugmeler">${dugmeler.join('')}</div>` : ''}`);
+      ${dugmeler.length ? `<div class="ci-dugmeler">${dugmeler.join('')}</div>` : ''}
+      ${birles}`);
   }
   // Başkasının (ya da sahipsiz) parseli: sahibi, arsa bilgisi, yapılar ve oyun içi tahmini değer
   async function komsuBilgiSayfasi(id) {
@@ -290,7 +296,7 @@ export function ciftlikIciKur({ durum, eylemDagit, sunucuSimdi, ayrintiAc, dunya
   async function komsuKartlariniYukle() {
     const k = durum.kart;
     if (k.tarla) return;
-    const benimler = komsuHepsi(k).filter((n) => n.ben && !komsuKartlari.has(n.id));
+    const benimler = komsuHepsi(k).filter((n) => n.ben && !n.uye && !komsuKartlari.has(n.id));
     await Promise.all(benimler.map((n) => api(`/api/parsel/${encodeURIComponent(n.id)}`).then((kk) => komsuKartlari.set(n.id, kk)).catch(() => {})));
     if (benimler.length && acik) sahneKurgula();
   }
@@ -428,6 +434,18 @@ export function ciftlikIciKur({ durum, eylemDagit, sunucuSimdi, ayrintiAc, dunya
       for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
         if (!dx && !dy) continue;
         const n = komsu[`${dx},${dy}`];
+        // Bu parselin birleştirilmiş parçası: parselin devamı (aynı ekin, yapısız), kenar boşluğu bırakmadan
+        if (n?.uye) {
+          const m = sevimliParselModeli({ id: `${k.id}:${dx},${dy}`, imar: k.imar.tip, yp: '', ek: kartVerisi(k).ek, kz: '', ss: '' }, { gece });
+          m.position.set(dx * S, 0.3, dy * S); m.scale.set(1 / 0.88, 1, 1 / 0.84);
+          m.traverse((o) => { delete o.userData.tepki; delete o.userData.tepkiHedef; });
+          const tepki = { tur: k.ekin ? 'ekin' : k.tarimMi ? 'toprak' : 'zemin' };
+          m.userData.tepki = tepki;
+          const ic2 = levha(S + 0.2, S + 0.2, kis ? '#f6f9fa' : RENK.cimen, { kalinlik: 0.25, kose: 0.3 });
+          ic2.position.set(dx * S, 0, dy * S); ic2.userData.tepki = tepki;
+          grup.add(ic2, m);
+          continue;
+        }
         // Çiftliğe katılmış komşu parsel: kendi modeliyle çizilir, dokununca o tarlaya geçilir
         if (n?.ben && komsuKartlari.has(n.id)) {
           const kk = komsuKartlari.get(n.id);
@@ -453,11 +471,12 @@ export function ciftlikIciKur({ durum, eylemDagit, sunucuSimdi, ayrintiAc, dunya
           d.userData.tepki = { tur: 'genislet', id: n.id };
         } else if (n) d.userData.tepki = { tur: 'komsu', id: n.id };   // başka birinin (ya da sahipsiz) parseli: kimin, ne değerde
       }
-      const ic = levha(S - 0.7, S - 0.7, kis ? '#f6f9fa' : RENK.cimen, { kalinlik: 0.25, kose: 2.2 });
+      // Birleşik parselde asıl hücre de parçalarına boşluksuz değer
+      const ic = (k.parca || 1) > 1 ? levha(S + 0.2, S + 0.2, kis ? '#f6f9fa' : RENK.cimen, { kalinlik: 0.25, kose: 0.3 }) : levha(S - 0.7, S - 0.7, kis ? '#f6f9fa' : RENK.cimen, { kalinlik: 0.25, kose: 2.2 });
       ic.userData.tepki = { tur: 'zemin' }; grup.add(ic);
       patikalar(r);
     }
-    const dolu = new Set(['0,0', ...komsuHepsi(k).filter((n) => n.ben && komsuKartlari.has(n.id)).map((n) => `${n.dx},${n.dy}`)]);
+    const dolu = new Set(['0,0', ...komsuHepsi(k).filter((n) => n.uye || (n.ben && komsuKartlari.has(n.id))).map((n) => `${n.dx},${n.dy}`)]);
     cevreSusle(r, tarla ? null : dolu);
     kirHayvanlari(r, tarla ? null : dolu, k);
     // Uzak kenar: ağaç kuşağı
@@ -868,6 +887,20 @@ export function ciftlikIciKur({ durum, eylemDagit, sunucuSimdi, ayrintiAc, dunya
       if (c === 'ciftlik-ek') { const b = e.target.closest('[data-urun]'); return topluEk(b.dataset.urun, b.dataset.parseller.split(','), b); }
       if (c === 'arazi-is') { const b = e.target.closest('[data-parsel]'); sayfaKapat(); return topluIs(b.dataset.is, b, ciftlikSeti().filter((p) => p.id === b.dataset.parsel)); }
       if (c === 'ek-hedef') return ekSayfasi([e.target.closest('[data-parsel]').dataset.parsel]);
+      if (c === 'birlestir') {
+        const b = e.target.closest('button');
+        if (!confirm(`İki tarla tek parsel olacak (${sayi(Number(b.dataset.alan))} m²). Birleşim geri alınmaz. Onaylıyor musun?`)) return;
+        b.disabled = true;
+        try {
+          const r = await api(`/api/parsel/${encodeURIComponent(durum.kart.id)}/birlestir`, { uye: b.dataset.parsel });
+          ses('para');
+          tostDis?.(`🧩 Tarlalar birleşti: ${sayi(r.alan)} m², ${r.parca} parça`);
+          komsuKartlari.delete(b.dataset.parsel);
+          sayfaKapat();
+          await yenileDis?.();
+        } catch (err) { tostDis?.(err.message, 'hata'); b.disabled = false; }
+        return;
+      }
       if (c === 'yeniden-ek') return;
       if (c === 'gunluk') return gunlukSayfasi();
       if (c === 'meydan') return meydanSayfasi();

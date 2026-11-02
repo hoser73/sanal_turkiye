@@ -10,6 +10,7 @@ const { tarlaBul } = require('./tarla');
 
 const q = {
   var: db.prepare(`SELECT 1 FROM parcels WHERE id = ?`),
+  birlesik: db.prepare(`SELECT birlesik_id FROM parcels WHERE id = ?`),
   ilce: db.prepare(`SELECT id, parent_id, code, name, attractiveness FROM regions WHERE type = 'ILCE' AND source_idx = ?`),
   bolge: db.prepare(`SELECT id FROM regions WHERE code = ?`),
   bolgeEkle: db.prepare(`INSERT OR IGNORE INTO regions (parent_id, type, code, name, plaka, center_lon, center_lat, place_class, attractiveness)
@@ -39,7 +40,8 @@ function mahalleBolgesi(ilceSatir, ilceVeri, lon, lat) {
   return q.bolge.get(kod).id;
 }
 
-// Döndürdüğü kimlik asıl parseldir: deneme ilçesinde hücre bir tarlaya aitse tarlanın kimliği (tarla.js)
+// Döndürdüğü kimlik asıl parseldir: deneme ilçesinde hücre bir tarlaya aitse tarlanın kimliği (tarla.js); başka bir
+// parsele katılmış (birleştirilmiş) hücrede o parselin kimliği (birlestirme.js)
 async function parselHazirla(id) {
   const { x, y } = koordinatlar(id);
   const tarla = await tarlaBul(x, y);
@@ -59,7 +61,8 @@ async function parselHazirla(id) {
     })();
     return tarla.id;
   }
-  if (q.var.get(id)) return id;
+  const kayit = q.birlesik.get(id);
+  if (kayit) return kayit.birlesik_id || id;
   let kod, ilce;
   try {
     ({ kod, ilce } = await hucreImari(x, y));
@@ -111,7 +114,7 @@ async function hucreAra(lon, lat, imarlar, adet, aralik = 2, maksYaricap = 96) {
   for (const a of adaylar) {
     if (bulunan.length >= adet) break;
     if (bulunan.every((b) => Math.max(Math.abs(b.x - a.x), Math.abs(b.y - a.y)) >= aralik)
-        && !db.prepare('SELECT 1 FROM parcels WHERE grid_x = ? AND grid_y = ? AND owner_user_id IS NOT NULL').get(a.x, a.y)) {
+        && !db.prepare('SELECT 1 FROM parcels WHERE grid_x = ? AND grid_y = ? AND (owner_user_id IS NOT NULL OR birlesik_id IS NOT NULL)').get(a.x, a.y)) {
       bulunan.push(a);
     }
   }

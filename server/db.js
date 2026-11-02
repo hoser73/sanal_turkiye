@@ -479,6 +479,10 @@ kolonEkle('secim_oylari', 'makam', "TEXT NOT NULL DEFAULT 'MUHTAR'");
 // ---------- Hesap güvenliği, KVKK ve moderasyon (v0.6) ----------
 // Doğrulama alanı sonradan eklendiyse, eski hesaplar kayıt tarihiyle doğrulanmış sayılır (geriye uyum)
 if (kolonEkle('users', 'email_dogrulandi_at', 'TEXT')) db.exec(`UPDATE users SET email_dogrulandi_at = created_at`);
+// Parsel birleştirme (birlestirme.js): katılan parsel asıl parsele bağlanır; asıl parsel katılan hücre sayısını tutar
+kolonEkle('parcels', 'birlesik_id', 'TEXT REFERENCES parcels(id)');
+kolonEkle('parcels', 'uye_sayisi', 'INTEGER NOT NULL DEFAULT 0');
+db.exec(`CREATE INDEX IF NOT EXISTS ix_parcels_birlesik ON parcels(birlesik_id) WHERE birlesik_id IS NOT NULL`);
 kolonEkle('users', 'totp_sir', 'TEXT');                     // AES-256-GCM ile şifreli
 kolonEkle('users', 'totp_aktif', 'INTEGER NOT NULL DEFAULT 0');
 kolonEkle('users', 'totp_son_adim', 'INTEGER NOT NULL DEFAULT 0');   // aynı kodun yeniden kullanımını engeller

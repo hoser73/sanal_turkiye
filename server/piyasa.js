@@ -368,5 +368,5 @@ function bolgeEndeksi(tur, id) {
 
 module.exports = {
   yapiYatirimi, mahalleCarpani, carpanHesapla, bolgeSinyalleri, endeksKaydet, endeksBakim, endeksSerisi, bolgeEndeksi,
-  parselPiyasasi, fiyatGecmisi, portfoy, parselGetirisi, hazineId, hazineTeklifi, hazineyeSat, hazineBakim, piyasaOzeti, gunAnahtari,
+  parselPiyasasi, fiyatGecmisi, portfoy, parselGetirisi, yatirimVeGelir, hazineId, hazineTeklifi, hazineyeSat, hazineBakim, piyasaOzeti, gunAnahtari,
 };

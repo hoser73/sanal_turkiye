@@ -23,8 +23,9 @@ const q = {
   npcKisilik: db.prepare(`SELECT npc_kisilik FROM users WHERE id = ?`),
   yapilar: db.prepare(`SELECT * FROM structures WHERE parcel_id = ? ORDER BY id`),
   ekin: db.prepare(`SELECT * FROM crops WHERE parcel_id = ? AND status = 'GROWING'`),
-  parselSayisi: db.prepare(`SELECT COUNT(*) AS c FROM parcels WHERE owner_user_id = ?`),
-  mahalleParselSayisi: db.prepare(`SELECT COUNT(*) AS c FROM parcels WHERE owner_user_id = ? AND region_id = ?`),
+  // Sınır denetimi: birleşik parsel hücre sayısı kadar sayılır (birlestirme.js)
+  parselSayisi: db.prepare(`SELECT COALESCE(SUM(1 + uye_sayisi), 0) AS c FROM parcels WHERE owner_user_id = ?`),
+  mahalleParselSayisi: db.prepare(`SELECT COALESCE(SUM(1 + uye_sayisi), 0) AS c FROM parcels WHERE owner_user_id = ? AND region_id = ?`),
   bitenYapilar: db.prepare(`SELECT s.*, p.region_id FROM structures s JOIN parcels p ON p.id = s.parcel_id WHERE s.status = 'BUILDING' AND s.completes_at <= ?`),
   yapiTamamla: db.prepare(`UPDATE structures SET status = 'ACTIVE', completed_at = ? WHERE id = ? AND status = 'BUILDING'`),
 };
@@ -180,10 +181,11 @@ function parselKarti(id, userId, komsuImar = {}, { hafif = false } = {}) {
 
   // Çevre hücreleri (5 × 5): kayıtlı ızgara parselleri ve gerçek tarlalar. Bir hücreyi gerçek bir tarla kaplıyorsa
   // (tarla_hucreleri) o hücrenin sahibi tarlanın sahibidir; kimlik tarlanınkidir (satın alma ve geçiş o tarlaya).
+  // Birleştirilmiş hücrenin sahibi ve kimliği asıl parselinkidir; bu parselin parçası olan hücre `uye` işaretlidir.
   const R = 2;
   const kayitliKomsular = db.prepare(`
-    SELECT p.id, p.zoning_type, p.owner_user_id, p.grid_x, p.grid_y, u.display_name AS sahip
-    FROM parcels p LEFT JOIN users u ON u.id = p.owner_user_id
+    SELECT p.id, p.zoning_type, COALESCE(p.owner_user_id, a.owner_user_id) AS owner_user_id, p.grid_x, p.grid_y, p.birlesik_id, u.display_name AS sahip
+    FROM parcels p LEFT JOIN parcels a ON a.id = p.birlesik_id LEFT JOIN users u ON u.id = COALESCE(p.owner_user_id, a.owner_user_id)
     WHERE p.grid_x BETWEEN ? AND ? AND p.grid_y BETWEEN ? AND ? AND p.id <> ?`)
     .all(p.grid_x - R, p.grid_x + R, p.grid_y - R, p.grid_y + R, p.id);
   const tarlaHucreleri = new Map(tarlaHucreSorgusu().all(p.grid_x - R, p.grid_x + R, p.grid_y - R, p.grid_y + R).map((h) => [`${h.x},${h.y}`, h.tarla_id]));
@@ -206,9 +208,10 @@ function parselKarti(id, userId, komsuImar = {}, { hafif = false } = {}) {
       if (tarlaId && tarlaId === p.id) continue;   // parselin kendi tarlası
       const kk = k || kayitliKomsular.find((n) => n.grid_x === x && n.grid_y === y);
       (Math.max(Math.abs(dx), Math.abs(dy)) <= 1 ? komsular : cevre).push({
-        id: I.parselId(x, y), dx, dy,
+        id: kk?.birlesik_id || I.parselId(x, y), dx, dy,
         imar: kk?.zoning_type || komsuImar[`${dx},${dy}`] || null,
         sahip: kk?.sahip || null, ben: !!userId && kk?.owner_user_id === userId,
+        ...(kk?.birlesik_id ? { birlesik: true, uye: kk.birlesik_id === p.id } : {}),
       });
     }
   }
@@ -238,6 +241,8 @@ function parselKarti(id, userId, komsuImar = {}, { hafif = false } = {}) {
     alan: p.area_m2, durum: p.status, geomVersiyon: p.geom_version,
     imar: { tip: p.zoning_type, ...imar },
     imarKullanimi: imarKullanimi(p, yapilar),
+    parca: 1 + p.uye_sayisi,
+    birlestirme: benim ? require('./birlestirme').kartBilgisi(p, userId) : null,
     sahip: sahip ? { ad: sahip.display_name, npc: !!sahip.is_npc, demoSakin: !!sahip.is_npc && !!q.npcKisilik.get(sahip.id)?.npc_kisilik, ben: benim, unvan: sahip.is_npc ? null : require('./kozmetik').secili(sahip.id).unvan?.ad || null } : null,
     kozmetik: sahip && !sahip.is_npc ? require('./kozmetik').haritaKodu(sahip.id) : '',
     // Simge (kamu mirası) ve bu hafta ihalede olan tarla olağan yoldan edinilemez: tahsis bedeli gösterilmez
@@ -287,6 +292,7 @@ function parselKarti(id, userId, komsuImar = {}, { hafif = false } = {}) {
 // Parseli devlete geri bırak (hesap silme, demo sakin taşınması): yapılara bağlı hayvan ve üretim kayıtları, süsler,
 // yapılar silinir (yabancı anahtar sırası); ekin kapanır; sahiplik kaydı biter
 function parseliBosalt(id) {
+  require('./birlestirme').coz(id);   // birleşik parselin parçaları kendi alanlarıyla sahipsiz parsele döner
   const yapilar = 'SELECT id FROM structures WHERE parcel_id = ?';
   db.prepare(`DELETE FROM hayvan_bakim WHERE structure_id IN (${yapilar})`).run(id);
   db.prepare(`DELETE FROM uretimler WHERE structure_id IN (${yapilar})`).run(id);
@@ -651,6 +657,7 @@ const MAKS_HUCRE_KENARI = 600;   // ≈ 18 km — daha geniş alanlar istenmez (
 // Parselin harita geometrisi: deneme ilçesinin tarlalarında gerçek tarla şekli, diğerlerinde hücre karesi
 function parselGeometrisi(p) {
   if (p.geom_version === 'tarla-v1') { const T = require('./harita/tarla'), t = T.tarlaGetir(p.id); if (t) return T.geometri(t); }
+  if (p.uye_sayisi) { const B = require('./birlestirme'); return B.geometri(B.hucreler(p)); }   // birleşik parselin dış sınırı
   return I.hucrePoligonu(p.grid_x, p.grid_y);
 }
 function tarlaBilgisi(p) {
@@ -665,19 +672,26 @@ function haritaParselleri(userId, bbox) {
   if (x1 - x0 > MAKS_HUCRE_KENARI || y1 - y0 > MAKS_HUCRE_KENARI) throw new OyunHatasi(400, 'Alan çok geniş; yakınlaşın');
   const t = simdi();
   const satirlar = db.prepare(`
-    SELECT p.id, p.zoning_type, p.owner_user_id, p.grid_x, p.grid_y, p.geom_version, p.centroid_lon, p.centroid_lat, u.is_npc, u.display_name AS sahip,
+    SELECT p.id, p.zoning_type, p.owner_user_id, p.grid_x, p.grid_y, p.geom_version, p.centroid_lon, p.centroid_lat, p.uye_sayisi, u.is_npc, u.display_name AS sahip,
       EXISTS (SELECT 1 FROM listings l WHERE l.parcel_id = p.id AND l.status = 'ACTIVE') AS ilanda
     FROM parcels p LEFT JOIN users u ON u.id = p.owner_user_id
-    WHERE p.grid_x BETWEEN ? AND ? AND p.grid_y BETWEEN ? AND ?
+    WHERE (p.grid_x BETWEEN ? AND ? AND p.grid_y BETWEEN ? AND ?
+        OR p.id IN (SELECT m.birlesik_id FROM parcels m WHERE m.birlesik_id IS NOT NULL AND m.grid_x BETWEEN ? AND ? AND m.grid_y BETWEEN ? AND ?))
       AND (p.owner_user_id IS NOT NULL OR EXISTS (SELECT 1 FROM listings l WHERE l.parcel_id = p.id AND l.status = 'ACTIVE'))
-    LIMIT 5000`).all(x0, x1, y0, y1);
+    LIMIT 5000`).all(x0, x1, y0, y1, x0, x1, y0, y1);
   const yapiSorgu = db.prepare(`SELECT type, status, completes_at FROM structures WHERE parcel_id = ? ORDER BY id`);
+  // Birleşik parsel: asıl özellik bütün parselin dış sınırıyla (2B dolgu ve çerçeve); her parça ayrıca kendi hücresiyle
+  // `uye` işaretli gelir (aynı kimlik, yapısız, aynı ekinle) — 2B katmanlar onu atlar, 3B tarlayı parçalara yayar
+  const parcalar = (f, s) => !s.uye_sayisi ? [f] : [Object.assign(f, { properties: { ...f.properties, pc: 1 + s.uye_sayisi } }), ...require('./birlestirme').uyeler(s.id).map((u) => ({
+    type: 'Feature', geometry: I.hucrePoligonu(u.grid_x, u.grid_y),
+    properties: { ...f.properties, gx: u.grid_x, gy: u.grid_y, uye: 1, y: 0, i: 0, su: 0, hh: 0, ss: '', yp: '', kz: '' },
+  }))];
   return {
     type: 'FeatureCollection',
-    features: satirlar.map((s) => {
+    features: satirlar.flatMap((s) => {
       const yapilar = yapiSorgu.all(s.id);
       const e = q.ekin.get(s.id);
-      return {
+      return parcalar({
         type: 'Feature',
         geometry: parselGeometrisi(s),
         properties: {
@@ -701,7 +715,7 @@ function haritaParselleri(userId, bbox) {
           kz: s.owner_user_id && !s.is_npc ? kozmetikKodu(s.owner_user_id) : '',
           ek: e ? `${e.crop_type}:${Math.min(1, (t - e.planted_at) / (e.ready_at - e.planted_at)).toFixed(2)}` : '',
         },
-      };
+      }, s);
     }),
   };
 }

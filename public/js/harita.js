@@ -210,22 +210,24 @@ export async function haritaKur(kap, { parselTik, ilTik, ilceTik, mahalleAlanTik
   } }, once(SIRA.parsel));
 
   // ---------- Oyuncu parselleri ----------
-  map.addLayer({ id: 'parsel-dolgu', type: 'fill', source: 'parseller', paint: {
+  // Birleşik parselin parçaları (`uye`) yalnızca 3B için gelir: 2B'de asıl özellik bütün sınırı çizer
+  const asil = ['!', ['has', 'uye']];
+  map.addLayer({ id: 'parsel-dolgu', type: 'fill', source: 'parseller', filter: asil, paint: {
     'fill-color': ['match', ['get', 's'], 1, '#e7b53a', 2, '#3d4548', '#ffffff'],
     'fill-opacity': ['match', ['get', 's'], 1, 0.22, 2, 0.12, 0],
   } }, once(SIRA.parsel));
-  map.addLayer({ id: 'parsel-cerceve', type: 'line', source: 'parseller', filter: ['in', ['get', 's'], ['literal', [1, 2]]], paint: {
+  map.addLayer({ id: 'parsel-cerceve', type: 'line', source: 'parseller', filter: ['all', asil, ['in', ['get', 's'], ['literal', [1, 2]]]], paint: {
     'line-color': ['match', ['get', 's'], 1, '#d9a21b', '#3d4548'],
     'line-width': ['interpolate', ['linear'], ['zoom'], 13, 1, 18, ['match', ['get', 's'], 1, 4, 2.2]],
   } }, once(SIRA.parsel));
-  map.addLayer({ id: 'benim-isik', type: 'line', source: 'parseller', filter: ['==', ['get', 's'], 1], minzoom: 13, paint: {
+  map.addLayer({ id: 'benim-isik', type: 'line', source: 'parseller', filter: ['all', asil, ['==', ['get', 's'], 1]], minzoom: 13, paint: {
     'line-color': '#ffd166', 'line-width': ['interpolate', ['linear'], ['zoom'], 13, 4, 18, 14], 'line-blur': ['interpolate', ['linear'], ['zoom'], 13, 3, 18, 9], 'line-opacity': 0.5,
   } }, once(SIRA.parsel));
-  map.addLayer({ id: 'parsel-satilik', type: 'line', source: 'parseller', filter: ['==', ['get', 'l'], 1], paint: {
+  map.addLayer({ id: 'parsel-satilik', type: 'line', source: 'parseller', filter: ['all', asil, ['==', ['get', 'l'], 1]], paint: {
     'line-color': '#c8402e', 'line-dasharray': [1.4, 0.9], 'line-width': ['interpolate', ['linear'], ['zoom'], 13, 1.6, 18, 4],
   } }, once(SIRA.parsel));
   map.addLayer({ id: 'parsel-isaret', type: 'circle', source: 'parseller', maxzoom: YAPI_ZOOM + 0.6,
-    filter: ['any', ['>', ['get', 'y'], 0], ['>', ['get', 'i'], 0], ['>', ['get', 'e'], 0]], paint: {
+    filter: ['all', asil, ['any', ['>', ['get', 'y'], 0], ['>', ['get', 'i'], 0], ['>', ['get', 'e'], 0]]], paint: {
       'circle-radius': ['interpolate', ['linear'], ['zoom'], 12, 2.5, 15.5, 6],
       'circle-color': ['case', ['==', ['get', 'e'], 2], '#e8730c', ['==', ['get', 'e'], 1], '#2e8b57', ['>', ['get', 'i'], 0], '#e2b23a', '#33505c'],
       'circle-stroke-color': '#ffffff', 'circle-stroke-width': 1.5,

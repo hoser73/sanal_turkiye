@@ -773,6 +773,9 @@ function parselPaneli() {
       }).join('')}</ul>`);
   }
 
+  // Parsel birleştirme: yan yana kendi parsellerini tek parsel yap (kare parsellerde)
+  if (ben && k.birlestirme && (k.birlestirme.adaylar.length || k.birlestirme.uyeler.length)) parcalar.push(birlestirmeBolumu(k));
+
   // Komşular (3×3)
   const hucre = (dx, dy) => {
     if (!dx && !dy) return `<span class="merkez" style="background:${imar.renk}">bu parsel</span>`;
@@ -780,7 +783,7 @@ function parselPaneli() {
     if (!n || !n.imar || n.imar === 'DIS') return '<span style="background:#ece6da">sınır dışı</span>';
     const kural = durum.kurallar.imar[n.imar];
     const renk = kural.renk;
-    const etiket = n.ben ? '★ sen' : n.sahip ? esc(n.sahip) : kural.parselDegil ? esc(kural.ad.split(' ')[0].toLocaleLowerCase('tr-TR')) : 'boş';
+    const etiket = n.uye ? 'bu parsel' : n.ben ? '★ sen' : n.sahip ? esc(n.sahip) : kural.parselDegil ? esc(kural.ad.split(' ')[0].toLocaleLowerCase('tr-TR')) : 'boş';
     return `<button type="button" data-eylem="git" data-id="${esc(n.id)}" style="background:${renk}" title="${esc(n.id)}">${etiket}</button>`;
   };
   parcalar.push(`<h3 class="bolum">Komşuluk</h3><div class="komsu-grid">${
@@ -794,6 +797,23 @@ function parselPaneli() {
   parcalar.push(`<p class="kucuk" style="margin-top:18px">${esc(k.imarKaynak.not)} Bu kayıt resmî ada/parsel bilgisi değildir ve taşınmaz mülkiyeti temsil etmez.
     <a href="?parsel=${esc(k.id)}" class="bag" data-eylem="bagi-kopyala">Parsel bağlantısını kopyala</a></p>`);
   return parcalar.join('');
+}
+
+// Parsel birleştirme: birleşik parçalar ve yanındaki kendi parselleri (birleştirilebilir mi, neden değil)
+function birlestirmeBolumu(k) {
+  const b = k.birlestirme;
+  const ap = (x) => (x.adaParsel ? `Ada ${x.adaParsel.ada} / Parsel ${x.adaParsel.parsel}` : esc(x.id));
+  const yon = (x) => ({ '1,0': 'doğusunda', '-1,0': 'batısında', '0,1': 'güneyinde', '0,-1': 'kuzeyinde' })[`${Math.sign(x.dx)},${Math.sign(x.dy)}`] || 'yanında';
+  return `<h3 class="bolum">🧩 Parsel birleştirme</h3>
+    <div class="kutu">
+      <p class="kucuk" style="margin-top:0">Yan yana kendi parsellerini tek parsel yap: alanlar toplanır, yapılaşma hakkı (TAKS/KAKS) ve verim büyür,
+        yapılar ve süsler bu parsele geçer. Aynı mahalle ve imarda, ekinsiz ve ilansız olmalı; en çok ${b.maksParca} parça. Harç ${akce(b.harc)}. Birleşim geri alınmaz.</p>
+      ${b.uyeler.length ? `<div class="satir kucuk"><span>Bu parsel ${b.parca} parçadan oluşuyor</span><span>${sayi(k.alan)} m²</span></div>
+        <ul class="liste">${b.uyeler.map((u) => `<li class="liste-oge"><span class="ikon">🧩</span><div class="govde"><b>${ap(u)}</b><div class="kucuk">${sayi(u.alan)} m² · birleştirildi</div></div></li>`).join('')}</ul>` : ''}
+      ${b.adaylar.length ? `<ul class="liste">${b.adaylar.map((a) => `<li class="liste-oge" aria-disabled="${!a.uygun}"><span class="ikon">➕</span>
+        <div class="govde"><b>${ap(a)}</b><div class="kucuk">${sayi(a.alan)} m² · bu parselin ${yon(a)}</div>${a.uygun ? '' : `<div class="sebep">${esc(a.sebep)}</div>`}</div>
+        <button class="dugme ince" data-eylem="birlestir" data-uye="${esc(a.id)}" data-alan="${k.alan + a.alan}" ${a.uygun ? '' : 'disabled'}>Birleştir</button></li>`).join('')}</ul>` : ''}
+    </div>`;
 }
 
 // Kiralama ve ortaklık
@@ -1356,6 +1376,10 @@ async function eylemDagit(b, e = null) {
       const konum = durum.kart?.konum;
       return eylem(`/api/parsel/${id}/sula`, null, '💧 Tarla sulandı').then((r) => { if (r) { durum.harita.efekt('sula', konum); ses('sula'); } });
     }
+    case 'birlestir':
+      if (!confirm(`Bu iki parsel tek parsel olacak (${sayi(Number(b.dataset.alan))} m²). Harç ${akce(durum.kart?.birlestirme?.harc ?? 0)}. Birleşim geri alınmaz. Onaylıyor musun?`)) return;
+      b.disabled = true;
+      return eylem(`/api/parsel/${id}/birlestir`, { uye: b.dataset.uye }, (r) => `🧩 Parseller birleşti: ${sayi(r.alan)} m², ${r.parca} parça`);
     case 'bakim':
       b.disabled = true;
       return eylem(`/api/parsel/${id}/bakim`, null, (r) => `🔧 ${r.adet} yapının bakımı yapıldı (${akce(r.tutar)})`);

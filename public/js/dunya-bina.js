@@ -330,7 +330,7 @@ export function binaKur(ctx) {
     const isaretListesi = [];
     const hucreM = (40075016.686 * Math.cos((ctx.cografi(0, 0)[1] * Math.PI) / 180)) / G.N;
     for (const f of sonFc.features) {
-      const { gx, gy, z, yp, ek, kz, ss, s: sahip, e: ekinDurum, su, hh, or: ortu, tg, mlon, mlat, yon } = f.properties;
+      const { gx, gy, z, yp, ek, kz, ss, s: sahip, e: ekinDurum, su, hh, or: ortu, tg, mlon, mlat, yon, pc, uye } = f.properties;
       if (!yp && !ek && !kz && !ss && !sahip) continue;
       const [lng, lat] = tg ? [mlon, mlat] : G.merkez(gx, gy);
       let [x, zz] = ctx.yerel(lng, lat);
@@ -354,6 +354,7 @@ export function binaKur(ctx) {
       // Oyuncu parselleri haritada da tam sayfa çiftlikteki sevimli modellerle çizilir (tek görsel dil)
       const model = sevimliParselModeli({ id: `${gx},${gy}`, imar: z, yp, ek, kz, ss }, { gece: ortak.gece ?? 0, tarla });
       model.position.y = sahip ? 0.1 : 0;
+      if (uye) model.scale.set(1 / 0.88, 1, 1 / 0.84);   // birleşik parselin parçası: tarla kenar boşluğu bırakmadan değsin
       g.add(model);
       // Sahipli parsel, tam sayfa çiftlikteki (Çiftliğim) görünümün aynısı: çimen yastık, kenarında ot tutamları;
       // çit yalnızca oyuncu tel çit kurduysa (modelin kendisi çizer)
@@ -365,6 +366,7 @@ export function binaKur(ctx) {
       } else if (sahip) {
         const plaka = new THREE.Mesh(yastikGeo, yastikMalz);
         plaka.position.y = -1.3 - 0.04;   // üst yüzü (pah dahil) grubun 0,1 m üstünde
+        if (pc > 1) plaka.scale.set((S + 0.2) / (S - 0.7), 1, (S + 0.2) / (S - 0.7));   // birleşik parsel: yastıklar arasında boşluk kalmasın
         plaka.receiveShadow = true;
         plaka.userData.paylasimli = true;
         const rs = tohumluSayi(gx * 7919 + gy * 104729), ot = otTutamlari(kenarNoktalari(S - 0.2, S - 0.2, 1.6, rs), rs, { boy: 1.0 });

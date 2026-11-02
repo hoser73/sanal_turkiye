@@ -72,7 +72,7 @@ async function karoVerisi(kx, ky) {
 // Korunacaklar: üzerinde iş olan (sahipli, ilanlı, yapılı, ekili) kare parseller ve tarlalar — hücreleri yeni tarlalara girmez
 function korunanlar([x0, y0, x1, y1]) {
   const satirlar = db.prepare(`SELECT p.id, p.grid_x AS x, p.grid_y AS y FROM parcels p WHERE grid_x BETWEEN ? AND ? AND grid_y BETWEEN ? AND ? AND (
-    owner_user_id IS NOT NULL OR EXISTS (SELECT 1 FROM structures s WHERE s.parcel_id = p.id) OR EXISTS (SELECT 1 FROM crops c WHERE c.parcel_id = p.id)
+    owner_user_id IS NOT NULL OR birlesik_id IS NOT NULL OR EXISTS (SELECT 1 FROM structures s WHERE s.parcel_id = p.id) OR EXISTS (SELECT 1 FROM crops c WHERE c.parcel_id = p.id)
     OR EXISTS (SELECT 1 FROM listings l WHERE l.parcel_id = p.id))`).all(x0, x1, y0, y1);
   const hucreler = new Set(), tarlaKimlikleri = new Set();
   const uyeler = db.prepare(`SELECT x, y FROM tarla_hucreleri WHERE tarla_id = ?`);
@@ -107,7 +107,7 @@ function tarlalariYaz(tarlalar, { koru = new Set() } = {}) {
     const guncelle = db.prepare(`UPDATE parcels SET area_m2 = ?, centroid_lon = ?, centroid_lat = ? WHERE id = ?`);
     const kareyeDon = db.prepare(`UPDATE parcels SET geom_version = 'z20-v1', area_m2 = ?, centroid_lon = ?, centroid_lat = ? WHERE id = ?`);
     for (const p of db.prepare(`SELECT p.id, p.grid_x, p.grid_y, t.id AS tid, t.alan_m2, t.merkez_lon, t.merkez_lat FROM parcels p
-        LEFT JOIN tarlalar t ON t.id = p.id WHERE p.geom_version = 'tarla-v1' AND p.owner_user_id IS NULL`).all()) {
+        LEFT JOIN tarlalar t ON t.id = p.id WHERE p.geom_version = 'tarla-v1' AND p.owner_user_id IS NULL AND p.birlesik_id IS NULL`).all()) {
       if (p.tid) guncelle.run(p.alan_m2, p.merkez_lon, p.merkez_lat, p.id);
       else { const [lon, lat] = I.hucreMerkezi(p.grid_x, p.grid_y); kareyeDon.run(I.hucreAlani(p.grid_x, p.grid_y), lon, lat, p.id); }
     }

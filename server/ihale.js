@@ -90,10 +90,10 @@ const teklifVer = db.transaction((userId, ihaleId, govde = {}) => {
   if (i.durum !== 'ACIK' || t >= i.bitis) throw new OyunHatasi(409, 'Bu ihale bitti', 'BITTI');
   if (db.prepare('SELECT is_npc FROM users WHERE id = ?').get(userId)?.is_npc) throw new OyunHatasi(403, 'Demo hesaplar teklif veremez');
   const p = db.prepare('SELECT region_id FROM parcels WHERE id = ?').get(i.parcel_id);
-  if (db.prepare('SELECT COUNT(*) AS c FROM parcels WHERE owner_user_id = ?').get(userId).c + ondeOlunan(userId, { haric: i.id }) >= HESAP.maxParsel) {
+  if (db.prepare('SELECT COALESCE(SUM(1 + uye_sayisi), 0) AS c FROM parcels WHERE owner_user_id = ?').get(userId).c + ondeOlunan(userId, { haric: i.id }) >= HESAP.maxParsel) {
     throw new OyunHatasi(409, `Hesap başına en fazla ${HESAP.maxParsel} parsel (önde olduğun ihaleler dahil); önce birini sat`, 'PARSEL_SINIRI');
   }
-  if (db.prepare('SELECT COUNT(*) AS c FROM parcels WHERE owner_user_id = ? AND region_id = ?').get(userId, p.region_id).c
+  if (db.prepare('SELECT COALESCE(SUM(1 + uye_sayisi), 0) AS c FROM parcels WHERE owner_user_id = ? AND region_id = ?').get(userId, p.region_id).c
       + ondeOlunan(userId, { haric: i.id, regionId: p.region_id }) >= HESAP.maxParselMahalle) {
     throw new OyunHatasi(409, `Bir mahallede en fazla ${HESAP.maxParselMahalle} parsel (önde olduğun ihaleler dahil)`, 'PARSEL_SINIRI');
   }
