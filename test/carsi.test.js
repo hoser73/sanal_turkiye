@@ -13,7 +13,7 @@ const dunya = require('../server/dunya');
 const carsi = require('../server/carsi');
 const balik = require('../server/balik');
 const totp = require('../server/lib/totp');
-const { CARSI, YAPILAR } = require('../server/config/rules');
+const { CARSI, YAPILAR, HESAP } = require('../server/config/rules');
 
 let sunucu, taban;
 before(async () => {
@@ -114,6 +114,7 @@ test('dükkân: satın alma akçe düşer, paket sarf verir, kalıcı ürün bir
 
 test('zirai bayi: gübre hasadı %20 artırır; ilaç dondan korur; aşı barınakta fazladan ürün verir', async () => {
   const c = await oyuncu();
+  L.odul(c.id, 2 * HESAP.baslangicBakiye, 'test bakiyesi');   // üç tarla
   const h1 = hucreBul('TARIM'), h2 = hucreBul('TARIM');
   for (const h of [h1, h2]) { await c(`/api/parsel/${h}/edin`, {}); await c(`/api/parsel/${h}/ek`, { urun: 'DOMATES' }); }
   db.prepare(`UPDATE parcels SET area_m2 = 600 WHERE id IN (?, ?)`).run(h1, h2);
@@ -154,7 +155,7 @@ test('zirai bayi: gübre hasadı %20 artırır; ilaç dondan korur; aşı barın
 
 test('nalbur: kalıp seti inşaatı kısaltır, bakım kiti bakımı ücretsiz yapar, örtü stoktan serilir', async () => {
   const c = await oyuncu();
-  L.odul(c.id, 2000, 'test bakiyesi');   // sera ve ikinci tarla
+  L.odul(c.id, YAPILAR.SERA.maliyet + HESAP.baslangicBakiye, 'test bakiyesi');   // sera ve ikinci tarla
   const h = hucreBul('TARIM');
   await c(`/api/parsel/${h}/edin`, {});
   await c('/api/carsi/satin-al', { urun: 'KALIP_SETI' });

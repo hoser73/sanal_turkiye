@@ -344,6 +344,8 @@ auth.eskiOturumlariTemizle();
 setInterval(auth.eskiOturumlariTemizle, 6 * 3600 * 1000).unref();
 
 // Demo komşular ağdan imar verisi ister; sunucuyu bekletmeden arka planda yerleşir
+// v0.50 para dengesi: kayıtlı arsa tutarları yeni ölçeğe bir kez çevrilir (bütün modüller ve tabloları yüklendikten sonra)
+if (require('./para-gecisi').gec()) gunluk.info('para dengesi geçişi (v0.50) uygulandı');
 app.hazir = npcSeedEt({ sessiz: !!process.env.SESSIZ }).catch((e) => console.warn('Demo komşular:', e.message));
 
 const PORT = Number(process.env.PORT || 3400);

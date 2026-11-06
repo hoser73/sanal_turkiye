@@ -189,11 +189,14 @@ function fiyatGecmisi(parcelId) {
 // Bir sahiplik süresince parsele yapılan yatırım (inşaat, yükseltme, süs) ve toplanan kira
 function yatirimVeGelir(userId, parcelId, bas, bit = null) {
   let yatirim = 0, kira = 0;
-  for (const e of hazirla(`SELECT action, after_json FROM audit_events WHERE entity = ? AND actor_id = ? AND created_at >= ? AND created_at <= ?
+  // v0.50 para dengesi geçişinden önceki yapı maliyetleri eski ölçekte kayıtlıdır (denetim kaydı değiştirilemez)
+  const gecis = require('./para-gecisi').zamani(), { YAPI_OLCEK } = require('./config/rules');
+  for (const e of hazirla(`SELECT action, after_json, created_at FROM audit_events WHERE entity = ? AND actor_id = ? AND created_at >= ? AND created_at <= ?
       AND action IN ('STRUCTURE_STARTED', 'STRUCTURE_UPGRADED', 'DECORATION_PLACED', 'RENT_COLLECTED')`).all(parcelId, userId, bas, bit || '9999')) {
     const a = JSON.parse(e.after_json || '{}');
-    if (e.action === 'STRUCTURE_STARTED') yatirim += a.maliyet || 0;
-    else if (e.action === 'STRUCTURE_UPGRADED') yatirim += a.bedel || 0;
+    const yapiKat = gecis && e.created_at < gecis ? YAPI_OLCEK : 1;
+    if (e.action === 'STRUCTURE_STARTED') yatirim += (a.maliyet || 0) * yapiKat;
+    else if (e.action === 'STRUCTURE_UPGRADED') yatirim += (a.bedel || 0) * yapiKat;
     else if (e.action === 'DECORATION_PLACED') yatirim += SUSLER[a.tur]?.fiyat || 0;
     else kira += a.tutar || 0;
   }

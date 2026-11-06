@@ -11,7 +11,7 @@ const db = require('../server/db');
 const dunya = require('../server/dunya');
 const iklim = require('../server/iklim');
 const L = require('../server/lib/ledger');
-const { HAVA, TARIM, RECETELER } = require('../server/config/rules');
+const { HAVA, TARIM, RECETELER, HESAP } = require('../server/config/rules');
 
 let sunucu, taban;
 before(async () => {
@@ -87,6 +87,7 @@ test('erken uyarı: don tahmini hassas ekini olan oyuncuya bir kez bildirilir; s
 
 test('tarla örtüsü: ücretli, 12 saat dondan ve doludan korur; tekrar, yabancı ve ekinsiz tarla reddedilir', async () => {
   const c = await oyuncu('ortucu'), y = await oyuncu('yabanci');
+  L.odul(c.id, 2 * HESAP.baslangicBakiye, 'test bakiyesi');   // üç tarla
   const h1 = hucreBul('TARIM'), h2 = hucreBul('TARIM'), bos = hucreBul('TARIM');
   for (const h of [h1, h2]) { await c(`/api/parsel/${h}/edin`, {}); await c(`/api/parsel/${h}/ek`, { urun: 'DOMATES' }); }
   await c(`/api/parsel/${bos}/edin`, {});

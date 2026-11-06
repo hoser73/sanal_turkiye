@@ -33,6 +33,23 @@ Ortam değişkenleri (v0.6 eklemeleri): `TABAN_URL` (e-posta bağlantıları; ü
 
 > Not: v0.1–0.2'nin Meram ızgarası ulusal ızgarayla uyumsuz olduğundan eski `data/sanalturkiye.db` dosyası kullanılmaz (silinmedi).
 
+## v0.50 — çiftlik fiyatları gerçeğe yakın
+
+v0.49'da bütün ekonomi tek katsayıyla büyüdüğü için tohum ₺400 bin, bir hasat ₺1,4 milyon görünüyordu. Gerçekte arazi ve bina,
+tarım ürününe göre çok daha değerlidir; denge buna göre ayrıldı (`server/config/rules.js` başı):
+
+- **1 oyun birimi = ₺300** (`BIRIM.kat`, önce ₺10.000): tohum, ürün, mamul, yem, sulama, sipariş, görev/sandık/bulmaca ödülleri,
+  çarşı, balık, borsa, nakliye, kira gelirleri, kozmetik ve süsler gerçeğe yaklaştı. 900 m² tarlada buğday tohumu ≈ ₺12 bin,
+  hasat ≈ ₺42 bin; buğday ≈ ₺300/çuval, peynir ≈ ₺1.650.
+- **Arsa** m² fiyatları `ARSA_OLCEK` (×33,3) ile büyütüldü: arsa TL değerleri v0.48–v0.49 ile aynı (Konya köyünde tarla ≈ ₺400 bin,
+  Bodrum sahilinde konut arsası ≈ ₺45 milyon). Yeni bir tarla ≈ 10 hasatta alınır; asıl kazanç arsadan gelir.
+- **Yapılar** `YAPI_OLCEK` (×10): TL olarak eskinin ≈ üçte biri (sera ≈ ₺360 bin, müstakil ev ≈ ₺450 bin, villa ≈ ₺2,7 milyon);
+  yükseltme bedelleri buna bağlı. Bakım oranı %25 → %2,5 (bakım yükü çiftlik gelirine göre aynı kaldı).
+- Başlangıç bakiyesi ₺3 milyon (10.000 birim), başlangıç tarlası hediyesi en çok ₺3 milyon, ilan üst sınırı ₺1,5 milyar.
+- **Geçiş** (`server/para-gecisi.js`, açılışta bir kez): kayıtlı arsa tutarları (alış bedelleri, ilan, satış, ihale, endeks hacmi)
+  aynı TL değerinde kalsın diye ×33,3; açık teklifler önce iade edilir. Cüzdan bakiyeleri birim olarak kalır (TL karşılığı
+  küçülür). Denetim kaydındaki eski yapı maliyetleri portföyde ×10 okunur.
+
 ## v0.49 — oyun parası Türk lirası (₺)
 
 Akçe (₳) yerine oyunda her tutar **gerçekçi TL** olarak görünür: arsa, ürün, yapı, ödül, bakiye, ilan ve teklif. Bütün ekonomi tek

@@ -8,7 +8,7 @@ const VERI = ortamKur('oyun');
 const app = require('../server/index');
 const db = require('../server/db');
 const I = require('../server/harita/izgara');
-const { YAPILAR, URUNLER } = require('../server/config/rules');
+const { YAPILAR, URUNLER, HESAP, IMAR } = require('../server/config/rules');
 
 let sunucu, taban;
 before(async () => {
@@ -27,7 +27,7 @@ test('kayıt ve başlangıç bakiyesi', async () => {
   assert.equal((await a('/api/kayit', { email: 'a@test.local', sifre: 'parola123', dogumYili: 1990, kosullarOnay: true, kvkkOnay: true, ad: 'Ali' })).durum, 201);
   assert.equal((await b('/api/kayit', { email: 'b@test.local', sifre: 'parola123', dogumYili: 1990, kosullarOnay: true, kvkkOnay: true, ad: 'Berna' })).durum, 201);
   assert.equal((await a('/api/kayit', { email: 'a@test.local', sifre: 'parola123', dogumYili: 1990, kosullarOnay: true, kvkkOnay: true, ad: 'Ali2' })).durum, 409);
-  assert.equal((await a('/api/ben')).veri.bakiye, 500);
+  assert.equal((await a('/api/ben')).veri.bakiye, HESAP.baslangicBakiye);
   assert.equal((await istemci()('/api/ben')).veri, null);
   assert.equal((await istemci()('/api/cuzdan')).durum, 401);
 });
@@ -91,10 +91,10 @@ test('imar ihlalleri engellenir (tarlaya ev, TAKS aşımı, sahibi olmayan)', as
   const kart = (await c(`/api/parsel/${konut}`)).veri;
   // Bedel konum değerini içerir: alan × konut m² fiyatı × konum çarpanı (il, ilçe, kıyı, merkez, arazi, yol) × mahalle endeksi
   assert.ok(kart.konumDegeri?.kat > 0 && kart.konumDegeri.il === require('../server/config/konum-fiyat').IL_FIYAT[kart.plaka]);
-  assert.equal(kart.deger.tahsis, Math.round(kart.alan * 0.4 * kart.konumDegeri.kat), 'taban bedel konum çarpanıyla');
+  assert.equal(kart.deger.tahsis, Math.round(kart.alan * IMAR.KONUT.m2Fiyat * kart.konumDegeri.kat), 'taban bedel konum çarpanıyla');
   assert.equal((await c(`/api/parsel/${konut}/edin`, {})).durum, 200);
   assert.equal((await c(`/api/parsel/${konut}/insaat`, { tip: 'PEYZAJ' })).durum, 200);
-  odulVer('c@test.local', 300);
+  odulVer('c@test.local', YAPILAR.EV.maliyet);
   assert.equal((await c(`/api/parsel/${konut}/insaat`, { tip: 'EV' })).durum, 200);
   const ikinci = await c(`/api/parsel/${konut}/insaat`, { tip: 'APARTMAN' });
   assert.equal(ikinci.durum, 422);

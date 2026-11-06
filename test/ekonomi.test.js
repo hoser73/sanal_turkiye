@@ -8,7 +8,7 @@ const VERI = ortamKur('ekonomi');
 const app = require('../server/index');
 const db = require('../server/db');
 const L = require('../server/lib/ledger');
-const { BOZULMA, BAKIM, YAPILAR } = require('../server/config/rules');
+const { BOZULMA, BAKIM, YAPILAR, HESAP } = require('../server/config/rules');
 
 let sunucu, taban;
 before(async () => {
@@ -113,7 +113,7 @@ test('borsa: fiyat-zaman önceliği, bekleyen emrin fiyatından eşleşme, fark 
   assert.equal(stok(alici.id, 'BUGDAY'), 30);
   assert.equal((await alici('/api/ben')).veri.bakiye, bakiye0 - 46, '20×1.5 + 10×1.6 = 46; limit farkı iade');
   const ucretUcuncu = 0.6, gelir = 30 - ucretUcuncu;
-  assert.equal((await ucuncu('/api/ben')).veri.bakiye, 500 + gelir);
+  assert.equal((await ucuncu('/api/ben')).veri.bakiye, HESAP.baslangicBakiye + gelir);
   const defter = (await alici('/api/borsa')).veri.urunler.find((u) => u.kod === 'BUGDAY');
   assert.equal(defter.satis[0].fiyat, 1.6);
   assert.equal(defter.satis[0].miktar, 40);

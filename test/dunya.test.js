@@ -8,7 +8,7 @@ const VERI = ortamKur('dunya');
 const app = require('../server/index');
 const db = require('../server/db');
 const dunya = require('../server/dunya');
-const { LIG, HAVA, URUNLER } = require('../server/config/rules');
+const { LIG, HAVA, URUNLER, HESAP } = require('../server/config/rules');
 
 let sunucu, taban;
 before(async () => {
@@ -108,7 +108,7 @@ test('memleket: seçilir, 30 gün değişmez; hemşehri ve gurbet sayılır', as
 
 test('aşırı sıcak: açık tarlanın sulaması gider; seralı tarla ve olgun ekin etkilenmez; bildirim afete göre', async () => {
   const c = await oyuncu('sicakci');
-  require('../server/lib/ledger').odul(c.id, 2000, 'test bakiyesi');
+  require('../server/lib/ledger').odul(c.id, 2 * HESAP.baslangicBakiye, 'test bakiyesi');   // üç tarla
   const [acik, seralı, olgun] = [hucreBul('TARIM'), hucreBul('TARIM'), hucreBul('TARIM')];
   for (const h of [acik, seralı, olgun]) { await c(`/api/parsel/${h}/edin`, {}); await c(`/api/parsel/${h}/ek`, { urun: 'DOMATES' }); }
   const t0 = Date.now();

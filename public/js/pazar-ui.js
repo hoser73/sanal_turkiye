@@ -141,7 +141,7 @@ function ilanAcFormu(k, piyasa, kurallar) {
     <details class="acilir"><summary><b>İlana çıkar</b></summary>
     <form class="ilan-form" style="margin-top:10px" data-indirim="${indirim}">
       <label class="alan">İstenen fiyat (₺)
-        ${paraGirdisi({ name: 'fiyat', min: 1, max: pz.maxFiyat, ek: `required placeholder="ör. ${akce(250).slice(1)}"` })}
+        ${paraGirdisi({ name: 'fiyat', min: 1, max: pz.maxFiyat, ek: `required placeholder="ör. ${akce(4000).slice(1)}"` })}
       </label>
       <div class="iki-sutun">
         <label class="alan">Süre

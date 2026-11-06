@@ -10,7 +10,7 @@ const app = require('../server/index');
 const db = require('../server/db');
 const L = require('../server/lib/ledger');
 const gelisim = require('../server/gelisim');
-const { YAPILAR, HAYVANLAR } = require('../server/config/rules');
+const { YAPILAR, HAYVANLAR, HESAP } = require('../server/config/rules');
 
 let sunucu, taban;
 before(async () => {
@@ -25,7 +25,7 @@ const kayit = async (ad) => {
   const c = istemci();
   await c('/api/kayit', { email: `${ad}@test.local`, sifre: 'parola123', ad, dogumYili: 1990, kosullarOnay: true, kvkkOnay: true });
   const id = db.prepare(`SELECT id FROM users WHERE email = ?`).get(`${ad}@test.local`).id;
-  L.odul(id, 5000, 'test bakiyesi');
+  L.odul(id, 2 * HESAP.baslangicBakiye, 'test bakiyesi');
   db.prepare(`UPDATE users SET tp = 5000 WHERE id = ?`).run(id);   // seviye kilitleri açık
   return { c, id };
 };
@@ -44,8 +44,8 @@ test('yapı yükseltme: bedel ödenir, seviye artar, en üstte durur; barınak f
   assert.equal(r.durum, 200, JSON.stringify(r.veri));
   assert.equal(r.veri.seviye, 2);
   assert.equal(Math.round(bakiye - L.bakiye(A.id)), Math.round(YAPILAR.KUMES.maliyet * 2 * gelisim.GELISIM.yukseltKat));
-  L.odul(A.id, 3000, 'test');
   const maks = gelisim.GELISIM.maxSeviye;
+  for (let sv = 3; sv <= maks; sv++) L.odul(A.id, YAPILAR.KUMES.maliyet * sv * gelisim.GELISIM.yukseltKat, 'test');   // kalan yükseltmeler
   for (let sv = 3; sv <= maks; sv++) assert.equal((await A.c(`/api/yapi/${y.id}/yukselt`, {})).durum, 200);
   assert.equal((await A.c(`/api/yapi/${y.id}/yukselt`, {})).durum, 409, 'en üst seviye');
   kart = (await A.c(`/api/parsel/${p}`)).veri;

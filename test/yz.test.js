@@ -8,7 +8,7 @@ const VERI = ortamKur('yz');
 const app = require('../server/index');
 const db = require('../server/db');
 const yz = require('../server/yz');
-const { KOZMETIK } = require('../server/config/rules');
+const { KOZMETIK, HESAP } = require('../server/config/rules');
 
 let sunucu, taban;
 before(async () => {
@@ -94,8 +94,9 @@ test('moderasyon ön taraması: şikâyete arka planda yapay zekâ notu eklenir'
 test('kozmetik: satın alma oyundan çıkar, seçim haritaya ve karta yansır; rozetli olan kilitli', async () => {
   const c = await oyuncu('suslu');
   const h = hucreBul('KONUT');
-  await c(`/api/parsel/${h}/edin`, {});
   const L = require('../server/lib/ledger');
+  db.transaction(() => L.odul(c.id, HESAP.baslangicBakiye, 'Test hibesi'))();   // şehirdeki konut parseli hibeden pahalı olabilir
+  assert.equal((await c(`/api/parsel/${h}/edin`, {})).durum, 200);
   db.transaction(() => L.odul(c.id, 300, 'Test hibesi'))();
   const bakiye0 = (await c('/api/ben')).veri.bakiye;
   assert.equal((await c('/api/kozmetik/al', { kod: 'CATI_YESIL' })).durum, 200);

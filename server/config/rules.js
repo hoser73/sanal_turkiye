@@ -2,9 +2,13 @@
 // Buradaki imar oranları GERÇEK Meram imar bilgisi DEĞİLDİR; oyun kuralıdır.
 
 // Oyun içi birim: nakde çevrilemeyen oyun puanı (plan §10.1)
-// Oyun parası Türk lirası görünümündedir (v0.49): kurallardaki ve defterdeki tutarlar oyun birimidir, oyuncuya kat ile
-// çarpılıp TL gösterilir (lib/para.js). Gerçek para değildir, nakde çevrilemez.
-const BIRIM = { kod: 'TRY', ad: 'TL', sembol: '₺', kat: 10000 };
+// Oyun parası Türk lirası görünümündedir: kurallardaki ve defterdeki tutarlar oyun birimidir, oyuncuya kat ile çarpılıp TL
+// gösterilir (lib/para.js). Gerçek para değildir, nakde çevrilemez. v0.50 dengesi: 1 birim = ₺300 — tohum, ürün, ödül ve
+// ücretler gerçeğe yakın (buğday tohumu ≈ ₺12 bin, hasat ≈ ₺42 bin); arsa ve yapılar aşağıdaki ölçeklerle büyütülür
+// (gerçekte arazi ve bina, tarım ürününe göre çok daha değerlidir).
+const BIRIM = { kod: 'TRY', ad: 'TL', sembol: '₺', kat: 300 };
+const ARSA_OLCEK = 100 / 3;   // arsa m² fiyatı: v0.49'daki TL değerleri korunur (₺10.000 → ₺300 birim)
+const YAPI_OLCEK = 10;        // yapı maliyetleri: TL olarak v0.49'un ≈ üçte biri (sera ≈ ₺360 bin, müstakil ev ≈ ₺450 bin)
 
 // Demo hızı: 1 = tasarım süreleri (dakika). Prototipte süreler kısa tutuldu.
 const OYUN_HIZI = Number(process.env.OYUN_HIZI || 1);
@@ -12,12 +16,12 @@ const dk = (n) => Math.round((n * 60 * 1000) / OYUN_HIZI);
 
 // §3.1 izin matrisi + §3.3 TAKS/KAKS
 const IMAR = {
-  KONUT:   { ad: 'Konut',          renk: '#f2c48d', taks: 0.30, kaks: 0.60, satilik: true,  m2Fiyat: 0.40, aciklama: 'Villa, ev, apartman (plan limitleriyle). Sanayi yasak.' },
-  TICARET: { ad: 'Ticaret',        renk: '#e58f8f', taks: 0.40, kaks: 1.20, satilik: true,  m2Fiyat: 0.55, aciklama: 'Dükkan, ofis, restoran, otel. Ağır sanayi ve plan dışı konut yasak.' },
-  TARIM:   { ad: 'Tarım',          renk: '#a8d08d', taks: 0.12, kaks: 0.12, satilik: true,  m2Fiyat: 0.12, aciklama: 'Tarla, bahçe, sulama, sera. İzinsiz konut/fabrika yasak.' },
-  SANAYI:  { ad: 'Sanayi',         renk: '#b4a7d6', taks: 0.50, kaks: 1.00, satilik: true,  m2Fiyat: 0.30, aciklama: 'Fabrika, depo, lojistik. Konut yasak.' },
-  TURIZM:  { ad: 'Turizm',         renk: '#7fc8d6', taks: 0.25, kaks: 0.50, satilik: true,  m2Fiyat: 0.45, aciklama: 'Konaklama ve rekreasyon.' },
-  KARMA:   { ad: 'Karma kullanım', renk: '#f0a868', taks: 0.35, kaks: 1.05, satilik: true,  m2Fiyat: 0.50, aciklama: 'Belirlenmiş oranlarla konut + ticaret.' },
+  KONUT:   { ad: 'Konut',          renk: '#f2c48d', taks: 0.30, kaks: 0.60, satilik: true,  m2Fiyat: 0.40 * ARSA_OLCEK, aciklama: 'Villa, ev, apartman (plan limitleriyle). Sanayi yasak.' },
+  TICARET: { ad: 'Ticaret',        renk: '#e58f8f', taks: 0.40, kaks: 1.20, satilik: true,  m2Fiyat: 0.55 * ARSA_OLCEK, aciklama: 'Dükkan, ofis, restoran, otel. Ağır sanayi ve plan dışı konut yasak.' },
+  TARIM:   { ad: 'Tarım',          renk: '#a8d08d', taks: 0.12, kaks: 0.12, satilik: true,  m2Fiyat: 0.12 * ARSA_OLCEK, aciklama: 'Tarla, bahçe, sulama, sera. İzinsiz konut/fabrika yasak.' },
+  SANAYI:  { ad: 'Sanayi',         renk: '#b4a7d6', taks: 0.50, kaks: 1.00, satilik: true,  m2Fiyat: 0.30 * ARSA_OLCEK, aciklama: 'Fabrika, depo, lojistik. Konut yasak.' },
+  TURIZM:  { ad: 'Turizm',         renk: '#7fc8d6', taks: 0.25, kaks: 0.50, satilik: true,  m2Fiyat: 0.45 * ARSA_OLCEK, aciklama: 'Konaklama ve rekreasyon.' },
+  KARMA:   { ad: 'Karma kullanım', renk: '#f0a868', taks: 0.35, kaks: 1.05, satilik: true,  m2Fiyat: 0.50 * ARSA_OLCEK, aciklama: 'Belirlenmiş oranlarla konut + ticaret.' },
   KORUMA:  { ad: 'Koruma / orman', renk: '#5e9e6e', taks: 0,    kaks: 0,    satilik: false, m2Fiyat: 0,    aciklama: 'Koruma görevleri ve gezi etkinlikleri. Özel yapılaşma yok, oyuncu satışına kapalı.' },
   PARK:    { ad: 'Kamu / park',    renk: '#c9e4b4', taks: 0.05, kaks: 0.05, satilik: false, m2Fiyat: 0,    aciklama: 'Okul, hastane, park, spor alanı gibi kamu kullanımları. Oyuncu satışına kapalı.' },
   // Parsel olmayan hücreler (gerçek su yüzeyi ve ana yollar)
@@ -73,6 +77,7 @@ const YAPILAR = {
   ZEYTIN_SIKMA: { ad: 'Zeytin sıkma evi', ikon: '🫒', kategori: 'Üretim',          maliyet: 240, sure: 5, taban: 50,  kat: 1, emsal: true,  izin: ['TARIM'], tekil: true, minSeviye: 5, etki: 'Zeytinden zeytinyağı' },
   CAY_ATOLYESI: { ad: 'Çay atölyesi',   ikon: '🍵', kategori: 'Üretim',            maliyet: 220, sure: 5, taban: 45,  kat: 1, emsal: true,  izin: ['TARIM'], tekil: true, minSeviye: 5, etki: 'Yaş çaydan paket çay' },
 };
+for (const y of Object.values(YAPILAR)) y.maliyet *= YAPI_OLCEK;   // tablodaki maliyetler v0.49 ölçeğinde yazılı
 for (const y of Object.values(YAPILAR)) y.sureMs = dk(y.sure);
 
 // §5.1 ürünler. sulama: gereken sulama sayısı. bolgeler: yalnızca bu illerde (plaka) ekilebilen yöresel ürünler.
@@ -305,8 +310,8 @@ const CARSI = {
     ORGU_MISINA:  { dukkan: 'NALBUR', ad: 'Örgü misina', ikon: '🧵', fiyat: 80, kalici: true, etki: 'Misina dayanımı +%12 (kalıcı)' },
     SAHTE_YEM_TAKIMI: { dukkan: 'NALBUR', ad: 'Sahte yem (rapala)', ikon: '🐟', fiyat: 30, kalici: true, etki: 'Sahte yemle atış ücretsiz; misina koparsa sahte yem kaybolur' },
     YEM_PAKETI:   { dukkan: 'MARKET', ad: 'Hayvan yemi (20 çuval)', ikon: '🌽', fiyat: 20, verir: { YEM: 20 }, etki: 'Besleme başına ödenen yem fiyatından %17 ucuz' },
-    KARIDES_PAKETI: { dukkan: 'MARKET', ad: 'Karides yem (10 atış)', ikon: '🦐', fiyat: 25, verir: { YEM_KARIDES: 10 }, etki: 'Atış başına ₺25.000 (tek tek ₺30.000)' },
-    MISIR_PAKETI: { dukkan: 'MARKET', ad: 'Mısır yem (10 atış)', ikon: '🌽', fiyat: 8, verir: { YEM_MISIR: 10 }, etki: 'Atış başına ₺8.000 (tek tek ₺10.000)' },
+    KARIDES_PAKETI: { dukkan: 'MARKET', ad: 'Karides yem (10 atış)', ikon: '🦐', fiyat: 25, verir: { YEM_KARIDES: 10 }, etki: 'Atış başına ₺750 (tek tek ₺900)' },
+    MISIR_PAKETI: { dukkan: 'MARKET', ad: 'Mısır yem (10 atış)', ikon: '🌽', fiyat: 8, verir: { YEM_MISIR: 10 }, etki: 'Atış başına ₺240 (tek tek ₺300)' },
     GUBRE:        { dukkan: 'ZIRAI', ad: 'Gübre', ikon: '🧪', fiyat: 12, kullan: 'EKIN', etki: 'Ekili tarlaya ver: hasat %20 fazla' },
     ILAC:         { dukkan: 'ZIRAI', ad: 'Bitki koruma ilacı', ikon: '🛡️', fiyat: 15, kullan: 'EKIN', etki: 'Ekili tarlaya ver: ekin olgunlaşana kadar don, dolu ve sağanaktan korunur' },
     ASI:          { dukkan: 'ZIRAI', ad: 'Hayvan aşısı', ikon: '💉', fiyat: 20, kullan: 'BARINAK', etki: 'Barınağa uygula: 7 gün boyunca her toplamada +1 ürün' },
@@ -521,7 +526,7 @@ const BOZULMA = {
 const BAKIM = {
   yipranmaGunluk: 3,          // puan / gün (100 → 0 yaklaşık 33 gün)
   etkisizEsik: 40,
-  onarimOrani: 0.25,          // tam onarım = yapı maliyetinin %25'i (eksik sağlıkla orantılı)
+  onarimOrani: 0.025,         // tam onarım = yapı maliyetinin %2,5'i (eksik sağlıkla orantılı; yapılar YAPI_OLCEK'le büyüdü)
   gunMs: dk(24 * 60),
 };
 
@@ -546,13 +551,13 @@ const NPC_PAZAR = {
 
 // Parsel birleştirme (tevhit): aynı sahibin, aynı mahalle ve imardaki yan yana kare parselleri tek parsel olur
 const BIRLESTIRME = {
-  harc: 25,        // birleştirme başına tescil harcı (oyun birimi; ₺250.000)
+  harc: 25,        // birleştirme başına tescil harcı (₺7.500)
   maksParca: 4,    // birleşik parsel en çok bu kadar hücreden oluşur
 };
 
 const HESAP = {
-  baslangicBakiye: 500,
-  baslangicHediyeUst: 300,   // başlangıç tarlası hediyesi en çok bu kadar (kıyıdaki pahalı tarlada farkı oyuncu öder)
+  baslangicBakiye: 10000,    // ₺3 milyon
+  baslangicHediyeUst: 10000, // ₺3 milyon: başlangıç tarlası hediyesi en çok bu kadar (kıyıdaki pahalı tarlada farkı oyuncu öder)
   maxParsel: 8,         // §10.3 tekel/arsa kapama: hesap başı limit
   maxParselMahalle: 4,
   minYas: 13,           // 13 yaş altı kayıt olamaz
@@ -606,7 +611,7 @@ const HAVA = {
 const PAZAR = {
   ucretOrani: 0.05,            // satıcıdan kesilen, açıkça gösterilen işlem masrafı (oyundan çıkar)
   minUcret: 1,
-  maxFiyat: 100000,
+  maxFiyat: 5_000_000,         // ₺1,5 milyar
   ilanSureleri: [1, 3, 7],     // gün
   aliciKosullari: {
     HERKES:      { ad: 'Herkes',                  yasMs: 0 },
@@ -705,7 +710,7 @@ const KOZMETIK = {
 const LOJISTIK = {
   limanlar: ['34', '35', '33', '07', '61', '55', '41', '10', '16', '31', '48', '17', '53', '52', '01', '09', '22', '59', '57', '28', '74', '78', '81', '08'],
   modlar: {
-    // Denge: 600 km kara ≈ birim başına 0,36 birim (₺3.600) — sıradan ürünü taşımak kârsız, yöresel/işlenmiş ürünü uzak büyükşehre taşımak kârlı
+    // Denge: 600 km kara ≈ birim başına 0,36 birim (≈ ₺110) — sıradan ürünü taşımak kârsız, yöresel/işlenmiş ürünü uzak büyükşehre taşımak kârlı
     KARA:  { ad: 'Kara (kamyon)', kmUcret: 0.0006, sabit: 3, hizKmSaat: 70 },
     DENIZ: { ad: 'Deniz (gemi)',  kmUcret: 0.00025, sabit: 8, hizKmSaat: 30, limanGerekli: true },
   },
@@ -744,7 +749,7 @@ const NUFUS = {
   sohbetYanitMs: [3000, 9000], // gerçek oyuncunun mesajına yanıt gecikmesi
   sohbetYanitAraligiMs: 60_000,          // mahalle başına en sık yanıt
   sohbetKendiliginden: dk(120),          // mahalle başına kendiliğinden sohbet aralığı
-  baslangicBakiye: 500,
+  baslangicBakiye: 10000,
 };
 
-module.exports = { BIRLESTIRME, IHALE, FIYAT_ALARMI, GUNLUK_SANDIK, MINI_ETKINLIK, IMECE, YARDIM, KOLEKSIYON, SEVIYE_KILIDI, SIYASI_EYLEMLER, BULMACA, KOY_MEYDANI, HASAT_YARISI, MEVSIM_YOLU, PIYASA, CARSI, KOMSULUK, YORESEL, YORESEL_KURAL, BALIK, ETKINLIKLER, HATIRLATMA, HAYVANLAR, YEM_FIYATI, SEVIYE, GUNLUK_ODUL, SIPARIS, SUSLER, SUS_MAKS, NUFUS, LOJISTIK, KIRA, ORTAKLIK, AFET, KOZMETIK, RECETELER, MESLEKLER, MESLEK, KOOPERATIF, LIG, MEVSIMLER, HAVA, BOLGE, BOZULMA, BAKIM, BORSA, MODERASYON, YASAL, ROLLER, BIRIM, OYUN_HIZI, IMAR, IMAR_KAYNAK_NOTU, IL_CEKICILIK, YERLESIM_CEKICILIK, YAPILAR, URUNLER, TARIM, NPC_PAZAR, PAZAR, HESAP, GOREVLER };
+module.exports = { ARSA_OLCEK, YAPI_OLCEK, BIRLESTIRME, IHALE, FIYAT_ALARMI, GUNLUK_SANDIK, MINI_ETKINLIK, IMECE, YARDIM, KOLEKSIYON, SEVIYE_KILIDI, SIYASI_EYLEMLER, BULMACA, KOY_MEYDANI, HASAT_YARISI, MEVSIM_YOLU, PIYASA, CARSI, KOMSULUK, YORESEL, YORESEL_KURAL, BALIK, ETKINLIKLER, HATIRLATMA, HAYVANLAR, YEM_FIYATI, SEVIYE, GUNLUK_ODUL, SIPARIS, SUSLER, SUS_MAKS, NUFUS, LOJISTIK, KIRA, ORTAKLIK, AFET, KOZMETIK, RECETELER, MESLEKLER, MESLEK, KOOPERATIF, LIG, MEVSIMLER, HAVA, BOLGE, BOZULMA, BAKIM, BORSA, MODERASYON, YASAL, ROLLER, BIRIM, OYUN_HIZI, IMAR, IMAR_KAYNAK_NOTU, IL_CEKICILIK, YERLESIM_CEKICILIK, YAPILAR, URUNLER, TARIM, NPC_PAZAR, PAZAR, HESAP, GOREVLER };
