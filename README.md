@@ -2,7 +2,7 @@
 
 Yaşayan dijital ülke simülasyonu. **81 ilin tamamı açık**: gerçek Türkiye haritası üzerinde herhangi bir köye, mahalleye yakınlaşıp parsel edinebilir, tarla ekip yapı kurabilir, oyuncular arası pazarda alım satım yapabilirsin. Harita 2B ve 3B görünümlüdür.
 
-> Sanal parseller gerçek tapu değildir; oyun içi kullanım hakkıdır. Akçe (₳) nakde çevrilemez. İmar türleri gerçek arazi kullanımından türetilmiş oyun kuralıdır, resmî imar planı değildir.
+> Sanal parseller gerçek tapu değildir; oyun içi kullanım hakkıdır. Oyundaki TL (₺) bir oyun parasıdır, gerçek para değildir ve nakde çevrilemez. İmar türleri gerçek arazi kullanımından türetilmiş oyun kuralıdır, resmî imar planı değildir.
 
 ## Çalıştırma
 
@@ -32,6 +32,22 @@ Ortam değişkenleri (v0.6 eklemeleri): `TABAN_URL` (e-posta bağlantıları; ü
 Önceki ortam değişkenleri: `PORT` (3400), `OYUN_HIZI` (1 = tasarım süreleri), `VERI_DIZINI`, `KARO_KAYNAGI=sahte` (ağsız geliştirme/test: imar deseni deterministik, sınırlar gerçek), `NODE_ENV`.
 
 > Not: v0.1–0.2'nin Meram ızgarası ulusal ızgarayla uyumsuz olduğundan eski `data/sanalturkiye.db` dosyası kullanılmaz (silinmedi).
+
+## v0.49 — oyun parası Türk lirası (₺)
+
+Akçe (₳) yerine oyunda her tutar **gerçekçi TL** olarak görünür: arsa, ürün, yapı, ödül, bakiye, ilan ve teklif. Bütün ekonomi tek
+bir katsayıyla büyütüldü (**1 oyun birimi = ₺10.000**, `BIRIM.kat`), böylece oranlar ve oyun dengesi aynı kaldı: Konya'da bir tarla
+≈ ₺400 bin, Bodrum sahilinde konut arsası ≈ ₺45 milyon, başlangıç bakiyesi ₺5 milyon.
+
+- Kurallarda, defterde ve veritabanında tutarlar eskisi gibi oyun birimindedir (kuruş hassasiyeti, geçmiş kayıtlar, testler
+  değişmez); oyuncuya gösterirken çarpılır: sunucu iletileri `server/lib/para.js` (`tl()`), istemci `public/js/yardimci.js`
+  (`akce()`, `TL_KAT`; iki katsayı bir testle eşit tutulur). Para girilen alanlar (ilan fiyatı, teklif, ihale, borsa birim fiyatı,
+  vadeli hesap, kira, kooperatif aidatı) TL alır; `data-para` ile işaretlidir ve gönderilirken oyun birimine çevrilir
+  (`formVerisi`). Bu yüzden girişler ₺10.000'lik (borsa fiyatında ₺100'lük) adımlarla olur.
+- Bu bir **oyun parasıdır**: gerçek para değildir, gerçek parayla alınamaz, nakde çevrilemez. Metinler, Kullanım Koşulları §2
+  (taslak-4, yeniden onay) ve hukuk kontrol listesi buna göre güncellendi; TL adının gerçek para algısı hukukçuya soruldu (madde 5).
+- Not: çiftlik ekonomisi de aynı katsayıyla büyüdüğü için tohum, ürün ve yapı fiyatları gerçek hayattakinden yüksek görünebilir
+  (gerçekte arazi, tarım ürününe göre çok daha değerlidir). Gerekirse çiftlik fiyatları ayrıca dengelenebilir.
 
 ## v0.48 — arsa fiyatı gerçek konuma göre
 

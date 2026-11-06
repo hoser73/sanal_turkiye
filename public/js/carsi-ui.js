@@ -1,6 +1,6 @@
 // Çarşı sekmesi: banka, nalbur, market, zirai bayi. Her türden tek işletme; sponsor markası (ad, logo, renkler) sunucudan gelir ve
 // sponsorlu işletme "Sponsor" etiketiyle gösterilir. Eylemler app.js'deki dağıtıcıdan geçer.
-import { esc, akce, sayi, sure } from './yardimci.js';
+import { esc, akce, sayi, sure, paraGirdisi } from './yardimci.js';
 
 const simdi = () => Date.now();
 const tarihGoster = (ms) => new Date(ms).toLocaleString('tr-TR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
@@ -19,7 +19,7 @@ export function carsiGirisi(c) {
     <p class="alt-yazi">Her türden tek işletme var. Haritada şehir merkezlerinde şubelerini de görebilirsin.</p>
     <div class="carsi-liste">${c.isletmeler.map((m) => `<button type="button" class="carsi-kart" data-eylem="carsi-ac" data-kategori="${m.kategori}">
       ${markaBasligi(m)}<span class="carsi-ne kucuk">${{ BANKA: 'Vadeli hesap', NALBUR: 'Kalıp seti, bakım kiti, örtü, olta takımı', MARKET: 'Yem paketleri, ürün satışı', ZIRAI: 'Gübre, bitki koruma, hayvan aşısı' }[m.kategori]}</span></button>`).join('')}</div>
-    <p class="kucuk">Akçe nakde çevrilemez; çarşıdaki alışverişler ve banka işlemleri yalnızca oyun içindir.</p>`;
+    <p class="kucuk">Oyun parası (TL) nakde çevrilemez; çarşıdaki alışverişler ve banka işlemleri yalnızca oyun içindir.</p>`;
 }
 
 // Dükkân vitrini
@@ -55,7 +55,7 @@ export function bankaHTML(b) {
     <div class="banka-ozet"><div><span class="kucuk">Vadesiz (cüzdan)</span><b>${akce(b.bakiye)}</b></div><div><span class="kucuk">Vadeli</span><b>${akce(b.acikVadeli)}</b></div></div>
     <h3 class="bolum">Vadeli hesap</h3>
     <p class="kucuk">${B.vadeliGun} gün kilitli kalır, vadesinde %${sayi(B.vadeliFaiz * 100)} getiri. Vadeden önce bozarsan getiri yok. Toplam en çok ${akce(B.vadeliMaks)}.</p>
-    <form class="vadeli-form satir"><input type="number" name="tutar" min="${B.vadeliMin}" max="${Math.max(B.vadeliMin, Math.min(b.bakiye, B.vadeliMaks - b.acikVadeli))}" value="${Math.max(B.vadeliMin, Math.min(100, Math.floor(b.bakiye)))}" aria-label="Vadeli tutar">
+    <form class="vadeli-form satir">${paraGirdisi({ name: 'tutar', min: B.vadeliMin, max: Math.max(B.vadeliMin, Math.min(b.bakiye, B.vadeliMaks - b.acikVadeli)), deger: Math.max(B.vadeliMin, Math.min(100, Math.floor(b.bakiye))), ek: 'aria-label="Vadeli tutar (TL)"' })}
       <button class="dugme ince" ${b.bakiye < B.vadeliMin ? 'disabled' : ''}>Vadeli hesap aç</button></form>
     ${vadeliler}
     <p class="kucuk banka-uyari">ℹ️ ${esc(b.uyari)}</p>`;

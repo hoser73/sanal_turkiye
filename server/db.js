@@ -410,7 +410,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS deger_endeksi (
   endeks   REAL NOT NULL,      -- 100 × çarpan (değer ağırlıklı)
   parsel   INTEGER NOT NULL,   -- sahipli parsel sayısı
   islem    INTEGER NOT NULL,   -- o gün gerçekleşen satış
-  hacim    INTEGER NOT NULL,   -- o günkü satış tutarı (akçe)
+  hacim    INTEGER NOT NULL,   -- o günkü satış tutarı (oyun birimi; TL = × BIRIM.kat)
   PRIMARY KEY (tur, bolge_id, gun)
 ) WITHOUT ROWID`);
 // İlk giriş sihirbazı (sihirbaz.js): bitti/atlandı zamanı ve adım ödülleri. Sütun yeni eklendiyse, zaten parseli olan

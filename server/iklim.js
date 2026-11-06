@@ -2,6 +2,7 @@
 // önümüzdeki saatlerin tahmininden erken uyarı, uyarıya karşı tarla örtüsü, güneşli havada hızlı büyüme,
 // rüzgârlı havada hızlı değirmen, kurak illere sulama indirimi ve üst üste afet yaşayana destek.
 const db = require('./db');
+const { tl } = require('./lib/para');
 const L = require('./lib/ledger');
 const { HAVA, AFET, URUNLER } = require('./config/rules');
 const { bulunma } = require('./lib/turkce');
@@ -151,7 +152,7 @@ function afetEtkilenenleri(afetId, kullanicilar, plaka, t = simdi()) {
     if (db.prepare(`SELECT 1 FROM afet_destekleri WHERE user_id = ? AND created_at > ?`).get(userId, t - d.gun * 864e5)) continue;
     db.prepare(`INSERT INTO afet_destekleri (user_id, tutar, created_at) VALUES (?, ?, ?)`).run(userId, d.tutar, t);
     L.odul(userId, d.tutar, `Afet desteği (${d.gun} günde ${say} afet)`);
-    bildir(userId, `🤝 Afet desteği: son ${d.gun} günde ${say} kez hava afetinden etkilendin; hesabına ₳${d.tutar} destek yattı. Sera ve örtü ekinini korur.`, null);
+    bildir(userId, `🤝 Afet desteği: son ${d.gun} günde ${say} kez hava afetinden etkilendin; hesabına ${tl(d.tutar)} destek yattı. Sera ve örtü ekinini korur.`, null);
     verilen.push(userId);
   }
   return verilen;

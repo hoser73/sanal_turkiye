@@ -2,7 +2,9 @@
 // Buradaki imar oranları GERÇEK Meram imar bilgisi DEĞİLDİR; oyun kuralıdır.
 
 // Oyun içi birim: nakde çevrilemeyen oyun puanı (plan §10.1)
-const BIRIM = { kod: 'AKCE', ad: 'akçe', sembol: '₳' };
+// Oyun parası Türk lirası görünümündedir (v0.49): kurallardaki ve defterdeki tutarlar oyun birimidir, oyuncuya kat ile
+// çarpılıp TL gösterilir (lib/para.js). Gerçek para değildir, nakde çevrilemez.
+const BIRIM = { kod: 'TRY', ad: 'TL', sembol: '₺', kat: 10000 };
 
 // Demo hızı: 1 = tasarım süreleri (dakika). Prototipte süreler kısa tutuldu.
 const OYUN_HIZI = Number(process.env.OYUN_HIZI || 1);
@@ -290,7 +292,7 @@ const BALIK = {
 // Ürünler envantere girer, NPC tüccara satılmaz, bozulmaz. "kalici" ürün elde oldukça etkisini sürdürür.
 const CARSI = {
   kategoriler: {
-    BANKA:  { tur: 'Banka', ad: 'Sanal Banka', ikon: '🏦', renk: '#0b5e8c', renk2: '#e6f2fa', slogan: 'Akçen güvende, çiftliğin büyüsün' },
+    BANKA:  { tur: 'Banka', ad: 'Sanal Banka', ikon: '🏦', renk: '#0b5e8c', renk2: '#e6f2fa', slogan: 'Paran güvende, çiftliğin büyüsün' },
     NALBUR: { tur: 'Nalbur / hırdavat', ad: 'Usta Nalbur', ikon: '🔨', renk: '#a5492a', renk2: '#fbeee6', slogan: 'Çividen kamışa her şey' },
     MARKET: { tur: 'Market', ad: 'Mahalle Market', ikon: '🛒', renk: '#2f8a3c', renk2: '#eaf6ec', slogan: 'Taze, ucuz, yakın' },
     ZIRAI:  { tur: 'Zirai bayi ve veteriner', ad: 'Bereket Zirai Bayi', ikon: '🌱', renk: '#5f7d1f', renk2: '#f1f6e4', slogan: 'Bol hasat, sağlıklı sürü' },
@@ -303,8 +305,8 @@ const CARSI = {
     ORGU_MISINA:  { dukkan: 'NALBUR', ad: 'Örgü misina', ikon: '🧵', fiyat: 80, kalici: true, etki: 'Misina dayanımı +%12 (kalıcı)' },
     SAHTE_YEM_TAKIMI: { dukkan: 'NALBUR', ad: 'Sahte yem (rapala)', ikon: '🐟', fiyat: 30, kalici: true, etki: 'Sahte yemle atış ücretsiz; misina koparsa sahte yem kaybolur' },
     YEM_PAKETI:   { dukkan: 'MARKET', ad: 'Hayvan yemi (20 çuval)', ikon: '🌽', fiyat: 20, verir: { YEM: 20 }, etki: 'Besleme başına ödenen yem fiyatından %17 ucuz' },
-    KARIDES_PAKETI: { dukkan: 'MARKET', ad: 'Karides yem (10 atış)', ikon: '🦐', fiyat: 25, verir: { YEM_KARIDES: 10 }, etki: 'Atış başına ₳2,5 (tek tek ₳3)' },
-    MISIR_PAKETI: { dukkan: 'MARKET', ad: 'Mısır yem (10 atış)', ikon: '🌽', fiyat: 8, verir: { YEM_MISIR: 10 }, etki: 'Atış başına ₳0,8 (tek tek ₳1)' },
+    KARIDES_PAKETI: { dukkan: 'MARKET', ad: 'Karides yem (10 atış)', ikon: '🦐', fiyat: 25, verir: { YEM_KARIDES: 10 }, etki: 'Atış başına ₺25.000 (tek tek ₺30.000)' },
+    MISIR_PAKETI: { dukkan: 'MARKET', ad: 'Mısır yem (10 atış)', ikon: '🌽', fiyat: 8, verir: { YEM_MISIR: 10 }, etki: 'Atış başına ₺8.000 (tek tek ₺10.000)' },
     GUBRE:        { dukkan: 'ZIRAI', ad: 'Gübre', ikon: '🧪', fiyat: 12, kullan: 'EKIN', etki: 'Ekili tarlaya ver: hasat %20 fazla' },
     ILAC:         { dukkan: 'ZIRAI', ad: 'Bitki koruma ilacı', ikon: '🛡️', fiyat: 15, kullan: 'EKIN', etki: 'Ekili tarlaya ver: ekin olgunlaşana kadar don, dolu ve sağanaktan korunur' },
     ASI:          { dukkan: 'ZIRAI', ad: 'Hayvan aşısı', ikon: '💉', fiyat: 20, kullan: 'BARINAK', etki: 'Barınağa uygula: 7 gün boyunca her toplamada +1 ürün' },
@@ -544,7 +546,7 @@ const NPC_PAZAR = {
 
 // Parsel birleştirme (tevhit): aynı sahibin, aynı mahalle ve imardaki yan yana kare parselleri tek parsel olur
 const BIRLESTIRME = {
-  harc: 25,        // birleştirme başına tescil harcı (₳)
+  harc: 25,        // birleştirme başına tescil harcı (oyun birimi; ₺250.000)
   maksParca: 4,    // birleşik parsel en çok bu kadar hücreden oluşur
 };
 
@@ -564,7 +566,7 @@ const HESAP = {
 
 // KVKK ve sözleşme metinleri: sürüm değişince oyuncudan yeniden onay istenir
 const YASAL = {
-  KOSULLAR:  { surum: '2026-11-taslak-3', ad: 'Kullanım Koşulları', yol: '/yasal/kullanim-kosullari.html', zorunlu: true },
+  KOSULLAR:  { surum: '2026-11-taslak-4', ad: 'Kullanım Koşulları', yol: '/yasal/kullanim-kosullari.html', zorunlu: true },
   KVKK:      { surum: '2026-11-taslak-3', ad: 'KVKK Aydınlatma Metni', yol: '/yasal/kvkk.html', zorunlu: true },
   PAZARLAMA: { surum: '2026-10-taslak', ad: 'Ticari elektronik ileti izni', yol: '/yasal/kvkk.html#iletiler', zorunlu: false },
 };
@@ -639,7 +641,7 @@ const PIYASA = {
   hazine: {
     oran: 0.85,                     // tahmini değerin bu kadarı
     minTutmaMs: dk(3 * 24 * 60),    // parsel en az bu kadar süredir sahibinde olmalı
-    hediyeTutmaMs: dk(30 * 24 * 60), // başlangıç hediyesi arsa: hesap açıp hediyeyi akçeye çevirmek olmasın
+    hediyeTutmaMs: dk(30 * 24 * 60), // başlangıç hediyesi arsa: hesap açıp hediyeyi paraya çevirmek olmasın
     gunlukSatis: 1,                 // oyuncu başına günde en çok bu kadar Hazine satışı
     ilanGun: 7,                     // Hazine aldığı parseli bugünkü değeriyle pazara koyar
     ad: 'Sanal Türkiye Hazinesi',
@@ -703,7 +705,7 @@ const KOZMETIK = {
 const LOJISTIK = {
   limanlar: ['34', '35', '33', '07', '61', '55', '41', '10', '16', '31', '48', '17', '53', '52', '01', '09', '22', '59', '57', '28', '74', '78', '81', '08'],
   modlar: {
-    // Denge: 600 km kara ≈ birim başına ₳0,36 — sıradan ürünü taşımak kârsız, yöresel/işlenmiş ürünü uzak büyükşehre taşımak kârlı
+    // Denge: 600 km kara ≈ birim başına 0,36 birim (₺3.600) — sıradan ürünü taşımak kârsız, yöresel/işlenmiş ürünü uzak büyükşehre taşımak kârlı
     KARA:  { ad: 'Kara (kamyon)', kmUcret: 0.0006, sabit: 3, hizKmSaat: 70 },
     DENIZ: { ad: 'Deniz (gemi)',  kmUcret: 0.00025, sabit: 8, hizKmSaat: 30, limanGerekli: true },
   },

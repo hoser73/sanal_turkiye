@@ -10,6 +10,7 @@
 //  • Portföy: her parselin alış bedeli (sahiplik kaydı) + o sahiplik boyunca yapılan yatırım (inşaat, yükseltme,
 //    süs) = maliyet; bugünkü tahmini değer + toplanan kira − maliyet = getiri. Satılan parseller gerçekleşmiş kâr.
 const db = require('./db');
+const { tl } = require('./lib/para');
 const L = require('./lib/ledger');
 const { OyunHatasi } = L;
 const { PIYASA: P, PAZAR, YAPILAR, SUSLER } = require('./config/rules');
@@ -296,7 +297,7 @@ function hazineyeSat(userId, parcelId, govde) {
     const tk = hazineTeklifi(userId, p, t);
     if (!tk.uygun) throw new OyunHatasi(409, tk.sebep, 'HAZINE_UYGUN_DEGIL');
     const gorulen = Number(govde?.teklif);
-    if (govde?.teklif != null && gorulen !== tk.teklif) throw new OyunHatasi(409, `Teklif güncellendi: artık ${tk.teklif} akçe`, 'TEKLIF_DEGISTI');
+    if (govde?.teklif != null && gorulen !== tk.teklif) throw new OyunHatasi(409, `Teklif güncellendi: artık ${tl(tk.teklif)}`, 'TEKLIF_DEGISTI');
     const hz = hazineId(false);
     if (!hz) throw new OyunHatasi(503, 'Hazine hazır değil');
     const o = hazirla(`SELECT price, start_at FROM parcel_ownership WHERE parcel_id = ? AND end_at IS NULL`).get(p.id);
@@ -357,7 +358,7 @@ function piyasaOzeti() {
     yukselenler: mahalleler.filter((m) => m.degisim7 > 0).sort((a, b) => b.degisim7 - a.degisim7 || b.endeks - a.endeks).slice(0, 8),
     degerliler: [...mahalleler].sort((a, b) => b.endeks - a.endeks).slice(0, 8),
     islem30: { sayi: islem30.c, hacim: islem30.s },
-    not: 'Endeks 100 = taban arsa bedeli seviyesi. Talep, mahalledeki yatırımlar ve gerçek satışlardan hesaplanır. Oyun içi göstergedir; akçe nakde çevrilmez.',
+    not: 'Endeks 100 = taban arsa bedeli seviyesi. Talep, mahalledeki yatırımlar ve gerçek satışlardan hesaplanır. Oyun içi göstergedir; oyun parası (TL) gerçek para değildir, nakde çevrilmez.',
   };
 }
 

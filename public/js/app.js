@@ -2,7 +2,7 @@ import './uygulama.js';   // iOS uygulamasında (Flutter kabuğu) çalışıyors
 import { emojiYedeginiKur } from './emoji.js';
 import { sihirbazKur } from './sihirbaz.js';
 emojiYedeginiKur();   // cihaz emoji çizemiyorsa (ör. iOS Simülatörü) emojiler görsele döner
-import { api, esc, sayi, akce, sure, zamanOnce, tost, ApiHatasi, tamlayan, sayiBulunma, konumCipleri } from './yardimci.js';
+import { api, esc, sayi, akce, sure, zamanOnce, tost, ApiHatasi, tamlayan, sayiBulunma, konumCipleri, paraGirdisi, formVerisi } from './yardimci.js';
 import { endeksGrafigi, degisimCipi, kisaTarih } from './grafik.js';
 import { yolBolumu } from './yol-ui.js';
 import { haritaKur } from './harita.js';
@@ -57,7 +57,7 @@ const AKIS_METIN = {
   SHIPMENT_SENT: (a) => ['🚚', `<b>${esc(a.aktor)}</b> ${esc(urunAd(a.after?.urun))} sevkiyatı yola çıkardı`],
   SHIPMENT_DELIVERED: (a) => ['📦', `<b>${esc(a.aktor)}</b> ${a.after?.miktar} ${esc(urunAd(a.after?.urun))} teslim etti`],
   LEASE_STARTED: (a) => ['🔑', `<b>${esc(a.aktor)}</b> bir tarla kiraladı (${a.after?.gun} gün)`],
-  LEASE_OFFERED: (a) => ['🏷️', `<b>${esc(a.aktor)}</b> tarlasını kiraya verdi: ₳${a.after?.gunluk}/gün`],
+  LEASE_OFFERED: (a) => ['🏷️', `<b>${esc(a.aktor)}</b> tarlasını kiraya verdi: ${akce(a.after?.gunluk)}/gün`],
   COOP_FOUNDED: (a) => ['🤝', `<b>${esc(a.aktor)}</b> “${esc(a.after?.ad)}” kooperatifini kurdu`],
   COOP_JOINED: (a) => ['🤝', `<b>${esc(a.aktor)}</b> “${esc(a.after?.ad)}” kooperatifine katıldı`],
   LANDMARK_COLLECTED: (a) => ['📔', `<b>${esc(a.aktor)}</b> ${esc(a.after?.simge)} kartını topladı`],
@@ -457,7 +457,7 @@ function ustCiz() {
   $('#girisDugme').hidden = !!b;
   $('#kullanici').hidden = !b;
   if (b) {
-    $('#bakiyeDeger').textContent = sayi(b.bakiye);
+    $('#bakiyeDeger').textContent = akce(b.bakiye).slice(1);   // sembol ayrı (₺)
     $('#kullaniciAd').innerHTML = `${avatarSVG(b.hesap?.avatar, 26)}<span>${esc(b.kullanici.ad)}</span>`;
     const kalan = b.gorevler.filter((g) => !g.tamam).length + (b.seviye?.odulBekleyen ? 1 : 0) + (b.gunlukOdul ? 1 : 0);
     $('#gorevRozet').hidden = !kalan;
@@ -471,12 +471,12 @@ function ustCiz() {
     }
     const pz = b.pazar;
     $('#kilitli').hidden = !pz.kilitli;
-    $('#kilitliDeger').textContent = sayi(pz.kilitli);
+    $('#kilitliDeger').textContent = akce(pz.kilitli);
     $('#bildirimRozet').hidden = !pz.okunmamis;
     $('#bildirimRozet').textContent = pz.okunmamis > 99 ? '99+' : pz.okunmamis;
     $('#pazarRozet').hidden = !pz.gelenTeklif;
     $('#pazarRozet').textContent = pz.gelenTeklif;
-    $('#bakiye').title = `Kullanılabilir: ${sayi(b.bakiye)} akçe${pz.kilitli ? ` · Tekliflerde kilitli: ${sayi(pz.kilitli)} akçe` : ''}. Akçe nakde çevrilemez.`;
+    $('#bakiye').title = `Kullanılabilir: ${akce(b.bakiye)}${pz.kilitli ? ` · Tekliflerde kilitli: ${akce(pz.kilitli)}` : ''}. Oyun parasıdır, nakde çevrilemez.`;
   } else {
     $('#gorevRozet').hidden = true;
     $('#pazarRozet').hidden = true;
@@ -559,12 +559,12 @@ const stokta = (kod) => (durum.ben?.envanter || []).find((i) => i.item_id === ko
 
 const girisIste = (metin) => `
   <div class="bos-durum"><div class="buyuk-ikon">🗝️</div><h3>${metin}</h3>
-  <p>Ücretsiz hesap aç, 500 akçe hoş geldin hibesiyle başla.</p>
+  <p>Ücretsiz hesap aç, ${akce(500)} hoş geldin hibesiyle başla.</p>
   <button class="dugme birincil" data-eylem="giris-ac">Ücretsiz başla</button></div>`;
 
 // ---------- Parsel kartı ----------
 const FIYAT_OLAY = { TAHSIS: ['🏷️', 'Tahsis'], SATIS: ['🤝', 'Satış'], HAZINE: ['🏛️', 'Hazine aldı'], BASLANGIC: ['🌱', 'Başlangıç'] };
-// Sahibine: Hazine'nin alım teklifi (kâr her zaman akçeye döner); uygun değilse sebebi
+// Sahibine: Hazine'nin alım teklifi (kâr her zaman paraya döner); uygun değilse sebebi
 function hazineKutusu(h, g) {
   if (!h) return '';
   const kar = g ? h.teklif + g.kira - g.maliyet : null;
@@ -572,7 +572,7 @@ function hazineKutusu(h, g) {
     <div class="satir"><div><b>${akce(h.teklif)}</b>
       ${kar != null ? `<div class="kucuk ${kar >= 0 ? 'arti' : 'eksi'}">Satarsan ${kar >= 0 ? 'kâr +' : 'zarar −'}${akce(Math.abs(kar))}</div>` : ''}</div>
       <button type="button" class="dugme ince" data-eylem="hazineye-sat" data-teklif="${h.teklif}" ${h.uygun ? '' : 'disabled'}>Hazine'ye sat</button></div>
-    ${h.uygun ? '<p class="kucuk">Alıcı beklemeden anında akçe. Parsel, yapıları ve süsleriyle Hazine\'ye geçer.</p>'
+    ${h.uygun ? '<p class="kucuk">Alıcı beklemeden anında para. Parsel, yapıları ve süsleriyle Hazine\'ye geçer.</p>'
       : `<p class="sebep">${esc(h.sebep)}${h.acilis ? ` · <span data-bitis="${h.acilis}">${sure(h.acilis - sunucuSimdi())}</span> sonra` : ''}</p>`}
     <p class="kucuk">Teklifte kendi parsellerin ve yatırımların mahalle endeksine sayılmaz. Daha yüksek fiyat için pazarda ilana çıkarabilirsin.</p></div>`;
 }
@@ -784,7 +784,7 @@ function kiraBolumu(k, ben) {
     p.push(r.sahibiyim ? `<button class="bag tehlike" data-eylem="kira-iptal" data-id="${r.id}">Teklifi geri çek</button>`
       : `<button class="dugme ince birincil" data-eylem="kirala" data-id="${r.id}" data-toplam="${r.gunluk * r.gun}" ${durum.ben.bakiye < r.gunluk * r.gun ? 'disabled' : ''}>Kirala (${akce(r.gunluk * r.gun)})</button>`);
   } else if (ben) {
-    p.push(`<details class="acilir"><summary>Kiraya ver</summary><form class="form satir kira-form"><label>₳/gün<input name="gunluk" type="number" min="1" value="10" required></label>
+    p.push(`<details class="acilir"><summary>Kiraya ver</summary><form class="form satir kira-form"><label>₺/gün${paraGirdisi({ name: 'gunluk', min: 1, deger: 10, ek: 'required' })}</label>
       <label>Gün<input name="gun" type="number" min="1" max="30" value="3" required></label><button class="dugme ince">Teklif aç</button></form>
       <p class="kucuk">Kiracı bedeli peşin öder; süre boyunca ekim, sulama ve hasat onda olur. Sahiplik sende kalır, kirada satış yapılamaz.</p></details>`);
   }
@@ -927,7 +927,7 @@ async function arazilerimPaneli() {
   parcalar.push(`<p class="kucuk hesap-satiri">${esc(b.kullanici.ad)} olarak oynuyorsun · <button type="button" class="bag" data-eylem="hesap-ac">Hesabım ve gizlilik</button> · <button type="button" class="bag" data-eylem="cikis">Çıkış yap</button></p>`);
   parcalar.push(`<h3 class="bolum">Cüzdan hareketleri</h3>${durum.cuzdan
     ? `<table class="tablo">${durum.cuzdan.map((c) => `<tr><td>${esc(c.reason)}<div class="kucuk">${zamanOnce(c.created_at)}</div></td>
-        <td class="${c.tutar >= 0 ? 'arti' : 'eksi'}">${c.tutar >= 0 ? '+' : ''}${sayi(c.tutar)}</td></tr>`).join('')}</table>`
+        <td class="${c.tutar >= 0 ? 'arti' : 'eksi'}">${c.tutar >= 0 ? '+' : '−'}${akce(Math.abs(c.tutar))}</td></tr>`).join('')}</table>`
     : '<p class="kucuk">Yükleniyor…</p>'}`);
   return parcalar.join('');
 }
@@ -995,8 +995,8 @@ async function gorevlerPaneli() {
     <div style="margin-top:8px">${g.map((x) => `
       <div class="gorev ${x.tamam ? 'tamam' : ''}"><span class="tik">${x.tamam ? '✓' : ''}</span>
         <div style="flex:1"><b>${esc(x.ad)}</b><div class="kucuk">${esc(x.ipucu)}</div></div>
-        <span class="kucuk">+${x.odul} ₳</span></div>`).join('')}</div>
-    <p class="kucuk" style="margin-top:14px">Görev ödülleri oyun içi akçedir; nakde çevrilemez.</p>`;
+        <span class="kucuk">+${akce(x.odul)}</span></div>`).join('')}</div>
+    <p class="kucuk" style="margin-top:14px">Görev ödülleri oyun parasıdır (TL); nakde çevrilemez.</p>`;
 }
 
 // Günlük görevler kartı (Çiftlik sekmesinin başında)
@@ -1068,8 +1068,8 @@ async function parselSec(id, { haritadan = false } = {}) {
 }
 
 function gorevTostu(r) {
-  // Tur sürerken başlangıç görevleri ödül vermez (tur verir): "+0 ₳" bildirimi gösterilmez
-  if (r?.gorev?.odul > 0) setTimeout(() => tost(`🎯 Görev tamamlandı: ${r.gorev.ad} (+${r.gorev.odul} ₳)`, 'gorev'), 500);
+  // Tur sürerken başlangıç görevleri ödül vermez (tur verir): "+₺0" bildirimi gösterilmez
+  if (r?.gorev?.odul > 0) setTimeout(() => tost(`🎯 Görev tamamlandı: ${r.gorev.ad} (+${akce(r.gorev.odul)})`, 'gorev'), 500);
 }
 
 async function eylem(yol, govde, basariMesaji) {
@@ -1417,7 +1417,7 @@ $('#panelIcerik').addEventListener('input', (e) => {
 });
 
 $('#panelIcerik').addEventListener('submit', (e) => {
-  const v = (form) => Object.fromEntries(new FormData(form));
+  const v = formVerisi;   // para alanları (data-para) TL'den oyun birimine çevrilir
   const pid = durum.secili && encodeURIComponent(durum.secili);
   // Çarşı: satın alma ve banka
   if (e.target.matches('.carsi-al-form')) {
@@ -1432,7 +1432,7 @@ $('#panelIcerik').addEventListener('submit', (e) => {
   }
   if (e.target.matches('.ihale-form')) {
     e.preventDefault();
-    return eylem(`/api/ihale/${e.target.dataset.id}/teklif`, { tutar: Number(v(e.target).tutar) }, (r) => `🔨 Teklifin ₳${r.tutar}; ihalede şu an öndesin`);
+    return eylem(`/api/ihale/${e.target.dataset.id}/teklif`, { tutar: Number(v(e.target).tutar) }, (r) => `🔨 Teklifin ${akce(r.tutar)}; ihalede şu an öndesin`);
   }
   if (e.target.matches('.yardim-form')) {
     e.preventDefault();

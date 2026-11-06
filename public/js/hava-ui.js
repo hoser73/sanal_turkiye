@@ -34,7 +34,7 @@ export function havaPenceresi(b) {
       <li>❄️ Don dona hassas ekinin (domates, çay) verimini düşürür; 🧊 dolu ve 🌊 sağanak açık tarlaya zarar verir.</li>
       <li>⛺ Tarla örtüsü 12 saat dona, doluya ve sağanağa karşı korur; sera her zaman korur.</li>
       <li>🏜️ Son 7 günde neredeyse hiç yağış almayan ilde elle sulama %30 ucuzdur.</li>
-      <li>🤝 7 günde ikinci kez afetten etkilenen doğrulanmış (en az 7 günlük) hesaba ₳${d.tutar} afet desteği yatar (haftada bir).
+      <li>🤝 7 günde ikinci kez afetten etkilenen doğrulanmış (en az 7 günlük) hesaba ${akce(d.tutar)} afet desteği yatar (haftada bir).
         ${d.etkilenme ? `Son ${d.gun} günde ${d.etkilenme} kez etkilendin.` : ''}</li>
     </ul></div>`;
 }

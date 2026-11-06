@@ -115,3 +115,14 @@ test('başlangıç hediyesi en çok üst sınır kadar; pahalı tarlada farkı o
   assert.equal(r.hediye, HESAP.baslangicHediyeUst);
   assert.equal(Math.round((once - L.bakiye(uid)) * 100) / 100, tahsis - HESAP.baslangicHediyeUst - (r.gorev?.odul || 0), 'oyuncu yalnızca hediyeyi aşan kısmı öder (ilk parsel görevi ödülü ayrı)');
 });
+
+test('para birimi: oyun birimi ekranda TL (₺) gösterilir; istemci ve sunucu katsayısı aynı', () => {
+  const { BIRIM } = require('../server/config/rules');
+  const { tl, tlDegeri } = require('../server/lib/para');
+  assert.deepEqual([BIRIM.sembol, BIRIM.kat], ['₺', 10000]);
+  assert.equal(tl(108), '₺1.080.000');
+  assert.equal(tl(0.36), '₺3.600', 'kuruş hassasiyetindeki oyun birimi tam TL olur');
+  assert.equal(tlDegeri('12.5'), 125000);
+  const istemci = fs.readFileSync(require('path').join(__dirname, '../public/js/yardimci.js'), 'utf8');
+  assert.match(istemci, new RegExp(`export const TL_KAT = ${BIRIM.kat};`));
+});

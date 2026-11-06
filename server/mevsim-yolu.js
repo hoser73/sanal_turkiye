@@ -3,6 +3,7 @@
 // MEVSIM_YOLU.gunlukTavan kayıt sayılır (tek tek satarak kasılmasın). Kademe ödülü elle alınır: akçe, eşya (envanter)
 // ya da yalnızca yolda kazanılan kozmetik. Mevsim bitince puan sıfırdan başlar (eski dönemin alınmamış ödülleri yanar).
 const db = require('./db');
+const { tl } = require('./lib/para');
 const L = require('./lib/ledger');
 const { OyunHatasi } = L;
 const { MEVSIM_YOLU: Y, MEVSIMLER, URUNLER, KOZMETIK } = require('./config/rules');
@@ -42,7 +43,7 @@ function odulYazisi(o) {
   const p = [];
   if (o.kozmetik) p.push({ ikon: KOZMETIK[o.kozmetik].tur === 'cati' ? '🏠' : KOZMETIK[o.kozmetik].tur === 'bayrak' ? '🚩' : '🎖️', metin: KOZMETIK[o.kozmetik].ad, ozel: true });
   if (o.esya) p.push({ ikon: URUNLER[o.esya[0]]?.ikon || '📦', metin: `${o.esya[1]} ${URUNLER[o.esya[0]]?.ad || o.esya[0]}` });
-  if (o.akce) p.push({ ikon: '₳', metin: `${o.akce} akçe` });
+  if (o.akce) p.push({ ikon: '₺', metin: `${tl(o.akce)}` });
   return p;
 }
 

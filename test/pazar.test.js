@@ -80,7 +80,7 @@ test('parsel kartı: satıcı teklif sahiplerini görür, diğerleri anonim', as
   assert.ok(adlar.includes('Cem'), 'kendi teklifini adıyla görür');
   assert.equal(c.ilan.benimTeklifim.tutar, 120);
   const bildirim = (await A('/api/bildirimler')).veri;
-  assert.ok(bildirim.some((b) => /Bora ₳150/.test(b.text)));
+  assert.ok(bildirim.some((b) => /Bora ₺1\.500\.000/.test(b.text)), "bildirimde tutar TL olarak (150 × 10.000)");
 });
 
 test('kabul: atomik devir, masraf, diğer tekliflerin iadesi, yapı ve ekin devri', async () => {

@@ -4,6 +4,7 @@
 // kademenin ödülünü alır (katkısı sonradan yetişen ortak geçilmiş kademeleri o an alır). Pasif ortak bırakılabilir; haftada
 // en çok haftalikOrtak ortaklık kurulur. Demo komşu ortak olabilir (yalnız oynayan da imece yapsın) ama ödül almaz.
 const db = require('./db');
+const { tl } = require('./lib/para');
 const L = require('./lib/ledger');
 const { OyunHatasi } = L;
 const { IMECE: I, LIG, URUNLER } = require('./config/rules');
@@ -59,7 +60,7 @@ function oduller(i) {
       const tx = L.yeniTx();
       L.odul(userId, k.akce, `İmece ${n + 1}. kademe`, tx);
       if (k.esya) L.envanterDegis(userId, k.esya[0], k.esya[1], `İmece ${n + 1}. kademe`, tx);
-      bildir(userId, `🤝 İmece ${n + 1}. kademe tamam! +${k.akce} akçe${k.esya ? ` ve ${k.esya[1]} ${URUNLER[k.esya[0]].ad}` : ''}`);
+      bildir(userId, `🤝 İmece ${n + 1}. kademe tamam! +${tl(k.akce)}${k.esya ? ` ve ${k.esya[1]} ${URUNLER[k.esya[0]].ad}` : ''}`);
     });
   }
 }

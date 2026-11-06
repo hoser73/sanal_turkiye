@@ -1,6 +1,6 @@
 // Hesabım: güvenlik (parola, iki adımlı doğrulama, oturumlar), gizlilik (KVKK onayları, veri indirme, hesap silme),
 // oyun süresi hatırlatıcısı, e-posta doğrulama şeridi ve şikâyet penceresi.
-import { api, esc, tost, zamanOnce } from './yardimci.js';
+import { api, esc, tost, zamanOnce, akce } from './yardimci.js';
 import { pushDestekli, pushDurumu, pushAc, pushKapat } from './canli.js';
 import { passkeyDestekli, passkeyOlustur, iptalMi } from './webauthn.js';
 import { avatarSVG, avatarCoz, avatarKod, TENLER, SACLAR, BASLIKLAR, GIYSILER } from './avatar.js';
@@ -210,11 +210,11 @@ function oyunAyarlari(h) {
       <button class="dugme">Kaydet</button></form>
     </section>
     <section><h3>Kozmetikler</h3>
-      <p class="kucuk">Oyun avantajı vermez; parselinin 3B görünümünü ve adının yanındaki unvanı değiştirir. Akçeyle alınanlar oyundan çıkar.</p>
+      <p class="kucuk">Oyun avantajı vermez; parselinin 3B görünümünü ve adının yanındaki unvanı değiştirir. Oyun parasıyla alınanlar oyundan çıkar.</p>
       ${['cati', 'bayrak', 'unvan'].map((tur) => `<div class="koz-grup"><b>${{ cati: 'Çatı rengi', bayrak: 'Flama', unvan: 'Unvan' }[tur]}</b><div class="secenekler">
         <button type="button" class="cip-dugme" data-h="koz-sec" data-tur="${tur}" data-kod="" aria-pressed="${!kozmetikler.some((k) => k.tur === tur && k.secili)}">Varsayılan</button>
         ${kozmetikler.filter((k) => k.tur === tur).map((k) => `<button type="button" class="cip-dugme" ${k.sahip ? `data-h="koz-sec" data-tur="${tur}" data-kod="${k.kod}"` : k.fiyat ? `data-h="koz-al" data-kod="${k.kod}"` : 'disabled'}
-          aria-pressed="${k.secili}" title="${esc(k.kilit || '')}">${k.renk ? `<span class="koz-renk" style="background:${k.renk}"></span>` : ''}${esc(k.ad)}${k.sahip ? '' : k.fiyat ? ` · ₳${k.fiyat}` : ' 🔒'}</button>`).join('')}
+          aria-pressed="${k.secili}" title="${esc(k.kilit || '')}">${k.renk ? `<span class="koz-renk" style="background:${k.renk}"></span>` : ''}${esc(k.ad)}${k.sahip ? '' : k.fiyat ? ` · ${akce(k.fiyat)}` : ' 🔒'}</button>`).join('')}
       </div></div>`).join('')}
     </section>
     <section><h3>Rozetler</h3>

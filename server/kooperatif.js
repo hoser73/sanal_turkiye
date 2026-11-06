@@ -2,6 +2,7 @@
 // üye aidat yatırır, başkan kasayı üyelere eşit dağıtır. Aktif (3+ üyeli) kooperatif üyeleri tüccara satışta fiyat primi
 // ve küçük bir hasat primi alır. Bir oyuncu aynı anda tek kooperatife üye olabilir.
 const db = require('./db');
+const { tl } = require('./lib/para');
 const L = require('./lib/ledger');
 const { KOOPERATIF } = require('./config/rules');
 const { icerikDenetle } = require('./lib/icerik');
@@ -103,7 +104,7 @@ const dagit = db.transaction((userId, tutar) => {
   const tx = L.yeniTx();
   for (const u of uyeler) {
     L.aktar({ kaynak: kasa(k.id), hedef: L.hesap(u.user_id), tutar: pay, sebep: `Kooperatif dağıtımı: ${k.ad}`, tx });
-    if (u.user_id !== userId) bildir(u.user_id, `${k.ad} kooperatifi kasasından ₳${pay} payın hesabına geçti.`, null);
+    if (u.user_id !== userId) bildir(u.user_id, `${k.ad} kooperatifi kasasından ${tl(pay)} payın hesabına geçti.`, null);
   }
   L.denetim({ aktor: userId, eylem: 'COOP_DISTRIBUTED', varlik: `KOOP:${k.id}`, sonra: { pay, uye: uyeler.length } });
   return { tamam: true, pay, uye: uyeler.length };

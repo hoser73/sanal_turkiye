@@ -38,7 +38,7 @@ function htmlSablon({ baslik, paragraflar = [], dugme = null, not = null }) {
 <tr><td style="padding:22px 28px 6px;font-size:13px;letter-spacing:.08em;color:#c8402e;font-weight:700">SANAL TÜRKİYE</td></tr>
 <tr><td style="padding:4px 28px 0"><h1 style="margin:0 0 16px;font-family:Georgia,serif;font-size:22px;color:#1f2a2e">${kacis(baslik)}</h1>${p}${d}
 ${not ? `<p style="margin:18px 0 0;font-size:12px;color:#66706f">${kacis(not)}</p>` : ''}</td></tr>
-<tr><td style="padding:18px 28px 22px;font-size:11px;color:#8a918f;border-top:1px solid #efe9dc">Bu ileti Sanal Türkiye hesabınla ilgili olduğu için gönderildi. Sanal parseller gerçek tapu değildir; akçe nakde çevrilemez.</td></tr>
+<tr><td style="padding:18px 28px 22px;font-size:11px;color:#8a918f;border-top:1px solid #efe9dc">Bu ileti Sanal Türkiye hesabınla ilgili olduğu için gönderildi. Sanal parseller gerçek tapu değildir; oyun parası (TL) gerçek para değildir, nakde çevrilemez.</td></tr>
 </table></td></tr></table></body></html>`;
 }
 

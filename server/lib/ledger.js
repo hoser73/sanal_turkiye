@@ -1,6 +1,7 @@
 // Ekonomi defteri: akçe (çift kayıt) + envanter + denetim kaydı.
 // Bu fonksiyonlar her zaman bir db.transaction İÇİNDE çağrılmalıdır.
 const crypto = require('crypto');
+const { tl } = require('./para');
 const db = require('../db');
 
 class OyunHatasi extends Error {
@@ -42,7 +43,7 @@ function aktar({ kaynak, hedef, tutar, sebep, tx = yeniTx() }) {
   const kaynakUser = kaynak.startsWith('U:') ? Number(kaynak.slice(2)) : null;
   const hedefUser = hedef.startsWith('U:') ? Number(hedef.slice(2)) : null;
   if (kaynakUser && bakiye(kaynakUser) < tutar) {
-    throw new OyunHatasi(402, `Yetersiz bakiye: ${tutar} akçe gerekli`, 'YETERSIZ_BAKIYE');
+    throw new OyunHatasi(402, `Yetersiz bakiye: ${tl(tutar)} gerekli`, 'YETERSIZ_BAKIYE');
   }
   if (kaynak.startsWith('ESCROW:') && hesapBakiye(kaynak) < tutar) {
     throw new Error(`Emanet hesabı tutarsız: ${kaynak}`);   // olmamalı; işlemi geri alır

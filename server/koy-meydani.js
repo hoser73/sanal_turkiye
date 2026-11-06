@@ -3,6 +3,7 @@
 // inşaat süresi dolunca kalıcı bonusu başlar (oran: ilgili tutara çarpan, ek: adet). Bonuslar oyunun ilgili yerlerinde
 // oran(userId, kod) / ek(userId, kod) ile okunur.
 const db = require('./db');
+const { tl } = require('./lib/para');
 const { metin } = require('./lib/girdi');
 const L = require('./lib/ledger');
 const { OyunHatasi } = L;
@@ -28,7 +29,7 @@ function liste(userId, t = Date.now()) {
     const bitis = var_.get(kod);
     const malzeme = Object.entries(b.malzeme).map(([urun, adet]) => ({ urun, ad: URUNLER[urun]?.ad || urun, ikon: URUNLER[urun]?.ikon || '📦', adet, eldeki: L.envanterMiktar(userId, urun) }));
     const durum = bitis == null ? (seviye < b.seviye ? 'KILITLI' : 'YOK') : bitis > t ? 'INSAATTA' : 'HAZIR';
-    const eksik = durum === 'YOK' ? [...(L.bakiye(userId) < b.akce ? [`${b.akce} akçe`] : []), ...malzeme.filter((m) => m.eldeki < m.adet).map((m) => `${m.adet - m.eldeki} ${m.ad}`)] : [];
+    const eksik = durum === 'YOK' ? [...(L.bakiye(userId) < b.akce ? [`${tl(b.akce)}`] : []), ...malzeme.filter((m) => m.eldeki < m.adet).map((m) => `${m.adet - m.eldeki} ${m.ad}`)] : [];
     return { kod, ad: b.ad, ikon: b.ikon, etki: b.etki, seviye: b.seviye, akce: b.akce, sureMs: b.sureMs, malzeme, durum, bitis: bitis ?? null, kalanMs: bitis ? Math.max(0, bitis - t) : null, eksik };
   });
   const kurulu = binalar.filter((b) => b.durum === 'HAZIR').length;

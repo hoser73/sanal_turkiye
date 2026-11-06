@@ -4,7 +4,7 @@
 // Başlangıç bitince şerit yalnızca söylenecek bir ipucu olduğunda görünür. "Göster" ekranı loşlaştırır, hedef düğmeyi
 // parlak bir halka ve zıplayan bir elle gösterir (gerekirse haritayı uçurur). Şerit küçültülebilir; tamamen
 // kapatılabilir (Hesap → Rehberi yeniden başlat).
-import { esc, tost } from './yardimci.js';
+import { esc, tost, akce } from './yardimci.js';
 
 // Başlangıç adımları: görev kodu tamamlanmamışsa sıradaki adım odur (başlık şeritte görünen kısa eylemdir)
 const ADIMLAR = [
@@ -16,7 +16,7 @@ const ADIMLAR = [
     dugme: 'Göster', hedef: '[data-eylem="sula"]', is: 'tarlamaGit' },
   { kod: 'ILK_HASAT', ikon: '🧺', baslik: 'İlk hasadını yap', metin: 'Ekinin olgunlaşınca tarlanın üstünde 🧺 balonu belirir. O zaman <b>Hasat et</b>. Beklerken komşulara göz atabilirsin.',
     dugme: 'Tarlama git', hedef: '[data-eylem="hasat"]', is: 'tarlamaGit' },
-  { kod: 'ILK_SATIS', ikon: '💰', baslik: 'Ürününü pazarda sat', metin: 'Ürünlerini <b>Pazar → Tüccara sat</b> bölümünde sat, akçe kazan; bir kısmını siparişler için sakla.',
+  { kod: 'ILK_SATIS', ikon: '💰', baslik: 'Ürününü pazarda sat', metin: 'Ürünlerini <b>Pazar → Tüccara sat</b> bölümünde sat, para kazan; bir kısmını siparişler için sakla.',
     dugme: 'Göster', hedef: '.sat-form button', is: 'pazar' },
   { kod: 'ILK_YAPI', ikon: '🔨', baslik: 'Çit ya da sulama hattı kur', metin: 'İnşaat atölyesinden bir tel çit ya da sulama hattı kur. Sulama hattı ekinini kendiliğinden sular.',
     dugme: 'Göster', hedef: '[data-eylem="insaat"]:not([disabled])', is: 'tarlamaGit' },
@@ -86,7 +86,7 @@ export function rehberKur({ durum, harita, parselSec, sekmeSec, ciftlikAlt, tarl
     if (kutlama) {
       serit.className = 'gs kutlama';
       serit.innerHTML = `<div class="gs-ana"><span class="gs-ikon">✓</span><span class="gs-yazi"><small>Görev tamam</small><b>${esc(kutlama.baslik)}</b></span>
-        ${kutlama.odul ? `<span class="gs-odul">+${kutlama.odul} ₳</span>` : ''}</div>${ilerlemeCiz()}`;
+        ${kutlama.odul ? `<span class="gs-odul">+${akce(kutlama.odul)}</span>` : ''}</div>${ilerlemeCiz()}`;
       return;
     }
     const h = gosterilen();
@@ -102,7 +102,7 @@ export function rehberKur({ durum, harita, parselSec, sekmeSec, ciftlikAlt, tarl
     const g = adim && gorev(adim.kod);
     const ust = adim ? `Görev ${ADIMLAR.findIndex((x) => x.kod === adim.kod) + 1}/${ADIMLAR.length}` : 'İpucu';
     serit.innerHTML = `<button type="button" class="gs-ana" data-rehber="${acik ? 'kapat-kart' : 'kart'}" aria-expanded="${acik}">
-        <span class="gs-ikon">${h.ikon}</span><span class="gs-yazi"><small>${ust}${g?.odul ? ` · <em>+${g.odul} ₳</em>` : ''}</small><b>${esc(h.baslik)}</b></span>
+        <span class="gs-ikon">${h.ikon}</span><span class="gs-yazi"><small>${ust}${g?.odul ? ` · <em>+${akce(g.odul)}</em>` : ''}</small><b>${esc(h.baslik)}</b></span>
         <span class="gs-ok" aria-hidden="true">${acik ? '▴' : '▾'}</span></button>
       <button type="button" class="gs-goster" data-rehber="goster">${esc(h.dugme)} ›</button>
       <button type="button" class="gs-kucult" data-rehber="${adim ? 'kucult' : 'tamam'}" aria-label="${adim ? 'Küçült' : 'Tamam'}">✕</button>
@@ -117,13 +117,13 @@ export function rehberKur({ durum, harita, parselSec, sekmeSec, ciftlikAlt, tarl
     const g = adim && gorev(adim.kod);
     const biten = ADIMLAR.filter((x) => bitti(x, tamam)).length;
     kart.innerHTML = `<p class="gs-metin">${h.metin}</p>
-      ${g?.odul ? `<div class="gs-odul-kutu">🎁 Bu adımın ödülü <b>+${g.odul} ₳</b></div>` : ''}
+      ${g?.odul ? `<div class="gs-odul-kutu">🎁 Bu adımın ödülü <b>+${akce(g.odul)}</b></div>` : ''}
       <button type="button" class="gs-goster genis" data-rehber="goster">👉 ${esc(h.dugme)}</button>
       ${adim ? `<div class="gs-yol"><div class="gs-yol-ust"><b>📜 Başlangıç yolculuğu</b><span>${biten}/${ADIMLAR.length}</span></div>
         <ol class="gs-liste">${ADIMLAR.map((x) => {
           const gx = gorev(x.kod), b = bitti(x, tamam);
           return `<li class="${b ? 'bitti' : x.kod === adim.kod ? 'simdi' : ''}"><span class="gs-tik">${b ? '✓' : x.ikon}</span>
-            <span class="gs-ad">${esc(x.baslik)}</span>${gx?.odul ? `<span class="gs-odul-cip">+${gx.odul} ₳</span>` : ''}</li>`;
+            <span class="gs-ad">${esc(x.baslik)}</span>${gx?.odul ? `<span class="gs-odul-cip">+${akce(gx.odul)}</span>` : ''}</li>`;
         }).join('')}</ol></div>
         <button type="button" class="gs-bag" data-rehber="kapat">Rehberi kapat</button>`
       : '<button type="button" class="gs-bag" data-rehber="tamam">Anladım, gizle</button>'}`;

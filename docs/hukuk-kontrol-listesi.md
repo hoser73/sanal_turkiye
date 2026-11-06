@@ -23,7 +23,8 @@ onay istenir ve onay kaydı (`yasal_onaylar`) sürümüyle saklanır.
    (mevcut metin: Kullanım Koşulları §4a).
 4. **Siyasi içerik:** Oyun içi seçimler v0.47'de kaldırıldı; gerçek siyasi parti/kişi propagandasının sohbette yasaklanması
    ve moderasyonu (koşullar §4) yeterli mi.
-5. **Sanal varlıklar:** Akçenin nakde çevrilemediği, parsellerin tapu olmadığı, oyun dışı alım satımın yasak olduğu
+5. **Sanal varlıklar:** Oyun parasının (v0.49'dan beri TL görünümünde: ₺, gerçekçi tutarlar) nakde çevrilemediği; TL adı ve
+   simgesinin gerçek para algısı yaratıp yaratmadığı (tüketici mevzuatı, TCMB/ödeme hizmetleri, kumar mevzuatı); parsellerin tapu olmadığı, oyun dışı alım satımın yasak olduğu
    hükümlerinin tüketici mevzuatı ve kumar/şans oyunu mevzuatı karşısında yeterliliği. Gerçek parayla satış (kozmetik vb.)
    eklenecekse mesafeli satış sözleşmesi, ön bilgilendirme ve cayma hakkı metinleri gerekir.
 6. **Harita verisi:** OpenStreetMap türevi veritabanı (imar, mahalleler) için ODbL yükümlülükleri (atıf, paylaşım koşulu);
@@ -37,7 +38,7 @@ onay istenir ve onay kaydı (`yasal_onaylar`) sürümüyle saklanır.
 11. **Sponsor işletmeler (banka, nalbur, market, zirai bayi):** Her türden tek marka. Sözleşmede marka, logo ve şube verisinin
     kullanım lisansı, süresi ve bitince kaldırılacağı yer almalı (sistem bitiş tarihinde markayı kendiliğinden kaldırır).
     Oyunda "Sponsor" etiketiyle gösteriliyor; ticari reklam ve haksız ticari uygulamalar mevzuatı açısından yeterliliği
-    (gizli reklam yasağı) teyit edilmeli. **Banka sponsorluğu:** oyundaki "banka" akçe ile çalışır, nakde çevrilmez; bunun
+    (gizli reklam yasağı) teyit edilmeli. **Banka sponsorluğu:** oyundaki "banka" oyun parasıyla çalışır, nakde çevrilmez; bunun
     gerçek bankacılık, kredi ya da yatırım hizmeti olmadığı metinlerde açıkça yazmalı; banka reklamına ilişkin BDDK/TBB
     düzenlemeleri ve 13–17 yaş oyunculara banka reklamı gösterilmesi değerlendirilmeli (mevcut tasarım: 18 yaş altı oyun içi
     kredi kullanamaz, marka herkese görünür). Sponsorla oyuncu verisi paylaşılmıyor; paylaşılacaksa KVKK aydınlatma ve açık rıza gerekir.

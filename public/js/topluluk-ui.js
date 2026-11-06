@@ -1,5 +1,5 @@
 // Meslek, kooperatif ve koleksiyon albümü (Arazilerim sekmesinin alt bölümleri).
-import { api, esc, sayi, akce, zamanOnce, sure } from './yardimci.js';
+import { api, esc, sayi, akce, zamanOnce, sure, paraGirdisi } from './yardimci.js';
 
 export async function meslekBolumu() {
   const m = await api('/api/meslek');
@@ -77,7 +77,7 @@ export async function kooperatifBolumu({ ben, konum }) {
       <p class="kucuk" style="margin:4px 0 0">${esc(k.il)} · ${k.uyeler.length}/${k.maxUye} üye · kasa <b>${akce(k.kasa)}</b></p>${k.aciklama ? `<p class="kucuk">${esc(k.aciklama)}</p>` : ''}</div>
       ${yd?.uye ? yardimHTML(yd) : ''}
       <h3 class="bolum">Üyeler</h3><ul class="madde">${k.uyeler.map((u) => `<li>${esc(u.ad)}${u.baskan ? ' · <b>başkan</b>' : ''}${u.ben ? ' (sen)' : ''}</li>`).join('')}</ul>
-      <form class="form satir koop-aidat"><label>Ortak kasaya aidat (₳)<input name="tutar" type="number" min="1" value="20"></label><button class="dugme ince">Yatır</button></form>
+      <form class="form satir koop-aidat"><label>Ortak kasaya aidat (₺)${paraGirdisi({ name: 'tutar', min: 1, deger: 20 })}</label><button class="dugme ince">Yatır</button></form>
       ${k.ben.baskan ? `<button class="dugme ince birincil" data-eylem="koop-dagit" ${k.kasa >= 0.01 * k.uyeler.length ? '' : 'disabled'}>Kasayı üyelere eşit dağıt</button>` : ''}
       ${k.hareketler?.length ? `<h3 class="bolum">Kasa hareketleri</h3><table class="tablo">${k.hareketler.map((h) => `<tr><td>${esc(h.reason)}<div class="kucuk">${zamanOnce(h.created_at)}</div></td>
         <td class="${h.credit ? 'arti' : 'eksi'}">${h.credit ? '+' : '−'}${sayi(h.credit || h.debit)}</td></tr>`).join('')}</table>` : ''}

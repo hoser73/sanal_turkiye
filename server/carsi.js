@@ -4,6 +4,7 @@
 // gösterilir (ticari reklam açıkça belirtilir). Şubeler: sponsorun gerçek şube konumları yüklenene kadar her il başkentinin merkezinde bir şube.
 // Banka akçe ile çalışır; akçe nakde çevrilemez, bu gerçek bir bankacılık hizmeti değildir.
 const db = require('./db');
+const { tl } = require('./lib/para');
 const L = require('./lib/ledger');
 const { metin, sayi } = require('./lib/girdi');
 const { CARSI, URUNLER, HAYVANLAR } = require('./config/rules');
@@ -206,15 +207,15 @@ function bankaOzet(userId, t = simdi()) {
   const acikVadeli = vadeliler.filter((v) => v.durum === 'ACIK').reduce((a, v) => a + v.tutar, 0);
   return {
     marka: marka('BANKA'), bakiye: L.bakiye(userId), vadeliler, acikVadeli,
-    kurallar: { ...B }, uyari: 'Akçe nakde çevrilemez; bu bir oyun içi hizmettir, gerçek bankacılık ya da yatırım hizmeti değildir.',
+    kurallar: { ...B }, uyari: 'Oyun parası (TL) gerçek para değildir, nakde çevrilemez; bu bir oyun içi hizmettir, gerçek bankacılık ya da yatırım hizmeti değildir.',
   };
 }
 const vadeliAc = db.transaction((userId, tutar) => {
   require('./ciftlik').seviyeKilidi(userId, 'carsi');
   tutar = sayi(tutar);
-  if (!Number.isInteger(tutar) || tutar < B.vadeliMin) throw new OyunHatasi(400, `Vadeli hesap en az ${B.vadeliMin} akçe`);
+  if (!Number.isInteger(tutar) || tutar < B.vadeliMin) throw new OyunHatasi(400, `Vadeli hesap en az ${tl(B.vadeliMin)}`);
   const acik = db.prepare(`SELECT COALESCE(SUM(tutar), 0) s FROM banka_vadeli WHERE user_id = ? AND durum = 'ACIK'`).get(userId).s;
-  if (acik + tutar > B.vadeliMaks) throw new OyunHatasi(409, `Vadeli hesaplarının toplamı en çok ${B.vadeliMaks} akçe olabilir`);
+  if (acik + tutar > B.vadeliMaks) throw new OyunHatasi(409, `Vadeli hesaplarının toplamı en çok ${tl(B.vadeliMaks)} olabilir`);
   const t = simdi(), tx = L.yeniTx();
   L.aktar({ kaynak: L.hesap(userId), hedef: `BANKA:VADELI:${userId}`, tutar, sebep: `${marka('BANKA').ad}: ${B.vadeliGun} günlük vadeli hesap`, tx });
   const id = db.prepare(`INSERT INTO banka_vadeli (user_id, tutar, faiz, bas, vade) VALUES (?, ?, ?, ?, ?)`).run(userId, tutar, B.vadeliFaiz, t, t + B.vadeliGun * GUN).lastInsertRowid;

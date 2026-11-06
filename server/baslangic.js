@@ -3,6 +3,7 @@
 // kadar akçe "başlangıç hediyesi" olarak verilir ve olağan tahsis (parselEdin) aynı işlemde yapılır — defter tutarlı kalır,
 // ILK_PARSEL görevi de olağan yoldan tamamlanır.
 const db = require('./db');
+const { tl } = require('./lib/para');
 const { metin } = require('./lib/girdi');
 const L = require('./lib/ledger');
 const { OyunHatasi } = L;
@@ -35,7 +36,7 @@ function hediyeEt(userId, id) {
   if (p.area_m2 > ADAY_ALAN_UST) throw new OyunHatasi(422, 'Bu tarla hediye için çok büyük; daha küçük bir tarla seç', 'BUYUK');
   // Hediye tahsis bedeli kadardır, en çok HESAP.baslangicHediyeUst: kıyıdaki ya da şehirdeki pahalı tarlada farkı oyuncu öder
   const tahsis = oyun.tahsisFiyati(p), bedel = auth.tekrarHesapMi(userId) ? 0 : hediyeTutari(tahsis);
-  if (tahsis - bedel > L.bakiye(userId)) throw new OyunHatasi(409, `Bu tarla ${akce(tahsis)}; hediye ${akce(bedel)}, kalanı için bakiyen yetmiyor. Daha uygun bir tarla seç`, 'BAKIYE');
+  if (tahsis - bedel > L.bakiye(userId)) throw new OyunHatasi(409, `Bu tarla ${tl(tahsis)}; hediye ${tl(bedel)}, kalanı için bakiyen yetmiyor. Daha uygun bir tarla seç`, 'BAKIYE');
   return db.transaction(() => {
     if (q.isaretle.run(Date.now(), userId).changes !== 1) throw new OyunHatasi(409, 'Başlangıç tarlanı zaten aldın', 'ALINDI');
     if (bedel > 0) L.odul(userId, bedel, 'Başlangıç tarlası hediyesi');
@@ -46,7 +47,7 @@ function hediyeEt(userId, id) {
   })();
 }
 const hediyeTutari = (tahsis) => Math.min(tahsis, HESAP.baslangicHediyeUst);
-const akce = (v) => `₳${Math.round(v).toLocaleString('tr-TR')}`;
+const akce = (v) => `${tl(Math.round(v).toLocaleString('tr-TR'))}`;
 function hakKontrol(userId) {
   const u = q.kullanici.get(userId);
   if (!u || u.is_npc) throw new OyunHatasi(403, 'Yalnızca oyuncular başlangıç tarlası alabilir');

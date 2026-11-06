@@ -3,7 +3,7 @@
 // 4'lü eşleşme şerit taşı (satırı ya da sütunu temizler), L/T biçimi bohça (3×3 patlar), 5'li eşleşme rozet (seçilen
 // motifin hepsini toplar) bırakır. Ot kaplı karelerdeki taş patlayınca ot bir kat azalır. Hedefler hamle bitmeden
 // tamamlanınca bölüm kazanılır; sonuç sunucuya bildirilir, ödülü sunucu verir.
-import { api, esc, tost } from './yardimci.js';
+import { api, esc, tost, akce } from './yardimci.js';
 import { ses } from './ses.js';
 
 // ---------- Motif çizimleri (40×40 SVG)
@@ -80,7 +80,7 @@ export async function bulmacaAc({ yenile } = {}) {
       <button type="button" class="bm-b ana" data-bm="oyna">▶️ Oyna</button>
       <details class="bm-nasil"><summary>Nasıl oynanır?</summary>
         <p>Komşu iki taşı kaydırıp yer değiştir; yan yana ya da üst üste üç aynı motif patlar. Dörtlü eşleşme <b>şerit</b>, L ya da T biçimi <b>bohça</b>, beşli eşleşme <b>rozet</b> bırakır. Otlu karelerdeki taşı patlatınca ot temizlenir.</p>
-        <p class="bm-kucuk">Günde ${d.gunluk.tavan} bölüm ödül verir; her 5. bölümde gübre, her 10. bölümde kalıp seti. Akçe oyun içidir, nakde çevrilmez.</p></details>
+        <p class="bm-kucuk">Günde ${d.gunluk.tavan} bölüm ödül verir; her 5. bölümde gübre, her 10. bölümde kalıp seti. Oyun parası (TL) oyun içidir, nakde çevrilmez.</p></details>
     </div>`;
   }
 
@@ -115,7 +115,7 @@ export async function bulmacaAc({ yenile } = {}) {
     if (kazandi && r) {
       if (r.odul) { odulAlindi = true; ses('para'); }
       perde.innerHTML = `<div class="bm-sonuc-kutu"><div class="bm-sonuc-bas">Bölüm ${r.seviye} tamam!</div>${yildizlar(r.yildiz, true)}
-        ${r.odul ? `<div class="bm-sonuc-odul"><span class="bm-odul"><i>₳</i>${r.odul.akce} akçe</span>${r.odul.esya ? `<span class="bm-odul"><i>${esc(r.odul.esya.ikon)}</i>${r.odul.esya.adet} ${esc(r.odul.esya.ad)}</span>` : ''}</div>`
+        ${r.odul ? `<div class="bm-sonuc-odul"><span class="bm-odul"><i>₺</i>${akce(r.odul.akce)}</span>${r.odul.esya ? `<span class="bm-odul"><i>${esc(r.odul.esya.ikon)}</i>${r.odul.esya.adet} ${esc(r.odul.esya.ad)}</span>` : ''}</div>`
           : `<p class="bm-kucuk">${r.gunlukDoldu ? 'Bugünkü ödüllü bölümler bitti; yarın yine ödül var.' : ''}</p>`}
         <button type="button" class="bm-b ana" data-bm="menu">Sonraki bölüm</button><button type="button" class="bm-b" data-bm="kapat">Çiftliğe dön</button></div>`;
     } else {

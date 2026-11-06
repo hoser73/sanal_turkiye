@@ -2,6 +2,7 @@
 // Her teklifin tutarı ESCROW:BID:<id> emanet hesabında kilitlenir; devir tek atomik işlemde yapılır (§8.4).
 // Fiyat gösteriminde dört metrik ayrıdır: istenen fiyat, en yüksek teklif, son gerçekleşen işlem, gelişmişlik skoru (§8.5).
 const db = require('./db');
+const { tl } = require('./lib/para');
 const { PAZAR, HESAP, IMAR, YAPILAR, URUNLER } = require('./config/rules');
 const L = require('./lib/ledger');
 const oyun = require('./oyun');
@@ -100,7 +101,7 @@ function teklifleriIadeEt(ilan, yeniDurum, sebep, haricId = null) {
   for (const b of q.aktifTeklifler.all(ilan.id)) {
     if (b.id === haricId) continue;
     if (teklifIade(b, yeniDurum, sebep)) {
-      bildir(b.buyer_id, `${ilan.parcel_id} için ₳${b.amount} teklifin iade edildi: ${sebep}`, `parsel:${ilan.parcel_id}`);
+      bildir(b.buyer_id, `${ilan.parcel_id} için ${tl(b.amount)} teklifin iade edildi: ${sebep}`, `parsel:${ilan.parcel_id}`);
     }
   }
 }
@@ -167,7 +168,7 @@ function devret(ilan, aliciId, fiyat, teklif) {
   if (teklif) {
     if (q.teklifDurum.run('ACCEPTED', t, teklif.id).changes !== 1) throw new OyunHatasi(409, 'Teklif artık geçerli değil');
   } else if (L.bakiye(aliciId) < fiyat) {
-    throw new OyunHatasi(402, `Yetersiz bakiye: ${fiyat} akçe gerekli`, 'YETERSIZ_BAKIYE');
+    throw new OyunHatasi(402, `Yetersiz bakiye: ${tl(fiyat)} gerekli`, 'YETERSIZ_BAKIYE');
   }
   if (fiyat > ucret) L.aktar({ kaynak, hedef: L.hesap(ilan.seller_id), tutar: fiyat - ucret, sebep: `Parsel satışı ${p.id}`, tx });
   L.aktar({ kaynak, hedef: 'SYS:SINK', tutar: ucret, sebep: `İşlem masrafı ${p.id}`, tx });
@@ -199,8 +200,8 @@ function devret(ilan, aliciId, fiyat, teklif) {
   if (isaretler.length) {
     L.denetim({ anahtar: `TRADE_FLAGGED:${tradeId}`, eylem: 'TRADE_FLAGGED', varlik: `TRADE:${tradeId}`, sonra: { isaretler } });
   }
-  bildir(ilan.seller_id, `${p.id} parselin ${alici.display_name} adlı oyuncuya ₳${fiyat} karşılığında devredildi (masraf ₳${ucret})`, `parsel:${p.id}`);
-  bildir(aliciId, `${p.id} parseli artık sende (₳${fiyat})`, `parsel:${p.id}`);
+  bildir(ilan.seller_id, `${p.id} parselin ${alici.display_name} adlı oyuncuya ${tl(fiyat)} karşılığında devredildi (masraf ${tl(ucret)})`, `parsel:${p.id}`);
+  bildir(aliciId, `${p.id} parseli artık sende (${tl(fiyat)})`, `parsel:${p.id}`);
   return { tamam: true, tradeId, fiyat, ucret, parsel: p.id, isaretler };
 }
 
@@ -271,7 +272,7 @@ const teklifRed = db.transaction((userId, teklifId) => {
   if (i.seller_id !== userId) throw new OyunHatasi(403, 'Bu ilan senin değil');
   teklifIade(b, 'REJECTED', 'satıcı reddetti');
   L.denetim({ aktor: userId, eylem: 'BID_REJECTED', varlik: `LISTING:${i.id}`, sonra: { teklif: b.id, tutar: b.amount } });
-  bildir(b.buyer_id, `${i.parcel_id} için ₳${b.amount} teklifin reddedildi; tutar iade edildi`, `parsel:${i.parcel_id}`);
+  bildir(b.buyer_id, `${i.parcel_id} için ${tl(b.amount)} teklifin reddedildi; tutar iade edildi`, `parsel:${i.parcel_id}`);
   return { tamam: true };
 });
 
@@ -285,7 +286,7 @@ const teklifVer = db.transaction((userId, ilanId, govde) => {
   const tutar = tamSayi(govde?.tutar, 'Teklif', 1, PAZAR.maxFiyat);
   if (tutar >= i.asking_price) throw new OyunHatasi(409, 'Teklif istenen fiyata eşit ya da yüksek; "Hemen al" kullan');
   const mevcut = q.benimAktifTeklifim.get(i.id, userId);
-  if (mevcut && tutar <= mevcut.amount) throw new OyunHatasi(409, `Yeni teklif mevcut teklifinden (₳${mevcut.amount}) yüksek olmalı`);
+  if (mevcut && tutar <= mevcut.amount) throw new OyunHatasi(409, `Yeni teklif mevcut teklifinden (${tl(mevcut.amount)}) yüksek olmalı`);
 
   const tx = L.yeniTx();
   if (mevcut) teklifIade(mevcut, 'REPLACED', 'teklif yükseltildi', tx);
@@ -305,7 +306,7 @@ const teklifVer = db.transaction((userId, ilanId, govde) => {
     return { tamam: true, teklifId: id, npcRed: true, mesaj: `${satici.display_name} teklifini düşük buldu; tutar iade edildi` };
   }
   const alici = q.kullanici.get(userId);
-  bildir(i.seller_id, `${i.parcel_id} ilanına ${alici.display_name} ₳${tutar} teklif verdi`, `parsel:${i.parcel_id}`);
+  bildir(i.seller_id, `${i.parcel_id} ilanına ${alici.display_name} ${tl(tutar)} teklif verdi`, `parsel:${i.parcel_id}`);
   return { tamam: true, teklifId: id, tutar };
 });
 
@@ -324,7 +325,7 @@ const hemenAl = db.transaction((userId, ilanId, govde) => {
   if (i.seller_id === userId) throw new OyunHatasi(409, 'Kendi ilanını satın alamazsın');
   // İstemcinin gördüğü fiyat değiştiyse işlemi yapma (fiyat sürprizi yok)
   if (govde?.fiyat != null && Number(govde.fiyat) !== i.asking_price) {
-    throw new OyunHatasi(409, `İstenen fiyat ₳${i.asking_price} olarak güncellendi; tekrar kontrol et`, 'FIYAT_DEGISTI');
+    throw new OyunHatasi(409, `İstenen fiyat ${tl(i.asking_price)} olarak güncellendi; tekrar kontrol et`, 'FIYAT_DEGISTI');
   }
   const mevcut = q.benimAktifTeklifim.get(i.id, userId);
   if (mevcut) teklifIade(mevcut, 'REPLACED', 'hemen al ile değiştirildi');

@@ -3,6 +3,7 @@
 // hasatEt). Set ilk kez tamamlanınca bir kerelik akçe ödülü ve rozet verilir; parsel satılıp set bozulursa bonus durur,
 // ödül geri alınmaz. Tamamlanma parsel edinilince ve satın alınınca (olay yolu) ve set listesi açılınca denetlenir.
 const db = require('./db');
+const { tl } = require('./lib/para');
 const L = require('./lib/ledger');
 const { KOLEKSIYON: K } = require('./config/rules');
 const { yol } = require('./lib/olaylar');
@@ -39,7 +40,7 @@ const denetle = db.transaction((userId) => {
     const s = K.setler[kod];
     L.odul(userId, K.odul, `Yöre seti: ${s.ad}`, L.yeniTx());
     require('./dunya').rozetVer(userId, `SET_${kod}`, `${s.ad} seti`, s.ikon, `${s.iller.map(ilAdiBul).join(', ')} illerinin hepsinde arazisi oldu.`);
-    require('./pazar').bildir(userId, `${s.ikon} ${s.ad} setini tamamladın! +${K.odul} akçe; bu illerdeki hasadın %${K.hasatBonus * 100} fazla.`, 'arazilerim');
+    require('./pazar').bildir(userId, `${s.ikon} ${s.ad} setini tamamladın! +${tl(K.odul)}; bu illerdeki hasadın %${K.hasatBonus * 100} fazla.`, 'arazilerim');
     L.denetim({ aktor: userId, eylem: 'COLLECTION_COMPLETED', varlik: `SET:${kod}`, sonra: { odul: K.odul } });
     yeni.push(kod);
   }

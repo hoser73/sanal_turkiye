@@ -2,6 +2,7 @@
 // Mesafe il merkezleri arası kuş uçuşu × güzergâh katsayısıdır (kara 1,3; deniz 1,2). Varışta ürün o ilin günlük talebine göre satılır.
 // Fırtına, limanlar arası deniz sevkiyatını geciktirir. Açık formül: ücret = sabit + km × km ücreti × miktar.
 const db = require('./db');
+const { tl } = require('./lib/para');
 const { metin, sayi } = require('./lib/girdi');
 const L = require('./lib/ledger');
 const { LOJISTIK, URUNLER, NPC_PAZAR, AFET } = require('./config/rules');
@@ -97,7 +98,7 @@ function lojistikBakim() {
       const hedef = il(s.hedef_plaka);
       L.denetim({ anahtar: `SHIPMENT_DELIVERED:${s.id}`, aktor: s.user_id, eylem: 'SHIPMENT_DELIVERED', varlik: `SEVK:${s.id}`, bolge: hedef.id, herkese: true,
         sonra: { urun: s.urun, miktar: s.miktar, gelir } });
-      bildir(s.user_id, `🚚 ${s.miktar} ${URUNLER[s.urun].ad} ${hedef.name} tüccarına teslim edildi: ₳${gelir} (nakliye ₳${s.maliyet}).`, null);
+      bildir(s.user_id, `🚚 ${s.miktar} ${URUNLER[s.urun].ad} ${hedef.name} tüccarına teslim edildi: ${tl(gelir)} (nakliye ${tl(s.maliyet)}).`, null);
     })();
   }
 }

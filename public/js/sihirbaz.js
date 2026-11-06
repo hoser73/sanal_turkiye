@@ -270,7 +270,7 @@ export function sihirbazKur({ durum, tost, ses, benYenile, haritaYenile, ciftlig
     { kod: 'HASAT', ikon: '🧺', baslik: 'Hasat zamanı!', metin: () => `${ekinAdi()} olgunlaştı. <b>Hasat</b> düğmesine dokun, ürünler ambarına girsin.`,
       hedef: () => ilk('.ci-alt [data-eylem="hasat"]'), bitti: () => !kart().ekin },
     { kod: 'SATIS', ikon: '💰', baslik: 'Pazarda sat', ozel: 'satis',
-      metin: () => { const u = satilacak(); return u ? `Ambarında <b>${sayi(u.miktar)} ${esc(u.ad)}</b> var. Bir kısmını pazardaki tüccara satalım, akçe kazan. (Sonra <b>Pazar</b> sekmesinden istediğin zaman satabilirsin.)` : 'Ürünlerin pazarda satılır. Aşağıdan sat.'; },
+      metin: () => { const u = satilacak(); return u ? `Ambarında <b>${sayi(u.miktar)} ${esc(u.ad)}</b> var. Bir kısmını pazardaki tüccara satalım, para kazan. (Sonra <b>Pazar</b> sekmesinden istediğin zaman satabilirsin.)` : 'Ürünlerin pazarda satılır. Aşağıdan sat.'; },
       hedef: () => document.querySelector('.shz-kilit [data-shz-tur="sat"]'), bitti: () => false },
     { kod: 'YAPI', ikon: '🔨', baslik: 'İlk yapını kur',
       metin: () => (sayfaBasligi().includes('İnşaat atölyesi') ? '<b>Sulama hattı</b> tarlanı kendiliğinden sular ve verimi %15 artırır. Fiyatına dokun, inşaat başlasın.' : 'Kazancınla çiftliğini geliştirelim. <b>İnşa et</b> düğmesine dokun.'),

@@ -163,7 +163,7 @@ const KALIP = [
   [/(hasat|ekin|tarla|tohum|sula)/i, ['Ekini olgunlaşınca bekletme, tarlada bozuluyor.', 'Sulama hattı kurarsan sulamakla uğraşmazsın, bir de verim artar.', 'Bu mevsim ne eksen bereketli olsun.']],
   [/(arsa|parsel|tapu|ilan|değer|endeks)/i, ['Arsayı ucuzken al, mahalle gelişince değerlenir derler.', 'Ben tarlama yatırım yaptım, değeri epey arttı.', 'İlana koymadan önce mahalle endeksine bir bak.']],
   [/(hava|yağmur|kar|soğuk|sıcak)/i, null],
-  [/(pazar|fiyat|sat|borsa|akçe)/i, ['Borsada emir verirken tüccar fiyatına bir bak, aşağısına satma.', 'Pazarlık sünnettir derler, ilan fiyatına hemen razı olma!']],
+  [/(pazar|fiyat|sat|borsa|para|lira)/i, ['Borsada emir verirken tüccar fiyatına bir bak, aşağısına satma.', 'Pazarlık sünnettir derler, ilan fiyatına hemen razı olma!']],
   [/\?$/, ['Bilmem ki komşu, pazarda soran olur.', 'Güzel soru! Köy › Haberler bölümünde mahallede olanlar yazıyor.', 'Bence denemek lazım, en kötü tecrübe olur.']],
 ];
 function kalipYanit(metin, mahalleId) {

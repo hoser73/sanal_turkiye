@@ -1,6 +1,7 @@
 // Günlük sandık: her GUNLUK_SANDIK.aralikMs'de (8 saat) bir ücretsiz sandık; oyuncuya günde birkaç kez dönmek için bir
 // sebep. İçerik rastgeledir (akçe, gübre, yem, nadiren kalıp seti); oranlar arayüzde açıkça gösterilir. Parayla satılmaz.
 const db = require('./db');
+const { tl } = require('./lib/para');
 const L = require('./lib/ledger');
 const { OyunHatasi } = L;
 const { GUNLUK_SANDIK: S, URUNLER } = require('./config/rules');
@@ -14,8 +15,8 @@ function ozet(userId, t = Date.now()) {
   const hak = Math.min(S.biriktir, Math.floor((t - son) / S.aralikMs));
   return { hazir: hak > 0, hak, kalanMs: hak > 0 ? 0 : son + S.aralikMs - t };
 }
-const oranlar = () => S.icerik.map((x) => ({ oran: x.oran, metin: x.tur === 'akce' ? `${x.min}–${x.max} akçe` : `${x.adet} ${URUNLER[x.kod].ad}`,
-  ikon: x.tur === 'akce' ? '₳' : URUNLER[x.kod].ikon }));
+const oranlar = () => S.icerik.map((x) => ({ oran: x.oran, metin: x.tur === 'akce' ? `${tl(x.min)}–${tl(x.max)}` : `${x.adet} ${URUNLER[x.kod].ad}`,
+  ikon: x.tur === 'akce' ? '₺' : URUNLER[x.kod].ikon }));
 
 const ac = db.transaction((userId, rastgele = Math.random) => {
   const t = Date.now();
@@ -30,7 +31,7 @@ const ac = db.transaction((userId, rastgele = Math.random) => {
   if (secilen.tur === 'akce') {
     const tutar = secilen.min + Math.floor(rastgele() * (secilen.max - secilen.min + 1));
     L.odul(userId, tutar, 'Günlük sandık', tx);
-    odul = { ikon: '₳', metin: `${tutar} akçe`, akce: tutar };
+    odul = { ikon: '₺', metin: `${tl(tutar)}`, akce: tutar };
   } else {
     L.envanterDegis(userId, secilen.kod, secilen.adet, 'Günlük sandık', tx);
     odul = { ikon: URUNLER[secilen.kod].ikon, metin: `${secilen.adet} ${URUNLER[secilen.kod].ad}` };

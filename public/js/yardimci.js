@@ -30,7 +30,26 @@ export const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ESC[c]);
 
 const sayiBicim = new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 2 });
 export const sayi = (n) => sayiBicim.format(n ?? 0);
-export const akce = (n) => `₳ ${sayi(n)}`;
+// Oyun parası TL görünümünde: tutarlar sunucuda oyun birimindedir, ekranda TL_KAT ile çarpılır (sunucu config/rules.js
+// BIRIM.kat ve lib/para.js ile aynı katsayı). Para girilen alanlar data-para ile işaretlenir; formdan okunurken
+// tlGirdi oyun birimine geri çevirir. Oyun TL'si gerçek para değildir.
+export const TL_KAT = 10000;
+const tamTL = new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 0 });
+export const tlDegeri = (n) => Math.round((Number(n) || 0) * TL_KAT);
+export const akce = (n) => `₺${tamTL.format(tlDegeri(n))}`;
+// Para girdisi: değer ve sınırlar TL; ondalik oyun biriminin basamağı (borsa birim fiyatı 2 → 100 TL adım)
+export function paraGirdisi({ name, deger, min, max, ondalik = 0, ek = '' }) {
+  const adim = TL_KAT / 10 ** ondalik;
+  return `<input name="${name}" type="number" inputmode="numeric" data-para="${ondalik}" step="${adim}"${min != null ? ` min="${tlDegeri(min)}"` : ''}${max != null ? ` max="${tlDegeri(max)}"` : ''}${deger != null ? ` value="${tlDegeri(deger)}"` : ''} ${ek}>`;
+}
+// TL girdisini oyun birimine çevirir (ondalik basamağa yuvarlar)
+export const tlGirdi = (tlTutar, ondalik = 0) => Math.round((Number(tlTutar) / TL_KAT) * 10 ** ondalik) / 10 ** ondalik;
+// Form verisi: data-para alanları oyun birimine çevrilmiş olarak
+export function formVerisi(form) {
+  const v = Object.fromEntries(new FormData(form));
+  for (const el of form.querySelectorAll('[data-para]')) if (el.name && v[el.name] !== '' && v[el.name] != null) v[el.name] = String(tlGirdi(v[el.name], Number(el.dataset.para) || 0));
+  return v;
+}
 
 export function sure(ms) {
   if (ms <= 0) return 'hazır';

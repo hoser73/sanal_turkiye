@@ -25,5 +25,5 @@ export function yolBolumu(d, { simdi }) {
       </li>`).join('')}</ol>
     <details class="acilir"><summary>Yol puanı nasıl kazanılır?</summary>
       <ul class="yol-kaynak">${d.puanlar.map((p) => `<li><span>${esc(p.ad)}</span><b>+${p.puan}</b></li>`).join('')}</ul>
-      <p class="kucuk">Aynı işten günde en çok ${d.gunlukTavan} kez puan sayılır. Ödüller oyun içidir; akçe nakde çevrilmez.</p></details>`;
+      <p class="kucuk">Aynı işten günde en çok ${d.gunlukTavan} kez puan sayılır. Ödüller oyun içidir; oyun parası nakde çevrilmez.</p></details>`;
 }

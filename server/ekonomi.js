@@ -2,6 +2,7 @@
 // Borsa: alış emri akçeyi, satış emri ürünü emanete alır. Eşleşme fiyat-zaman önceliğiyle ve bekleyen emrin fiyatından yapılır;
 // bir oyuncunun emri kendi emriyle eşleşmez. Ücret satıcıdan kesilip oyundan çıkar.
 const db = require('./db');
+const { tl } = require('./lib/para');
 const L = require('./lib/ledger');
 const { URUNLER, BOZULMA, BORSA, BAKIM } = require('./config/rules');
 const { OyunHatasi } = L;
@@ -93,10 +94,10 @@ const emirVer = db.transaction((userId, govde = {}) => {
   if (!yon) throw new OyunHatasi(400, 'Yön AL ya da SAT olmalı');
   const fiyat = kurus(Number(govde.fiyat));
   const bant = fiyatBandi(urun);
-  if (!(fiyat >= bant.alt && fiyat <= bant.ust)) throw new OyunHatasi(400, `Birim fiyat ₳${bant.alt}–₳${bant.ust} aralığında olmalı`);
+  if (!(fiyat >= bant.alt && fiyat <= bant.ust)) throw new OyunHatasi(400, `Birim fiyat ${tl(bant.alt)}–${tl(bant.ust)} aralığında olmalı`);
   const miktar = Number(govde.miktar);
   if (!Number.isInteger(miktar) || miktar < 1 || miktar > BORSA.maxMiktar) throw new OyunHatasi(400, 'Geçersiz miktar');
-  if (fiyat * miktar < BORSA.minTutar) throw new OyunHatasi(400, `Emir tutarı en az ₳${BORSA.minTutar} olmalı`);
+  if (fiyat * miktar < BORSA.minTutar) throw new OyunHatasi(400, `Emir tutarı en az ${tl(BORSA.minTutar)} olmalı`);
   const gun = Number(govde.gun ?? 3);
   if (!BORSA.sureler.includes(gun)) throw new OyunHatasi(400, `Süre ${BORSA.sureler.join(', ')} gün olabilir`);
   if (q.acikSayisi.get(userId).c >= BORSA.maxAcikEmir) throw new OyunHatasi(409, `En fazla ${BORSA.maxAcikEmir} açık emrin olabilir`);
@@ -119,7 +120,7 @@ const emirVer = db.transaction((userId, govde = {}) => {
     const m = Math.min(emir.kalan, k.kalan);
     const sonuc = yon === 'AL' ? eslestir(emir, k, m, k.fiyat, t) : eslestir(k, emir, m, k.fiyat, t);
     doldu.push(sonuc);
-    bildir(k.user_id, `${yon === 'AL' ? 'Satış' : 'Alış'} emrin eşleşti: ${m} ${URUNLER[urun].ad} × ₳${k.fiyat}`, 'pazar:borsa');
+    bildir(k.user_id, `${yon === 'AL' ? 'Satış' : 'Alış'} emrin eşleşti: ${m} ${URUNLER[urun].ad} × ${tl(k.fiyat)}`, 'pazar:borsa');
     emir = q.emir.get(id);
   }
   L.denetim({ aktor: userId, eylem: 'COMMODITY_ORDER', varlik: `EMIR:${id}`, sonra: { urun, yon, fiyat, miktar, dolan: miktar - emir.kalan } });
@@ -146,7 +147,7 @@ function emirKapat(e, durum, t) {
   }
   return sonuc;
 }
-const iadeMetni = (e, s) => (e.yon === 'AL' ? `kalan ₳${s.iade} iade edildi`
+const iadeMetni = (e, s) => (e.yon === 'AL' ? `kalan ${tl(s.iade)} iade edildi`
   : `kalan ${s.iade} ${URUNLER[e.urun].ad} iade edildi${s.bozulan ? ` (${s.bozulan} adedi emirde beklerken bozuldu)` : ''}`);
 const emirIptal = db.transaction((userId, emirId) => {
   const e = q.emir.get(Number(emirId));

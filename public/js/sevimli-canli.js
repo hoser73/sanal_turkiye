@@ -101,7 +101,7 @@ export function canliKur(sahne, { sesCal = null, ust = sahne } = {}) {
       yaziEfekti('Merhaba!', p, '#ffffff', '#2f6b2f');
     } else {
       sesCal?.('para');
-      yaziEfekti('+₳', p, '#ffe08a', '#8a5a12');
+      yaziEfekti('+₺', p, '#ffe08a', '#8a5a12');
     }
     for (let i = 0; i < 9; i++) parilti(p);
   }

@@ -6,6 +6,7 @@
 // il sıralamasında (il puanı = toplam ÷ √oyuncu, kalabalık il kazanmasın) ilk üç ilin yeterli katkı veren oyuncularına
 // ilOdulu verilir. (v0.41'e kadar ayrı bir 28 günlük il ligi vardı; bu yarışa katıldı.) Demo hesaplar puan almaz.
 const db = require('./db');
+const { tl } = require('./lib/para');
 const L = require('./lib/ledger');
 const { HASAT_YARISI: Y, KOOPERATIF, LIG } = require('./config/rules');
 const { yol } = require('./lib/olaylar');
@@ -109,7 +110,7 @@ const sonuclandir = db.transaction((h) => {
       const bildir = (m) => require('./pazar').bildir(k.user_id, m, 'arazilerim');
       if (odul && payKoop.get(k.user_id)?.koop === tk.koop_id) {
         L.odul(k.user_id, odul, `Hasat yarışı: ${s} sandık`, tx);
-        bildir(`🏁 Hasat yarışı bitti: ${tk.ad} ${s} sandık açtı${no ? `, Türkiye ${no}.` : ''}. Payın +${odul} akçe`);
+        bildir(`🏁 Hasat yarışı bitti: ${tk.ad} ${s} sandık açtı${no ? `, Türkiye ${no}.` : ''}. Payın +${tl(odul)}`);
       } else if (no && no <= 3) bildir(`🏁 Hasat yarışında ${tk.ad} Türkiye ${no}. oldu!`);
     }
   }
@@ -124,7 +125,7 @@ const sonuclandir = db.transaction((h) => {
       L.odul(k.user_id, odul, `Hasat yarışı: ${x.il} ${x.sira}.`, tx);
       // SEZON_ ile başlayan rozet altın varak çatıyı ve "İl Şampiyonu" unvanını açar (kozmetik.js)
       require('./dunya').rozetVer(k.user_id, `SEZON_${h}_${x.plaka}`, `${h}. hafta ${x.il} ${x.sira}.si`, ['🥇', '🥈', '🥉'][x.sira - 1], `Hasat yarışında ${x.il} Türkiye ${x.sira}. oldu; katkın ${k.puan} puan.`);
-      require('./pazar').bildir(k.user_id, `🗺️ Hasat yarışında ${x.il} Türkiye ${x.sira}. oldu! Katkın için +${odul} akçe`, 'arazilerim');
+      require('./pazar').bildir(k.user_id, `🗺️ Hasat yarışında ${x.il} Türkiye ${x.sira}. oldu! Katkın için +${tl(odul)}`, 'arazilerim');
     }
   }
   return true;

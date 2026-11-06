@@ -4,6 +4,7 @@
 // hamleMs) geçtiğini denetler. Kazanılan bölüm bir sonrakini açar; günde en çok BULMACA.gunlukOdul bölüm ödül verir
 // (akçe, her 5. bölümde gübre, her 10. bölümde kalıp seti). Kaybetmenin cezası yoktur.
 const db = require('./db');
+const { tl } = require('./lib/para');
 const L = require('./lib/ledger');
 const { OyunHatasi } = L;
 const { BULMACA: B, URUNLER } = require('./config/rules');
@@ -76,7 +77,7 @@ const enAzHamle = (b) => Math.max(1, Math.ceil(b.hedefler.reduce((t, h) => t + h
 // Kalan hamle oranına göre 1–3 yıldız
 const yildizHesapla = (hamle, sinir) => { const kalan = (sinir - hamle) / sinir; return kalan >= 0.3 ? 3 : kalan >= 0.12 ? 2 : 1; };
 function odulYazisi(n) {
-  const o = B.odul(n), p = [{ ikon: '₳', metin: `${o.akce} akçe` }];
+  const o = B.odul(n), p = [{ ikon: '₺', metin: `${tl(o.akce)}` }];
   if (o.esya) p.push({ ikon: URUNLER[o.esya[0]]?.ikon || '📦', metin: `${o.esya[1]} ${URUNLER[o.esya[0]]?.ad || o.esya[0]}` });
   return p;
 }

@@ -5,6 +5,7 @@
 // biter: en yüksek teklifi veren tarlayı olağan tahsisle alır, ödeme emanetten yapılır. Önde olunan ihaleler parsel
 // sınırına sayıldığından lider bitişte sınırda kalamaz; yine de tahsis olmazsa ihale satılmadan kapanır ve akçe iade edilir. Hafta ilk açıldığında ihaleler kurulur (hücre arama eşzamansızdır).
 const db = require('./db');
+const { tl } = require('./lib/para');
 const L = require('./lib/ledger');
 const { OyunHatasi } = L;
 const { IHALE: I, KOLEKSIYON, LIG, HESAP } = require('./config/rules');
@@ -100,16 +101,16 @@ const teklifVer = db.transaction((userId, ihaleId, govde = {}) => {
   const tutar = Number(govde.tutar);
   const ust = q.enYuksek.get(i.id);
   const asgari = ust ? Math.ceil(ust.tutar * (1 + I.artis)) : i.taban;
-  if (!Number.isInteger(tutar) || tutar < asgari) throw new OyunHatasi(400, `En az ${asgari} akçe teklif vermelisin`, 'DUSUK');
+  if (!Number.isInteger(tutar) || tutar < asgari) throw new OyunHatasi(400, `En az ${tl(asgari)} teklif vermelisin`, 'DUSUK');
   const tx = L.yeniTx(), eski = q.benim.get(i.id, userId);
   if (eski) teklifIade(eski, i.id, 'İhale teklifi yükseltildi (eski teklif iadesi)', tx);
-  if (L.bakiye(userId) < tutar) throw new OyunHatasi(402, `Yetersiz bakiye: ${tutar} akçe gerekli`, 'YETERSIZ_BAKIYE');
+  if (L.bakiye(userId) < tutar) throw new OyunHatasi(402, `Yetersiz bakiye: ${tl(tutar)} gerekli`, 'YETERSIZ_BAKIYE');
   L.aktar({ kaynak: L.hesap(userId), hedef: emanet(i.id), tutar, sebep: `İhale teklifi ${i.parcel_id}`, tx });
   db.prepare('INSERT INTO ihale_teklifleri (ihale_id, user_id, tutar, at) VALUES (?, ?, ?, ?)').run(i.id, userId, tutar, t);
   // Geçilen (başkasının) en yüksek teklif hemen iade edilir
   if (ust && ust.user_id !== userId) {
     teklifIade(ust, i.id, 'İhalede teklifin geçildi (iade)', tx);
-    bildir(ust.user_id, `🔨 İhalede teklifin geçildi: ${i.parcel_id} için yeni teklif ₳${tutar}. Akçen iade edildi.`, 'pazar:ihale');
+    bildir(ust.user_id, `🔨 İhalede teklifin geçildi: ${i.parcel_id} için yeni teklif ${tl(tutar)}. Paran iade edildi.`, 'pazar:ihale');
   }
   L.denetim({ aktor: userId, eylem: 'AUCTION_BID', varlik: `IHALE:${i.id}`, sonra: { tutar } });
   return { tamam: true, tutar };
@@ -136,12 +137,12 @@ const sonuclandir = db.transaction((t = Date.now()) => {
           db.transaction(() => oyun.parselEdin(tk.user_id, i.parcel_id, { id: i.id, fiyat: tk.tutar, kaynak: emanet(i.id) }))();
           kazanan = tk;
           db.prepare(`UPDATE ihale_teklifleri SET durum = 'KAZANDI' WHERE id = ?`).run(tk.id);
-          bildir(tk.user_id, `🔨 İhaleyi kazandın! ${i.parcel_id} artık senin (₳${tk.tutar}).`, `parsel:${i.parcel_id}`);
+          bildir(tk.user_id, `🔨 İhaleyi kazandın! ${i.parcel_id} artık senin (${tl(tk.tutar)}).`, `parsel:${i.parcel_id}`);
           continue;
         } catch { /* sınır vb.: sıradaki teklif */ }
       }
       teklifIade(tk, i.id, 'İhale sonuçlandı (iade)');
-      if (kazanan) bildir(tk.user_id, `🔨 ${i.parcel_id} ihalesi bitti; kazanan teklif ₳${kazanan.tutar}. Akçen iade edildi.`, 'pazar:ihale');
+      if (kazanan) bildir(tk.user_id, `🔨 ${i.parcel_id} ihalesi bitti; kazanan teklif ${tl(kazanan.tutar)}. Paran iade edildi.`, 'pazar:ihale');
     }
     db.prepare('UPDATE ihaleler SET durum = ?, kazanan = ?, fiyat = ? WHERE id = ?').run(kazanan ? 'SATILDI' : 'SATILMADI', kazanan?.user_id ?? null, kazanan?.tutar ?? null, i.id);
   }

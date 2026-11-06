@@ -2,6 +2,7 @@
 // tarımsal kullanım hakkı (ek, sula, hasat) kiracıya geçer. Sahiplik değişmez; kirada parsel satılamaz.
 // Ortaklık: sahip, parselindeki hasattan pay alacak ortak davet eder (toplam en çok %50); ortak kabul edince hasat otomatik bölünür.
 const db = require('./db');
+const { tl } = require('./lib/para');
 const L = require('./lib/ledger');
 const { KIRA, ORTAKLIK, BOZULMA } = require('./config/rules');
 const { OyunHatasi } = L;
@@ -69,7 +70,7 @@ const kirala = db.transaction((userId, kiraId) => {
   L.aktar({ kaynak: L.hesap(userId), hedef: L.hesap(k.sahip_id), tutar: toplam, sebep: `Kira bedeli ${k.parcel_id} (${k.gun} gün)`, tx });
   L.aktar({ kaynak: L.hesap(k.sahip_id), hedef: 'SYS:SINK', tutar: ucret, sebep: 'Kira işlem ücreti', tx });
   L.denetim({ aktor: userId, eylem: 'LEASE_STARTED', varlik: k.parcel_id, sonra: { gun: k.gun, toplam }, bolge: p.region_id, herkese: true });
-  bildir(k.sahip_id, `${adi(userId)} ${k.parcel_id} parselini ${k.gun} günlüğüne kiraladı: ₳${toplam} (ücret ₳${ucret}).`, `parsel:${k.parcel_id}`);
+  bildir(k.sahip_id, `${adi(userId)} ${k.parcel_id} parselini ${k.gun} günlüğüne kiraladı: ${tl(toplam)} (ücret ${tl(ucret)}).`, `parsel:${k.parcel_id}`);
   return { tamam: true, toplam, bitis: t + k.gun * BOZULMA.gunMs };
 });
 

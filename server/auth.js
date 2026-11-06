@@ -1,6 +1,7 @@
 // Kimlik: e-posta + parola (bcrypt), oturum çerezi, e-posta doğrulama, parola sıfırlama, iki adımlı doğrulama (TOTP),
 // oturum yönetimi, yaş beyanı ve roller. DB'de token'ların yalnızca sha256 özeti tutulur.
 const crypto = require('crypto');
+const { tl } = require('./lib/para');
 const bcrypt = require('bcryptjs');
 const QRCode = require('qrcode');
 const db = require('./db');
@@ -67,7 +68,7 @@ function tekrarIsaretle(userId) {
     const geri = L.yuvarla(Math.min(hibe, L.bakiye(userId)));
     if (geri > 0) {
       L.harca(userId, geri, 'Hoş geldin hibesi geri alındı (silinmiş hesabın kimliği)');
-      require('./pazar').bildir(userId, `Bu telefon numarası daha önce silinmiş bir hesaba ait; hoş geldin hibesi (₳${geri}) geri alındı.`, 'arazilerim');
+      require('./pazar').bildir(userId, `Bu telefon numarası daha önce silinmiş bir hesaba ait; hoş geldin hibesi (${tl(geri)}) geri alındı.`, 'arazilerim');
     }
   }
 }

@@ -1,5 +1,6 @@
 // Moderasyon ve denetim (§10, §14): şikâyetler ve iki kişi kuralıyla ağır işlemler (parsel dondurma, hesap askısı).
 const db = require('./db');
+const { tl } = require('./lib/para');
 const L = require('./lib/ledger');
 const { icerikDenetle } = require('./lib/icerik');
 const { MODERASYON, ROLLER } = require('./config/rules');
@@ -26,7 +27,7 @@ function hedefOzeti(tur, id) {
     case 'KULLANICI': { const u = tek(`SELECT id, display_name, status FROM users WHERE id = ? AND is_npc = 0`, Number(id)); return u && { baslik: u.display_name, durum: u.status }; }
     case 'PARSEL': { const p = tek(`SELECT p.id, p.status, u.display_name AS sahip FROM parcels p LEFT JOIN users u ON u.id = p.owner_user_id WHERE p.id = ?`, String(id)); return p && { baslik: `${p.id}${p.sahip ? ` · ${p.sahip}` : ''}`, durum: p.status, link: `parsel:${p.id}` }; }
     case 'MESAJ': { const m = tek(`SELECT m.metin, m.gizlendi, u.display_name AS ad FROM sohbet_mesajlari m JOIN users u ON u.id = m.user_id WHERE m.id = ?`, Number(id)); return m && { baslik: `${m.ad}: “${m.metin.slice(0, 140)}”`, durum: m.gizlendi ? 'GIZLI' : 'YAYINDA' }; }
-    case 'ILAN': { const i = tek(`SELECT parcel_id, asking_price, status FROM listings WHERE id = ?`, Number(id)); return i && { baslik: `İlan #${id} · ${i.parcel_id} · ₳${i.asking_price}`, durum: i.status, link: `parsel:${i.parcel_id}` }; }
+    case 'ILAN': { const i = tek(`SELECT parcel_id, asking_price, status FROM listings WHERE id = ?`, Number(id)); return i && { baslik: `İlan #${id} · ${i.parcel_id} · ${tl(i.asking_price)}`, durum: i.status, link: `parsel:${i.parcel_id}` }; }
     default: return null;
   }
 }
