@@ -52,7 +52,7 @@ test('olgun ekin önce taze kalır, sonra verimi düşer, sonunda tarlada çür�
   assert.equal((await c(`/api/parsel/${h1}`)).veri.ekin, null, 'tarla temizlendi');
 });
 
-test('yapılar yıpranır; eşiğin altında etkisi kesilir; bakım ücretli ve belediye payı ayrılır', async () => {
+test('yapılar yıpranır; eşiğin altında etkisi kesilir; bakım ücretli', async () => {
   const c = await oyuncu('bakimci');
   const h = hucreBul('TARIM');
   await c(`/api/parsel/${h}/edin`, {});

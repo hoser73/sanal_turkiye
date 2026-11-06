@@ -1,4 +1,4 @@
-// Liman/lojistik, kiralama ve ortaklık, hava kaynaklı afetler, referandum.
+// Liman/lojistik, kiralama ve ortaklık, hava kaynaklı afetler.
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
@@ -9,7 +9,7 @@ const app = require('../server/index');
 const db = require('../server/db');
 const L = require('../server/lib/ledger');
 const I = require('../server/harita/izgara');
-const { KIRA, LOJISTIK, AFET, BAKIM, REFERANDUM } = require('../server/config/rules');
+const { KIRA, LOJISTIK, AFET, BAKIM } = require('../server/config/rules');
 const { sahteImar, KOD_AD } = require('../server/harita/imar');
 
 let sunucu, taban;
@@ -137,41 +137,4 @@ test('afetler: fırtına yapıları yıpratır, sağanak açık tarlanın verimi
   assert.ok((await c('/api/bildirimler')).veri.some((b) => /fırtına/i.test(b.text)));
   assert.ok((await c('/api/hava')).veri.afetler.some((a) => a.tur === 'FIRTINA' && a.plaka === plaka));
   void BAKIM;
-});
-
-test('referandum: imza eşiği, gizli oy, kütük, sonuç ve nisap', async () => {
-  const hucreler = mahalleHucreleri([32.2, 38.4]);
-  const [a, b, c] = [await oyuncu('refa'), await oyuncu('refb'), await oyuncu('refc')];
-  for (const [i, x] of [a, b, c].entries()) assert.equal((await x(`/api/parsel/${hucreler[i]}/edin`, {})).durum, 200);
-  // İmza ve kütük hakkı yalnızca yeterince eski hesaplara (SECIM.secmenMinHesapYasiMs)
-  for (const x of [a, b, c]) db.prepare(`UPDATE users SET created_at = datetime('now', '-2 days') WHERE id = ?`).run(x.id);
-  const ilce = db.prepare(`SELECT ilce_id FROM parcels WHERE id = ?`).get(hucreler[0]).ilce_id;
-  assert.equal((await a(`/api/belediye/${ilce}/referandum`, { soru: 'kısa?' })).durum, 400);
-  const r = (await a(`/api/belediye/${ilce}/referandum`, { soru: 'İlçeye yeni bir semt pazarı kurulmalı mı?', aciklama: 'Ürünlerimizi daha iyi satmak için.' })).veri;
-  assert.equal(r.durum, 'IMZA');
-  assert.equal(r.esik, Math.max(REFERANDUM.minImza, Math.ceil(3 * REFERANDUM.imzaOrani)));
-  assert.equal((await b(`/api/referandum/${r.id}/oy`, { oy: 'EVET' })).durum, 409, 'henüz imza aşaması');
-  assert.equal((await b(`/api/referandum/${r.id}/imza`, {})).veri.imza, 2);
-  assert.equal(db.prepare(`SELECT durum FROM referandumlar WHERE id = ?`).get(r.id).durum, 'OYLAMA');
-  // Oylama açıldıktan sonra gelen sakin oy kullanamaz
-  const d = await oyuncu('refd');
-  await d(`/api/parsel/${hucreler[3]}/edin`, {});
-  assert.equal((await d(`/api/referandum/${r.id}/oy`, { oy: 'HAYIR' })).durum, 403);
-  const m = (await a(`/api/referandum/${r.id}/oy`, { oy: 'EVET' })).veri.makbuz;
-  assert.equal((await a(`/api/referandum/${r.id}/oy`, { oy: 'HAYIR' })).durum, 409);
-  await b(`/api/referandum/${r.id}/oy`, { oy: 'EVET' });
-  await c(`/api/referandum/${r.id}/oy`, { oy: 'HAYIR' });
-  assert.equal((await istemci()(`/api/referandum/${r.id}/makbuz`, { makbuz: m })).veri.dahil, true);
-  const kolonlar = db.prepare(`PRAGMA table_info(referandum_oylari)`).all().map((k) => k.name);
-  assert.ok(!kolonlar.includes('user_id'), 'oy tablosunda kimlik yok');
-  db.prepare(`UPDATE referandumlar SET oylama_bitis = ? WHERE id = ?`).run(Date.now() - 1, r.id);
-  await a('/api/ben');
-  const son = db.prepare(`SELECT durum, sonuc_json FROM referandumlar WHERE id = ?`).get(r.id);
-  assert.equal(son.durum, 'SONUCLANDI');
-  const sonuc = JSON.parse(son.sonuc_json);
-  assert.deepEqual(sonuc.oylar, { EVET: 2, HAYIR: 1 });
-  assert.equal(sonuc.kazanan, 'EVET');
-  assert.equal(sonuc.butunluk, true);
-  const bilgi = (await a(`/api/belediye/${ilce}`)).veri;
-  assert.equal(bilgi.referandumlar[0].sonuc.kazanan, 'EVET');
 });

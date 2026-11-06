@@ -1,12 +1,12 @@
 {
   "name": "sanal-turkiye",
-  "version": "0.46.0",
+  "version": "0.47.0",
   "private": true,
   "description": "Sanal Türkiye — yaşayan dijital ülke simülasyonu (prototip)",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
-    "dev": "SECIM_HIZI=1440 SECIM_MIN_SECMEN=1 BELEDIYE_MIN_SECMEN=1 node --watch server/index.js",
+    "dev": "node --watch server/index.js",
     "veri": "node server/veri/hazirla.js",
     "reset-db": "rm -f data/sanalturkiye-tr.db data/sanalturkiye-tr.db-shm data/sanalturkiye-tr.db-wal && node server/seed.js",
     "test": "node --test test/*.test.js",

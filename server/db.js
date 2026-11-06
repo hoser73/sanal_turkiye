@@ -281,185 +281,7 @@ CREATE TABLE IF NOT EXISTS notifications (
 );
 CREATE INDEX IF NOT EXISTS ix_notifications_user ON notifications(user_id, id);
 
--- ---------- Mahalle muhtarlığı seçimi (§6, §14.3) ----------
-CREATE TABLE IF NOT EXISTS secimler (
-  id          INTEGER PRIMARY KEY,
-  region_id   INTEGER NOT NULL REFERENCES regions(id),     -- mahalle
-  tur         TEXT NOT NULL DEFAULT 'MUHTAR',
-  asama       TEXT NOT NULL,      -- DUYURU / ADAYLIK / KAMPANYA / OYLAMA / ITIRAZ / SONUCLANDI / IPTAL / ADAY_YOK
-  duyuru_at   INTEGER NOT NULL,   -- aşama başlangıçları (epoch ms); takvim baştan bellidir
-  adaylik_at  INTEGER NOT NULL,
-  kampanya_at INTEGER NOT NULL,
-  oylama_at   INTEGER NOT NULL,
-  itiraz_at   INTEGER NOT NULL,
-  bitis_at    INTEGER NOT NULL,
-  sonuc_json  TEXT,               -- sayım, katılım, denetim bulguları
-  ozet_hash   TEXT,               -- oy pusulalarının özeti (bağımsız yeniden sayım için)
-  kazanan_aday_id INTEGER,
-  iptal_sebebi TEXT,
-  created_at  INTEGER NOT NULL
-);
-CREATE UNIQUE INDEX IF NOT EXISTS ux_secim_aktif ON secimler(region_id)
-  WHERE asama IN ('DUYURU','ADAYLIK','KAMPANYA','OYLAMA','ITIRAZ');
-CREATE INDEX IF NOT EXISTS ix_secim_region ON secimler(region_id, id);
-
-CREATE TABLE IF NOT EXISTS adaylar (
-  id         INTEGER PRIMARY KEY,
-  secim_id   INTEGER NOT NULL REFERENCES secimler(id),
-  user_id    INTEGER NOT NULL REFERENCES users(id),
-  manifesto  TEXT NOT NULL,
-  vaatler    TEXT NOT NULL DEFAULT '[]',
-  butce      INTEGER,            -- tahmini bütçe (akçe), bilgi amaçlı
-  durum      TEXT NOT NULL DEFAULT 'AKTIF',   -- AKTIF / CEKILDI / DUSTU (kütükte yer alamadı)
-  created_at INTEGER NOT NULL,
-  UNIQUE (secim_id, user_id)
-);
-
--- Seçmen kütüğü: kampanya başında dondurulur (sonradan parsel alarak oy kazanılamaz)
-CREATE TABLE IF NOT EXISTS secmen_kutugu (
-  secim_id INTEGER NOT NULL REFERENCES secimler(id),
-  user_id  INTEGER NOT NULL REFERENCES users(id),
-  PRIMARY KEY (secim_id, user_id)
-) WITHOUT ROWID;
-
--- GİZLİLİK (§14.3): katılım ile oy ayrı tablolardadır.
---   secim_katilim: KİM oy kullandı (tekil oy denetimi). Seçimi içermez; zaman yalnızca gün olarak tutulur.
---   secim_oylari : NE oylandı. Kullanıcı kimliği yoktur; birincil anahtar rastgele makbuz özetidir ve
---                  tablo ROWID'siz olduğundan ekleme sırası (zamanlama ile eşleştirme) saklanmaz.
-CREATE TABLE IF NOT EXISTS secim_katilim (
-  secim_id    INTEGER NOT NULL REFERENCES secimler(id),
-  user_id     INTEGER NOT NULL REFERENCES users(id),
-  gun         TEXT NOT NULL,
-  cihaz_ozeti TEXT NOT NULL,      -- tuzlanmış IP + tarayıcı özeti: çoklu hesap tespiti için
-  PRIMARY KEY (secim_id, user_id)
-) WITHOUT ROWID;
-CREATE TABLE IF NOT EXISTS secim_oylari (
-  makbuz_ozeti TEXT PRIMARY KEY,
-  secim_id     INTEGER NOT NULL REFERENCES secimler(id),
-  aday_id      INTEGER NOT NULL REFERENCES adaylar(id)
-) WITHOUT ROWID;
-CREATE INDEX IF NOT EXISTS ix_oylar_secim ON secim_oylari(secim_id, aday_id);
-CREATE TRIGGER IF NOT EXISTS oy_degismez BEFORE UPDATE ON secim_oylari BEGIN SELECT RAISE(ABORT, 'oylar değiştirilemez'); END;
-CREATE TRIGGER IF NOT EXISTS oy_silinmez BEFORE DELETE ON secim_oylari BEGIN SELECT RAISE(ABORT, 'oylar silinemez'); END;
-CREATE TRIGGER IF NOT EXISTS katilim_silinmez BEFORE DELETE ON secim_katilim BEGIN SELECT RAISE(ABORT, 'katılım kaydı silinemez'); END;
-
-CREATE TABLE IF NOT EXISTS itirazlar (
-  id         INTEGER PRIMARY KEY,
-  secim_id   INTEGER NOT NULL REFERENCES secimler(id),
-  user_id    INTEGER NOT NULL REFERENCES users(id),
-  sebep      TEXT NOT NULL,
-  durum      TEXT NOT NULL DEFAULT 'INCELEMEDE',   -- INCELEMEDE / KABUL / RED
-  yanit      TEXT,
-  created_at INTEGER NOT NULL,
-  UNIQUE (secim_id, user_id)
-);
-
-CREATE TABLE IF NOT EXISTS muhtarlar (
-  id        INTEGER PRIMARY KEY,
-  region_id INTEGER NOT NULL REFERENCES regions(id),
-  user_id   INTEGER NOT NULL REFERENCES users(id),
-  secim_id  INTEGER NOT NULL REFERENCES secimler(id),
-  aday_id   INTEGER NOT NULL REFERENCES adaylar(id),
-  baslangic INTEGER NOT NULL,
-  bitis     INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS ix_muhtar_region ON muhtarlar(region_id, bitis);
-
--- Vaat takip ekranı (§6.2): muhtarın vaatlerinin ilerleyişi
-CREATE TABLE IF NOT EXISTS vaat_takip (
-  id         INTEGER PRIMARY KEY,
-  muhtar_id  INTEGER NOT NULL REFERENCES muhtarlar(id),
-  sira       INTEGER NOT NULL,
-  metin      TEXT NOT NULL,
-  durum      TEXT NOT NULL DEFAULT 'BEKLIYOR',   -- BEKLIYOR / BASLADI / TAMAMLANDI / VAZGECILDI
-  aciklama   TEXT,
-  updated_at INTEGER NOT NULL,
-  UNIQUE (muhtar_id, sira)
-);
-
-CREATE TABLE IF NOT EXISTS mahalle_duyurulari (
-  id         INTEGER PRIMARY KEY,
-  region_id  INTEGER NOT NULL REFERENCES regions(id),
-  user_id    INTEGER NOT NULL REFERENCES users(id),
-  metin      TEXT NOT NULL,
-  created_at INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS ix_duyuru_region ON mahalle_duyurulari(region_id, id);
-
 CREATE TABLE IF NOT EXISTS ayarlar (anahtar TEXT PRIMARY KEY, deger TEXT NOT NULL) WITHOUT ROWID;
-
--- ---------- İlçe belediyesi (§6.1, §6.3, §6.4) ----------
--- Seçilmiş başkan ve meclis üyeleri (başkan meclise başkanlık eder, oy kullanır)
-CREATE TABLE IF NOT EXISTS belediye_uyeleri (
-  id        INTEGER PRIMARY KEY,
-  region_id INTEGER NOT NULL REFERENCES regions(id),   -- ilçe
-  user_id   INTEGER NOT NULL REFERENCES users(id),
-  makam     TEXT NOT NULL,                             -- BASKAN / MECLIS
-  secim_id  INTEGER NOT NULL REFERENCES secimler(id),
-  aday_id   INTEGER NOT NULL REFERENCES adaylar(id),
-  baslangic INTEGER NOT NULL,
-  bitis     INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS ix_bel_uye ON belediye_uyeleri(region_id, bitis);
-CREATE TABLE IF NOT EXISTS gorev_vaatleri (
-  id         INTEGER PRIMARY KEY,
-  uye_id     INTEGER NOT NULL REFERENCES belediye_uyeleri(id),
-  sira       INTEGER NOT NULL,
-  metin      TEXT NOT NULL,
-  durum      TEXT NOT NULL DEFAULT 'BEKLIYOR',
-  aciklama   TEXT,
-  updated_at INTEGER NOT NULL,
-  UNIQUE (uye_id, sira)
-);
--- Günlük devlet katkısı: (ilçe, oyun günü) başına bir kez
-CREATE TABLE IF NOT EXISTS belediye_katki_gunleri (
-  region_id INTEGER NOT NULL,
-  gun       INTEGER NOT NULL,
-  tutar     INTEGER NOT NULL,
-  PRIMARY KEY (region_id, gun)
-) WITHOUT ROWID;
--- Muhtarın belediyeye talebi (Senaryo C)
-CREATE TABLE IF NOT EXISTS talepler (
-  id          INTEGER PRIMARY KEY,
-  mahalle_id  INTEGER NOT NULL REFERENCES regions(id),
-  ilce_id     INTEGER NOT NULL REFERENCES regions(id),
-  user_id     INTEGER NOT NULL REFERENCES users(id),
-  tur         TEXT NOT NULL,
-  aciklama    TEXT NOT NULL,
-  durum       TEXT NOT NULL DEFAULT 'ACIK',             -- ACIK / TEKLIFE_DONUSTU / KAPANDI
-  proje_id    INTEGER,
-  created_at  INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS ix_talep_ilce ON talepler(ilce_id, durum);
--- Projeler: TEKLİF → MECLİSTE (açık oylama) → YAPIMDA (bütçe emanette) → TAMAMLANDI | REDDEDILDI
-CREATE TABLE IF NOT EXISTS projeler (
-  id              INTEGER PRIMARY KEY,
-  region_id       INTEGER NOT NULL REFERENCES regions(id),   -- ilçe
-  hedef_region_id INTEGER NOT NULL REFERENCES regions(id),   -- mahalle
-  tur             TEXT NOT NULL,
-  maliyet         INTEGER NOT NULL,
-  gerekce         TEXT NOT NULL,
-  talep_id        INTEGER,
-  teklif_eden_id  INTEGER NOT NULL REFERENCES users(id),
-  durum           TEXT NOT NULL,                             -- MECLISTE / YAPIMDA / TAMAMLANDI / REDDEDILDI
-  nitelikli       INTEGER NOT NULL DEFAULT 0,
-  nitelikli_sebep TEXT,
-  oylama_bitis    INTEGER NOT NULL,
-  yapim_bas       INTEGER,
-  yapim_bitis     INTEGER,
-  karar_json      TEXT,
-  created_at      INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS ix_proje_ilce ON projeler(region_id, id);
-CREATE INDEX IF NOT EXISTS ix_proje_hedef ON projeler(hedef_region_id, durum);
--- Meclis oyları açıktır (kamuya açık karar; vatandaş oyu gibi gizli değildir)
-CREATE TABLE IF NOT EXISTS proje_oylari (
-  proje_id   INTEGER NOT NULL REFERENCES projeler(id),
-  user_id    INTEGER NOT NULL REFERENCES users(id),
-  oy         TEXT NOT NULL,                                  -- EVET / HAYIR / CEKIMSER
-  created_at INTEGER NOT NULL,
-  PRIMARY KEY (proje_id, user_id)
-) WITHOUT ROWID;
 
 CREATE TRIGGER IF NOT EXISTS audit_no_update BEFORE UPDATE ON audit_events
   BEGIN SELECT RAISE(ABORT, 'audit_events değiştirilemez'); END;
@@ -467,14 +289,18 @@ CREATE TRIGGER IF NOT EXISTS audit_no_delete BEFORE DELETE ON audit_events
   BEGIN SELECT RAISE(ABORT, 'audit_events silinemez'); END;
 `);
 
+// v0.47: siyaset bölümü (muhtarlık ve belediye seçimleri, meclis projeleri, referandum, görevden alma) kaldırıldı;
+// tabloları da silinir (bağlı tablolar önce). Denetim kaydındaki eski olaylar kalır, haber akışında gösterilmez.
+for (const t of ['vaat_takip', 'gorev_vaatleri', 'proje_oylari', 'projeler', 'talepler', 'belediye_katki_gunleri', 'belediye_uyeleri', 'muhtarlar',
+  'secim_oylari', 'secim_katilim', 'secmen_kutugu', 'itirazlar', 'adaylar', 'secimler', 'mahalle_duyurulari', 'gorevden_alma_kutuk',
+  'gorevden_alma_imzalar', 'gorevden_alma', 'referandum_oylari', 'referandum_katilim', 'referandum_imzalar', 'referandumlar']) db.exec(`DROP TABLE IF EXISTS ${t}`);
+
 // Eklemeli taşımalar (var olan veritabanları için)
 function kolonEkle(tablo, kolon, tanim) {
   if (db.prepare(`PRAGMA table_info(${tablo})`).all().some((k) => k.name === kolon)) return false;
   db.exec(`ALTER TABLE ${tablo} ADD COLUMN ${kolon} ${tanim}`);
   return true;
 }
-kolonEkle('adaylar', 'makam', "TEXT NOT NULL DEFAULT 'MUHTAR'");
-kolonEkle('secim_oylari', 'makam', "TEXT NOT NULL DEFAULT 'MUHTAR'");
 
 // ---------- Hesap güvenliği, KVKK ve moderasyon (v0.6) ----------
 // Doğrulama alanı sonradan eklendiyse, eski hesaplar kayıt tarihiyle doğrulanmış sayılır (geriye uyum)
@@ -496,7 +322,6 @@ kolonEkle('sessions', 'deneme', 'INTEGER NOT NULL DEFAULT 0');
 kolonEkle('sessions', 'tarayici', 'TEXT');
 kolonEkle('sessions', 'ip_ozet', 'TEXT');
 kolonEkle('sessions', 'son_gorulme', 'TEXT');
-kolonEkle('mahalle_duyurulari', 'gizlendi', 'INTEGER NOT NULL DEFAULT 0');
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS eposta_tokenlari (
@@ -544,7 +369,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_sikayet_acik ON sikayetler(sikayetci_id, he
 -- Ağır moderasyon işlemleri iki kişi kuralıyla yürür: biri önerir, BAŞKA bir yetkili onaylar
 CREATE TABLE IF NOT EXISTS moderasyon_islemleri (
   id           INTEGER PRIMARY KEY,
-  tur          TEXT NOT NULL,                  -- PARSEL_DONDUR / PARSEL_COZ / HESAP_ASKI / HESAP_AC / ICERIK_GIZLE / GOREVDEN_AL / SECIM_IPTAL
+  tur          TEXT NOT NULL,                  -- PARSEL_DONDUR / PARSEL_COZ / HESAP_ASKI / HESAP_AC / ICERIK_GIZLE
   hedef        TEXT NOT NULL,
   gerekce      TEXT NOT NULL,
   sikayet_id   INTEGER REFERENCES sikayetler(id),
@@ -556,27 +381,6 @@ CREATE TABLE IF NOT EXISTS moderasyon_islemleri (
 );
 CREATE INDEX IF NOT EXISTS ix_mod_durum ON moderasyon_islemleri(durum, id);
 
--- Görevden alma (geri çağırma) dilekçesi: sakinlerin imzası eşiği geçerse makam boşalır, ara seçim açılır
-CREATE TABLE IF NOT EXISTS gorevden_alma (
-  id          INTEGER PRIMARY KEY,
-  region_id   INTEGER NOT NULL REFERENCES regions(id),
-  makam       TEXT NOT NULL,                   -- MUHTAR / BASKAN / MECLIS
-  hedef_id    INTEGER NOT NULL REFERENCES users(id),
-  baslatan_id INTEGER NOT NULL REFERENCES users(id),
-  gerekce     TEXT NOT NULL,
-  esik        INTEGER NOT NULL,
-  durum       TEXT NOT NULL DEFAULT 'ACIK',    -- ACIK / BASARILI / BASARISIZ / DUSTU
-  bitis       INTEGER NOT NULL,
-  created_at  INTEGER NOT NULL,
-  kapandi_at  INTEGER
-);
-CREATE UNIQUE INDEX IF NOT EXISTS ux_gorevden_alma_acik ON gorevden_alma(region_id, makam, hedef_id) WHERE durum = 'ACIK';
-CREATE TABLE IF NOT EXISTS gorevden_alma_imzalar (
-  dilekce_id INTEGER NOT NULL REFERENCES gorevden_alma(id),
-  user_id    INTEGER NOT NULL REFERENCES users(id),
-  created_at INTEGER NOT NULL,
-  PRIMARY KEY (dilekce_id, user_id)
-) WITHOUT ROWID;
 `);
 
 // ---------- Ekonomi (v0.6): yapı bakımı, envanter bozulması, ürün borsası ----------
@@ -617,12 +421,11 @@ db.exec(`CREATE TABLE IF NOT EXISTS sihirbaz_odulleri (
   created_at INTEGER NOT NULL,
   PRIMARY KEY (user_id, adim)
 )`);
-kolonEkle('users', 'kozmetik', "TEXT NOT NULL DEFAULT '{}'");
+kolonEkle('users', 'kozmetik', "TEXT NOT NULL DEFAULT '{}'");   // seçili kozmetikler {cati, bayrak, unvan}
 kolonEkle('users', 'npc_kisilik', 'TEXT');            // demo sakin kişiliği (yaşayan nüfus)
 kolonEkle('users', 'npc_mahalle', 'INTEGER');          // demo sakinin yerleştiği mahalle
 kolonEkle('users', 'npc_durum', 'TEXT');               // AKTIF / TASINIYOR / TASINDI
 kolonEkle('users', 'npc_sonraki', 'INTEGER');          // bir sonraki eylem zamanı
-kolonEkle('secimler', 'doldurma', 'INTEGER NOT NULL DEFAULT 0');   // demo sakinler kütükte mi   // seçili kozmetikler {cati, bayrak, unvan}
 kolonEkle('users', 'meslek_xp', 'INTEGER NOT NULL DEFAULT 0');
 kolonEkle('users', 'meslek_at', 'INTEGER');
 db.exec(`
@@ -662,15 +465,6 @@ CREATE TABLE IF NOT EXISTS ortaklar (
 CREATE UNIQUE INDEX IF NOT EXISTS ux_ortak ON ortaklar(parcel_id, ortak_id) WHERE durum IN ('DAVET', 'AKTIF');
 CREATE TABLE IF NOT EXISTS afetler (id INTEGER PRIMARY KEY, plaka TEXT NOT NULL, tur TEXT NOT NULL, olcum TEXT, etkilenen INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS ix_afet ON afetler(plaka, tur, created_at);
-CREATE TABLE IF NOT EXISTS referandumlar (
-  id INTEGER PRIMARY KEY, region_id INTEGER NOT NULL REFERENCES regions(id), baslatan_id INTEGER NOT NULL REFERENCES users(id), soru TEXT NOT NULL,
-  aciklama TEXT, durum TEXT NOT NULL DEFAULT 'IMZA',   -- IMZA / OYLAMA / SONUCLANDI / NISAP_YOK / DUSTU
-  esik INTEGER NOT NULL, kutuk INTEGER, created_at INTEGER NOT NULL, oylama_bas INTEGER, oylama_bitis INTEGER, sonuc_json TEXT
-);
-CREATE TABLE IF NOT EXISTS referandum_imzalar (ref_id INTEGER NOT NULL REFERENCES referandumlar(id), user_id INTEGER NOT NULL REFERENCES users(id), created_at INTEGER NOT NULL, PRIMARY KEY (ref_id, user_id)) WITHOUT ROWID;
-CREATE TABLE IF NOT EXISTS referandum_katilim (ref_id INTEGER NOT NULL REFERENCES referandumlar(id), user_id INTEGER NOT NULL REFERENCES users(id), PRIMARY KEY (ref_id, user_id)) WITHOUT ROWID;
--- Oy içeriği kimlikten ayrıdır: yalnızca makbuz özeti ve tercih
-CREATE TABLE IF NOT EXISTS referandum_oylari (makbuz_ozeti TEXT PRIMARY KEY, ref_id INTEGER NOT NULL REFERENCES referandumlar(id), oy TEXT NOT NULL) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS kozmetikler (
   user_id INTEGER NOT NULL REFERENCES users(id), kod TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (user_id, kod)
 ) WITHOUT ROWID;
@@ -763,18 +557,12 @@ db.indeksleriKur = () => {
     'ix_crops_user ON crops(user_id, status)',
     'ix_crops_durum ON crops(status, ready_at)',
     'ix_push_user ON push_abonelikleri(user_id)',
-    'ix_adaylar_user ON adaylar(user_id)',
-    'ix_muhtarlar_user ON muhtarlar(user_id)',
-    'ix_bel_uye_user ON belediye_uyeleri(user_id)',
     'ix_trades_buyer ON trades(buyer_id)',
     'ix_listings_seller ON listings(seller_id, status)',
     'ix_posta_durum ON giden_postalar(durum, sonraki)',
-    'ix_proje_oylama ON projeler(durum, oylama_bitis)',
-    'ix_proje_yapim ON projeler(durum, yapim_bitis)',
     'ix_emir_sure ON urun_emirleri(durum, expires_at)',
     'ix_kira_bitis ON kiralar(durum, bitis)',
     'ix_kira_teklif ON kiralar(durum, created_at)',
-    'ix_ref_oylama ON referandumlar(durum, oylama_bitis)',
     'ix_hayvan_hazir ON hayvan_bakim(durum, hazir_at)',
     'ix_users_npc_mahalle ON users(is_npc, npc_durum, npc_mahalle)',
     'ix_users_npc_sonraki ON users(is_npc, npc_durum, npc_sonraki)',

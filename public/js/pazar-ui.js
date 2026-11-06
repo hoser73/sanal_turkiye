@@ -368,7 +368,7 @@ async function borsaPaneli(ben, sunucuSimdi) {
       <label>Adet<input name="miktar" type="number" min="1" max="10000" value="10" required></label></div>
       <label>Süre<select name="gun">${b.sureler.map((g) => `<option value="${g}" ${g === 3 ? 'selected' : ''}>${g} gün</option>`).join('')}</select></label>
       <button class="dugme birincil">Emri ver</button>
-      <p class="kucuk">Fiyat bandı ₳${u.bant.alt}–₳${u.bant.ust}. En az ${akce(b.minTutar)} tutarında emir. Pazar, seçim ve borsa işlemleri doğrulanmış e-posta ister.</p>
+      <p class="kucuk">Fiyat bandı ₳${u.bant.alt}–₳${u.bant.ust}. En az ${akce(b.minTutar)} tutarında emir. Pazar ve borsa işlemleri doğrulanmış e-posta ister.</p>
     </form>` : '<p class="kucuk">Emir vermek için giriş yap.</p>'}
     ${b.emirlerim.length ? `<h3 class="bolum">Emirlerim</h3><ul class="liste">${b.emirlerim.map((e) => `<li class="liste-oge">
       <span class="ikon">${e.yon === 'AL' ? '🟢' : '🔴'}</span>

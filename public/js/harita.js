@@ -115,7 +115,7 @@ const KOY_EN_UZAK = 11;   // köy görünümünde en fazla bu kadar uzaklaşıl�
 // ---------- Kurulum ----------
 // koy: { merkez: [lon, lat], zoom } — harita ülke görünümü yerine oyuncunun köyünde açılır ve köy ölçeğinin altına
 // uzaklaşmaz (Türkiye haritası ana ekrandan kaldırıldı; ileride ayrı bir bölüm olacak)
-export async function haritaKur(kap, { parselTik, ilTik, ilceTik, mahalleAlanTik, mahalleTik, belediyeTik, carsiTik, konumDegisti, kip = '2d', tema = 'ciftlik', grafik = 'yuksek', koy = null, siyaset = false }) {
+export async function haritaKur(kap, { parselTik, ilTik, ilceTik, mahalleAlanTik, carsiTik, konumDegisti, kip = '2d', tema = 'ciftlik', grafik = 'yuksek', koy = null }) {
   const altlik = await altlikVarMi();
   // Ülke ölçeğinde kalmış eski bir #konum (ör. 4.18/…) açılışı bozmasın: yalnızca yakın plan bağlantılar korunur
   const baglantidaKonumVar = Number((/konum=([\d.]+)/.exec(location.hash) || [])[1] || 0) >= 6.5;
@@ -154,7 +154,7 @@ export async function haritaKur(kap, { parselTik, ilTik, ilceTik, mahalleAlanTik
   map.addSource('il-etiket', { type: 'geojson', data: koy ? bos() : '/veri/il-etiketleri.geojson' });
   // Tarla sınırları: Fields of the World (uydudan çıkarılmış gerçek tarlalar, CC-BY-4.0)
   map.addSource('tarlalar', { type: 'geojson', data: bos(), attribution: 'Tarla sınırları: <a href="https://fieldsofthe.world" target="_blank" rel="noopener">Fields of the World</a> (CC-BY-4.0)' });
-  for (const k of ['izgara', 'imlec', 'secili', 'parseller', 'yapilar3d', 'benim', 'secimler', 'belediyeler']) map.addSource(k, { type: 'geojson', data: bos() });
+  for (const k of ['izgara', 'imlec', 'secili', 'parseller', 'yapilar3d', 'benim']) map.addSource(k, { type: 'geojson', data: bos() });
 
   // ---------- Ülke görünümü ----------
   // Türkiye dışı (komşu ülkeler, denizler ve adları) ülke ölçeğinde tamamen örtülür; yakına inince yavaşça açılır
@@ -251,28 +251,6 @@ export async function haritaKur(kap, { parselTik, ilTik, ilceTik, mahalleAlanTik
   map.addLayer({ id: 'benim', type: 'circle', source: 'benim', maxzoom: PARSEL_ZOOM, paint: {
     'circle-radius': ['interpolate', ['linear'], ['zoom'], 5, 5, 13, 8], 'circle-color': '#e7b53a', 'circle-stroke-color': '#7a5600', 'circle-stroke-width': 1.5,
   } });
-  // Mahalle seçimleri ve muhtarlar: mahalle merkezinde sandık / yıldız işareti
-  map.addLayer({ id: 'secim-isaret', type: 'circle', source: 'secimler', minzoom: 10, paint: {
-    'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 7, 16, 13],
-    'circle-color': ['case', ['!=', ['get', 'secim'], ''], '#0e5e50', '#e7b53a'],
-    'circle-stroke-color': '#ffffff', 'circle-stroke-width': 2.5,
-  } });
-  map.addLayer({ id: 'secim-etiket', type: 'symbol', source: 'secimler', minzoom: 11, layout: {
-    'text-field': ['case', ['!=', ['get', 'secim'], ''], ['concat', 'SEÇİM · ', ['upcase', ['get', 'asama']]], ['concat', 'MUHTAR · ', ['get', 'muhtar']]],
-    'text-font': ['Noto Sans Bold'], 'text-size': 10.5, 'text-offset': [0, 1.5], 'text-anchor': 'top', 'text-letter-spacing': 0.05,
-  }, paint: { 'text-color': '#0e3d35', 'text-halo-color': 'rgba(255,253,248,.95)', 'text-halo-width': 1.6 } });
-  // Belediyeler (ilçe merkezi) ve belediye projeleri (hedef mahalle)
-  map.addLayer({ id: 'belediye-isaret', type: 'circle', source: 'belediyeler', minzoom: 8.5, paint: {
-    // zoom ifadesi en dışta olmalı (MapLibre kuralı); tür ayrımı durakların içinde
-    'circle-radius': ['interpolate', ['linear'], ['zoom'],
-      8.5, ['match', ['get', 'tur'], 'belediye', 7, 4], 14, ['match', ['get', 'tur'], 'belediye', 12, 8], 16, ['match', ['get', 'tur'], 'belediye', 13, 10]],
-    'circle-color': ['match', ['get', 'tur'], 'belediye', '#7a2e22', ['match', ['get', 'durum'], 'TAMAMLANDI', '#2f7d68', 'YAPIMDA', '#d9a21b', '#9aa3a8']],
-    'circle-stroke-color': '#ffffff', 'circle-stroke-width': 2.5,
-  } });
-  map.addLayer({ id: 'belediye-etiket', type: 'symbol', source: 'belediyeler', minzoom: 9.5, layout: {
-    'text-field': ['get', 'etiket'], 'text-font': ['Noto Sans Bold'], 'text-size': ['match', ['get', 'tur'], 'belediye', 11, 9.5],
-    'text-offset': [0, 1.4], 'text-anchor': 'top', 'text-letter-spacing': 0.04, 'text-max-width': 12,
-  }, paint: { 'text-color': ['match', ['get', 'tur'], 'belediye', '#5a2219', '#2b3a37'], 'text-halo-color': 'rgba(255,253,248,.95)', 'text-halo-width': 1.6 } });
   map.addLayer({ id: 'il-ad', type: 'symbol', source: 'il-etiket', maxzoom: IL_ZOOM, layout: {
     'text-field': ['format', ['upcase', ['get', 'ad']], {}, '\n', {}, ['get', 'plaka'], { 'font-scale': 0.72 }],
     'text-font': ['Noto Sans Bold'], 'text-size': ['interpolate', ['linear'], ['zoom'], 5, 9.5, 8, 14], 'text-letter-spacing': 0.08,
@@ -406,7 +384,7 @@ export async function haritaKur(kap, { parselTik, ilTik, ilceTik, mahalleAlanTik
         const yer = yoreselIl.get(plaka) || [], h = sonHava.find((x) => x.plaka === plaka);
         ilKarti.innerHTML = `<b>${esc(il.properties.ad)}</b><span>${plaka}</span>
           ${yer.length || h ? `<p class="il-karti-alt">${yer.map((y) => `${y.ikon} ${y.ad}`).join(' · ')}${yer.length && h ? '<br>' : ''}${h ? `${h.ikon} ${h.sicaklik}° · ${h.durum}` : ''}</p>` : ''}
-          <dl><div><dt>Parsel</dt><dd>${s.parsel || 0}</dd></div><div><dt>Oyuncu</dt><dd>${s.oyuncu || 0}</dd></div><div><dt>İlan</dt><dd>${s.ilan || 0}</dd></div><div><dt>Seçim</dt><dd>${s.secim || 0}</dd></div></dl>`;
+          <dl><div><dt>Parsel</dt><dd>${s.parsel || 0}</dd></div><div><dt>Oyuncu</dt><dd>${s.oyuncu || 0}</dd></div><div><dt>İlan</dt><dd>${s.ilan || 0}</dd></div></dl>`;
         ilKarti.style.transform = `translate(${Math.min(e.point.x + 14, kap.clientWidth - 190)}px, ${Math.max(8, e.point.y - 70)}px)`;
         ilKarti.hidden = false;
         map.getCanvas().style.cursor = 'pointer';
@@ -437,14 +415,12 @@ export async function haritaKur(kap, { parselTik, ilTik, ilceTik, mahalleAlanTik
   }
   map.on('mouseout', () => { ilKarti.hidden = true; map.getSource('imlec').setData(bos()); });
 
-  map.on('mouseenter', 'secim-isaret', () => { map.getCanvas().style.cursor = 'pointer'; });
   map.on('mouseenter', 'simge-isaret', () => { map.getCanvas().style.cursor = 'pointer'; });
   map.on('mouseleave', 'simge-isaret', () => { map.getCanvas().style.cursor = ''; });
-  map.on('mouseenter', 'belediye-isaret', () => { map.getCanvas().style.cursor = 'pointer'; });
   map.on('click', (e) => {
     const z = map.getZoom();
     // Yalnızca stilde gerçekten var olan katmanları sorgula: bir katman eklenemezse parsel tıklaması bozulmasın
-    const isaretKatmanlari = ['carsi-sube', 'secim-isaret', 'belediye-isaret', 'simge-isaret'].filter((k) => map.getLayer(k));
+    const isaretKatmanlari = ['carsi-sube', 'simge-isaret'].filter((k) => map.getLayer(k));
     const isaret = z >= 6 && isaretKatmanlari.length ? map.queryRenderedFeatures(e.point, { layers: isaretKatmanlari })[0] : null;
     if (isaret?.layer.id === 'simge-isaret') {
       const id = isaret.properties.parsel;
@@ -453,8 +429,6 @@ export async function haritaKur(kap, { parselTik, ilTik, ilceTik, mahalleAlanTik
       return;
     }
     if (isaret?.layer.id === 'carsi-sube') { carsiTik?.(isaret.properties.kategori); return; }
-    if (isaret?.layer.id === 'secim-isaret') { mahalleTik?.(isaret.properties.id); return; }
-    if (isaret?.layer.id === 'belediye-isaret') { belediyeTik?.(isaret.properties.id); return; }
     if (z >= PARSEL_ZOOM) {
       const t = tarlaNoktada(e.point);
       const c = G.hucre(e.lngLat.lng, e.lngLat.lat);
@@ -577,14 +551,6 @@ export async function haritaKur(kap, { parselTik, ilTik, ilceTik, mahalleAlanTik
     izgaraCiz();
     tarlalariYukle(b, z);
 
-    if (siyaset && z >= 8.5) {
-      fetch(`/api/harita/belediyeler?bbox=${[b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].map((v) => v.toFixed(5)).join(',')}`, { credentials: 'same-origin' })
-        .then((r) => (r.ok ? r.json() : bos())).then((fc) => map.getSource('belediyeler').setData(fc)).catch(() => {});
-    }
-    if (siyaset && z >= 10) {
-      fetch(`/api/harita/secimler?bbox=${[b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].map((v) => v.toFixed(5)).join(',')}`, { credentials: 'same-origin' })
-        .then((r) => (r.ok ? r.json() : bos())).then((fc) => map.getSource('secimler').setData(fc)).catch(() => {});
-    }
     if (z < 12.5) return;
     const a = G.hucre(b.getWest(), b.getNorth()), c = G.hucre(b.getEast(), b.getSouth());
     if (c.x - a.x > MAKS_HUCRE || c.y - a.y > MAKS_HUCRE) { sonKutu = null; return; }

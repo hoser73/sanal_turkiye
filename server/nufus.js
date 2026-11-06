@@ -4,7 +4,7 @@
 // Mahallede gerçek oyuncu çoğaldığında parsellerini satışa çıkarıp taşınırlar; satılmayan parseller devlete döner.
 const db = require('./db');
 const L = require('./lib/ledger');
-const { NUFUS, URUNLER, YAPILAR, SECIM, BELEDIYE, OZELLIK } = require('./config/rules');
+const { NUFUS, URUNLER, YAPILAR } = require('./config/rules');
 const { yol } = require('./lib/olaylar');
 
 const simdi = () => Date.now();
@@ -14,17 +14,17 @@ const sessiz = (fn) => { try { return fn(); } catch { return null; } };   // kur
 
 // ---------- Kişilikler
 const KISILIKLER = {
-  CIFTCI:    { unvan: 'Çiftçi', imar: ['TARIM'], urunler: ['BUGDAY', 'DOMATES'], yapilar: ['TEL_CIT', 'SULAMA_HATTI', 'AMBAR'], siyaset: 0.3, satis: 0.7, borsaci: false,
+  CIFTCI:    { unvan: 'Çiftçi', imar: ['TARIM'], urunler: ['BUGDAY', 'DOMATES'], yapilar: ['TEL_CIT', 'SULAMA_HATTI', 'AMBAR'], satis: 0.7, borsaci: false,
     ton: 'samimi, toprağa bağlı, az ve öz konuşan', meslek: 'CIFTCI' },
-  BAHCIVAN:  { unvan: 'Bahçıvan', imar: ['TARIM'], urunler: ['ELMA', 'DOMATES'], yapilar: ['SERA', 'PEYZAJ', 'SULAMA_HATTI'], siyaset: 0.2, satis: 0.6, borsaci: false,
+  BAHCIVAN:  { unvan: 'Bahçıvan', imar: ['TARIM'], urunler: ['ELMA', 'DOMATES'], yapilar: ['SERA', 'PEYZAJ', 'SULAMA_HATTI'], satis: 0.6, borsaci: false,
     ton: 'neşeli, çiçek ve fidan meraklısı', meslek: 'CIFTCI' },
-  OGRETMEN:  { unvan: 'Emekli Öğretmen', imar: ['KONUT', 'TARIM'], urunler: ['ELMA', 'BUGDAY'], yapilar: ['EV', 'PEYZAJ', 'TEL_CIT'], siyaset: 0.9, satis: 0.5, borsaci: false,
+  OGRETMEN:  { unvan: 'Emekli Öğretmen', imar: ['KONUT', 'TARIM'], urunler: ['ELMA', 'BUGDAY'], yapilar: ['EV', 'PEYZAJ', 'TEL_CIT'], satis: 0.5, borsaci: false,
     ton: 'bilge, nazik, mahalleye düşkün, öğüt vermeyi seven', meslek: 'MIMAR' },
-  TUCCAR:    { unvan: 'Tüccar', imar: ['TICARET', 'KARMA', 'KONUT', 'TARIM'], urunler: ['DOMATES', 'BUGDAY'], yapilar: ['DUKKAN', 'TEL_CIT'], siyaset: 0.5, satis: 0.9, borsaci: true,
+  TUCCAR:    { unvan: 'Tüccar', imar: ['TICARET', 'KARMA', 'KONUT', 'TARIM'], urunler: ['DOMATES', 'BUGDAY'], yapilar: ['DUKKAN', 'TEL_CIT'], satis: 0.9, borsaci: true,
     ton: 'hesapçı, esprili, pazarlığı seven', meslek: 'TUCCAR' },
-  GIRISIMCI: { unvan: 'Girişimci', imar: ['TARIM', 'KONUT', 'KARMA'], urunler: ['DOMATES', 'ELMA'], yapilar: ['GUNES_PANELI', 'SERA', 'DEGIRMEN'], siyaset: 0.6, satis: 0.8, borsaci: true,
+  GIRISIMCI: { unvan: 'Girişimci', imar: ['TARIM', 'KONUT', 'KARMA'], urunler: ['DOMATES', 'ELMA'], yapilar: ['GUNES_PANELI', 'SERA', 'DEGIRMEN'], satis: 0.8, borsaci: true,
     ton: 'enerjik, yeniliklere açık, biraz telaşlı', meslek: 'ZANAATKAR' },
-  NINE:      { unvan: 'Nine', imar: ['TARIM', 'KONUT'], urunler: ['DOMATES', 'ELMA'], yapilar: ['TEL_CIT', 'PEYZAJ'], siyaset: 0.4, satis: 0.4, borsaci: false,
+  NINE:      { unvan: 'Nine', imar: ['TARIM', 'KONUT'], urunler: ['DOMATES', 'ELMA'], yapilar: ['TEL_CIT', 'PEYZAJ'], satis: 0.4, borsaci: false,
     ton: 'sevecen, "evladım" diye konuşan, eski günleri anlatan', meslek: 'CIFTCI' },
 };
 const ADLAR = ['Ayşe', 'Fatma', 'Emine', 'Hatice', 'Zeynep', 'Elif', 'Meryem', 'Şerife', 'Sultan', 'Hacer', 'Esra', 'Derya', 'Gül', 'Nihal', 'Selin', 'Songül',
@@ -127,91 +127,6 @@ function eylem(n) {
   return yapilanlar;
 }
 
-// ---------- Siyaset (yalnızca doldurma kipinde: secim.adayUygunlugu bunu ayrıca denetler)
-const VAATLER = ['Mahalleye sulama kanalı', 'Pazar yerine gölgelik', 'Yollara bakım', 'Çocuklar için park', 'Her ay mahalle toplantısı',
-  'Gençlere tarım atölyesi', 'Yaşlılara yardım günü', 'Şeffaf bütçe panosu'];
-function manifesto(k, ad) {
-  return sec([
-    `${ad} olarak komşularımla birlikte daha yeşil ve dayanışmacı bir mahalle için aday oluyorum.`,
-    `Yıllardır bu topraklarda emek veriyorum; sözümü tutan, kapısı herkese açık bir yönetim istiyorum.`,
-    `Mahallemizin sorunlarını yerinde dinleyip belediyeye taşıyacağım; bütçe her ay herkese açık olacak.`,
-  ]) + (k.ton.includes('bilge') ? ' Önce dinlemek, sonra konuşmak.' : '');
-}
-function siyaset() {
-  const secim = require('./secim');
-  const t = simdi();
-  const aktif = db.prepare(`SELECT * FROM secimler WHERE asama IN ('ADAYLIK', 'OYLAMA')`).all();
-  for (const s of aktif) {
-    const tur = SECIM.turler[s.tur] || SECIM.turler.MUHTAR;
-    if (s.asama === 'ADAYLIK') {
-      if (!secim.doldurmaKipi(tur, s.region_id)) continue;
-      const demolar = secim.demoSakinler(tur, s.region_id).map((d) => db.prepare(`SELECT * FROM users WHERE id = ?`).get(d.id))
-        .filter((d) => KISILIKLER[d.npc_kisilik]).sort((a, b) => KISILIKLER[b.npc_kisilik].siyaset - KISILIKLER[a.npc_kisilik].siyaset);
-      for (const [makam, m] of Object.entries(tur.makamlar)) {
-        const adayVar = db.prepare(`SELECT COUNT(*) c FROM adaylar WHERE secim_id = ? AND makam = ? AND durum = 'AKTIF'`).get(s.id, makam).c;
-        const hedef = makam === 'MECLIS' ? Math.min(m.koltuk, 3) : 2;
-        if (adayVar >= hedef) continue;
-        const aday = demolar.find((d) => !db.prepare(`SELECT 1 FROM adaylar WHERE secim_id = ? AND user_id = ?`).get(s.id, d.id) && Math.random() < KISILIKLER[d.npc_kisilik].siyaset + 0.3);
-        if (!aday) continue;
-        const vaat = [...VAATLER].sort(() => Math.random() - 0.5).slice(0, 2 + Math.floor(Math.random() * 2));
-        sessiz(() => secim.adayOl(aday.id, s.id, { makam, manifesto: manifesto(KISILIKLER[aday.npc_kisilik], aday.display_name), vaatler: vaat }));
-        break;   // bir turda bir adaylık: süreç doğal aksın
-      }
-    } else if (s.asama === 'OYLAMA' && s.doldurma) {
-      // Kütükteki demo sakinler oyunu kullanır; tercih: vaat sayısı, itibar ve küçük bir rastlantı (gerçek adaylara karşı önyargı yok)
-      const bekleyen = db.prepare(`SELECT k.user_id FROM secmen_kutugu k JOIN users u ON u.id = k.user_id
-                                   WHERE k.secim_id = ? AND u.is_npc = 1 AND NOT EXISTS (SELECT 1 FROM secim_katilim c WHERE c.secim_id = k.secim_id AND c.user_id = k.user_id)`).all(s.id);
-      const adaylar = db.prepare(`SELECT a.*, u.is_npc FROM adaylar a JOIN users u ON u.id = a.user_id WHERE a.secim_id = ? AND a.durum = 'AKTIF'`).all(s.id);
-      for (const { user_id } of bekleyen.slice(0, 6)) {
-        if (Math.random() < 0.15) continue;   // herkes ilk anda oy vermez
-        const govde = { secimler: {} };
-        for (const makam of new Set(adaylar.map((a) => a.makam || 'MUHTAR'))) {
-          const liste = adaylar.filter((a) => (a.makam || 'MUHTAR') === makam && a.user_id !== user_id);
-          if (!liste.length) continue;
-          const agirlik = liste.map((a) => 1 + JSON.parse(a.vaatler).length * 0.3 + secim.itibar(a.user_id).toplam / 100 + Math.random() * 1.5);
-          govde.secimler[makam] = liste[agirlik.indexOf(Math.max(...agirlik))].id;
-        }
-        if (!Object.keys(govde.secimler).length) continue;
-        if (s.tur !== 'BELEDIYE') govde.adayId = Object.values(govde.secimler)[0];
-        sessiz(() => secim.oyVer(user_id, s.id, govde, `npc:${user_id}`));   // demo sakinin "cihazı" kendine özgüdür
-      }
-    }
-  }
-  // Görevdeki demo muhtar: arada bir duyuru, vaatlerinde ilerleme
-  for (const m of db.prepare(`SELECT m.*, u.display_name AS ad FROM muhtarlar m JOIN users u ON u.id = m.user_id WHERE u.is_npc = 1 AND m.baslangic <= ? AND m.bitis > ?`).all(t, t)) {
-    if (Math.random() < 0.08) {
-      const h = require('./dunya').ilHavasi(db.prepare(`SELECT rl.plaka FROM regions r JOIN regions ri ON ri.id = r.parent_id JOIN regions rl ON rl.id = ri.parent_id WHERE r.id = ?`).get(m.region_id)?.plaka);
-      const metin = sec([
-        'Komşular, bu hafta muhtarlıkta çay var; dertlerinizi dinlemeye hazırım.',
-        h ? `Hava ${h.durum.toLocaleLowerCase('tr-TR')}, ${h.sicaklik}°. Tarlalarınızı ona göre sulayın.` : 'Tarlalarınızı sulamayı unutmayın.',
-        'Belediyeye mahallemiz için hizmet talebinde bulunacağım; önerilerinizi bekliyorum.',
-      ]);
-      sessiz(() => secim.duyuruYap(m.user_id, m.region_id, { metin }));
-    }
-    if (Math.random() < 0.05) {
-      const v = db.prepare(`SELECT * FROM vaat_takip WHERE muhtar_id = ? AND durum IN ('BEKLIYOR', 'BASLADI') ORDER BY sira LIMIT 1`).get(m.id);
-      if (v) sessiz(() => secim.vaatGuncelle(m.user_id, v.id, { durum: v.durum === 'BEKLIYOR' ? 'BASLADI' : 'TAMAMLANDI', aciklama: 'Muhtarlık çalışması' }));
-    }
-  }
-  // Belediye: demo başkan kasa yetince gerçek oyuncuların mahallesine proje önerir; demo üyeler meclis oyunu kullanır
-  const belediye = require('./belediye');
-  for (const b of db.prepare(`SELECT b.* FROM belediye_uyeleri b JOIN users u ON u.id = b.user_id WHERE u.is_npc = 1 AND b.makam = 'BASKAN' AND b.baslangic <= ? AND b.bitis > ?`).all(t, t)) {
-    if (Math.random() > 0.15 || db.prepare(`SELECT 1 FROM projeler WHERE region_id = ? AND durum = 'MECLISTE'`).get(b.region_id)) continue;
-    const hedef = db.prepare(`SELECT p.region_id AS id, COUNT(DISTINCT p.owner_user_id) c FROM parcels p JOIN users u ON u.id = p.owner_user_id
-                              WHERE p.ilce_id = ? AND u.is_npc = 0 GROUP BY p.region_id ORDER BY c DESC LIMIT 1`).get(b.region_id);
-    if (!hedef) continue;
-    for (const tur of Object.keys(BELEDIYE.projeler).sort(() => Math.random() - 0.5)) {
-      if (sessiz(() => belediye.projeTeklif(b.user_id, b.region_id, { tur, hedefMahalleId: hedef.id, gerekce: 'Mahalle sakinlerinin en çok dile getirdiği ihtiyaç; bütçe kasadan karşılanır.' }))) break;
-    }
-  }
-  for (const p of db.prepare(`SELECT * FROM projeler WHERE durum = 'MECLISTE' AND oylama_bitis > ?`).all(t)) {
-    for (const u of db.prepare(`SELECT b.user_id FROM belediye_uyeleri b JOIN users u ON u.id = b.user_id WHERE b.region_id = ? AND u.is_npc = 1 AND b.baslangic <= ? AND b.bitis > ?
-                                AND NOT EXISTS (SELECT 1 FROM proje_oylari o WHERE o.proje_id = ? AND o.user_id = b.user_id)`).all(p.region_id, t, t, p.id)) {
-      sessiz(() => belediye.meclisOyu(u.user_id, p.id, { oy: Math.random() < 0.75 ? 'EVET' : sec(['HAYIR', 'CEKIMSER']) }));
-    }
-  }
-}
-
 // ---------- Taşınma: mahallede yeterince gerçek oyuncu olunca demo sakinler çekilir
 function tasinma() {
   const pazar = require('./pazar');
@@ -228,7 +143,7 @@ function tasinma() {
       L.denetim({ aktor: n.id, eylem: 'DEMO_RESIDENT_LEAVING', varlik: `MAHALLE:${m.id}`, bolge: m.id, herkese: true, sonra: { ad: n.display_name } });
     }
   }
-  // Süresi dolan ya da tüm parselleri satılan taşınanlar ayrılır; kalan parseller devlete döner, makamları boşalır
+  // Süresi dolan ya da tüm parselleri satılan taşınanlar ayrılır; kalan parseller devlete döner
   for (const n of db.prepare(`SELECT * FROM users WHERE is_npc = 1 AND npc_durum = 'TASINIYOR'`).all()) {
     const kalan = db.prepare(`SELECT id FROM parcels WHERE owner_user_id = ?`).all(n.id);
     if (kalan.length && n.npc_sonraki > t) continue;
@@ -236,9 +151,6 @@ function tasinma() {
       for (const i of db.prepare(`SELECT id FROM listings WHERE seller_id = ? AND status = 'ACTIVE'`).all(n.id)) sessiz(() => pazar.ilanIptal(n.id, i.id));
       for (const p of kalan) oyun.parseliBosalt(p.id);
       for (const e of db.prepare(`SELECT id FROM urun_emirleri WHERE user_id = ? AND durum = 'ACIK'`).all(n.id)) sessiz(() => require('./ekonomi').emirIptal(n.id, e.id));
-      db.prepare(`UPDATE adaylar SET durum = 'CEKILDI' WHERE user_id = ? AND durum = 'AKTIF'
-      AND secim_id NOT IN (SELECT id FROM secimler WHERE asama IN ('OYLAMA', 'ITIRAZ'))`).run(n.id);
-      require('./moderasyon').tumMakamlariBosalt(n.id, 'Demo sakin mahalleden taşındı');
       db.prepare(`UPDATE users SET npc_durum = 'TASINDI' WHERE id = ?`).run(n.id);
     })();
   }
@@ -249,10 +161,10 @@ const sonYanit = new Map(), sonKendiliginden = new Map();
 const KALIP = [
   [/(selam|merhaba|günaydın|iyi akşam|hayırlı)/i, ['Aleyküm selam komşu, hoş geldin!', 'Merhaba! Tarlalar nasıl gidiyor?', 'Selam! Mahallemize renk kattın.']],
   [/(hasat|ekin|tarla|tohum|sula)/i, ['Ekini olgunlaşınca bekletme, tarlada bozuluyor.', 'Sulama hattı kurarsan sulamakla uğraşmazsın, bir de verim artar.', 'Bu mevsim ne eksen bereketli olsun.']],
-  [/(seçim|muhtar|oy|aday|belediye|meclis)/i, ['Seçim yaklaşınca adayların vaatlerine iyi bak derim.', 'Muhtarlık kolay iş değil, ama mahalle için değer.', 'Oy gizli, kimse kime verdiğini bilemez; içimiz rahat.']],
+  [/(arsa|parsel|tapu|ilan|değer|endeks)/i, ['Arsayı ucuzken al, mahalle gelişince değerlenir derler.', 'Ben tarlama yatırım yaptım, değeri epey arttı.', 'İlana koymadan önce mahalle endeksine bir bak.']],
   [/(hava|yağmur|kar|soğuk|sıcak)/i, null],
   [/(pazar|fiyat|sat|borsa|akçe)/i, ['Borsada emir verirken tüccar fiyatına bir bak, aşağısına satma.', 'Pazarlık sünnettir derler, ilan fiyatına hemen razı olma!']],
-  [/\?$/, ['Bilmem ki komşu, muhtara sormak lazım.', 'Güzel soru! Köy › Haberler bölümünde mahallede olanlar yazıyor.', 'Bence denemek lazım, en kötü tecrübe olur.']],
+  [/\?$/, ['Bilmem ki komşu, pazarda soran olur.', 'Güzel soru! Köy › Haberler bölümünde mahallede olanlar yazıyor.', 'Bence denemek lazım, en kötü tecrübe olur.']],
 ];
 function kalipYanit(metin, mahalleId) {
   for (const [re, yanitlar] of KALIP) {
@@ -293,9 +205,7 @@ function kendiliginden() {
     sonKendiliginden.set(m.id, t);
     const n = sec(mahalleDemolari(m.id));
     if (!n) continue;
-    const secimVar = db.prepare(`SELECT asama FROM secimler WHERE region_id = ? AND asama IN ('ADAYLIK','KAMPANYA','OYLAMA')`).get(m.id);
-    const metin = secimVar ? sec(['Seçim heyecanı başladı, adaylara bir göz atın.', 'Oylama açılınca herkes sandığa!', 'Adayların vaatlerini okudunuz mu?'])
-      : sec(['Bugün hasat bereketliydi, şükür.', 'Komşular, akşam çay benden.', 'Pazarda domates fiyatları iyi bu ara.', 'Tarlaya yeni çit çektim, gelin görün.', kalipYanit('hava', m.id)]);
+    const metin = sec(['Bugün hasat bereketliydi, şükür.', 'Komşular, akşam çay benden.', 'Pazarda domates fiyatları iyi bu ara.', 'Tarlaya yeni çit çektim, gelin görün.', kalipYanit('hava', m.id)]);
     sessizAsync(() => require('./sohbet').npcYaz(n.id, `mahalle:${m.id}`, metin));
   }
 }
@@ -326,7 +236,6 @@ async function nufusDongusu({ yerlestirmeSiniri = 2 } = {}) {
                                 ORDER BY npc_sonraki LIMIT ?`).all(t, NUFUS.turBasinaEylem)) {
       if (sessiz(() => eylem(n))) rapor.eylem++;
     }
-    if (OZELLIK.siyaset) sessiz(siyaset);
     sessiz(kendiliginden);
   } finally { calisiyor = false; }
   return rapor;
@@ -344,4 +253,4 @@ function mahalleNufusu(mahalleId) {
   return mahalleDemolari(Number(mahalleId)).map((d) => ({ ad: d.display_name, unvan: KISILIKLER[d.npc_kisilik]?.unvan }));
 }
 
-module.exports = { baslat, nufusDongusu, yerlestir, eylem, siyaset, tasinma, sohbetYanitla, kalipYanit, aktifMahalleler, mahalleNufusu, KISILIKLER };
+module.exports = { baslat, nufusDongusu, yerlestir, eylem, tasinma, sohbetYanitla, kalipYanit, aktifMahalleler, mahalleNufusu, KISILIKLER };

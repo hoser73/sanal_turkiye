@@ -18,12 +18,11 @@ onay istenir ve onay kaydı (`yasal_onaylar`) sürümüyle saklanır.
    sağlayıcısı yurt dışındaysa dayanak (standart sözleşme bildirimi / yeterlilik / açık rıza) seçilmeli. Yapay zekâ
    kapatılabilir (`YAPAY_ZEKA=kapali`); kapalıyken hiçbir oyuncu metni dışarı gönderilmez.
 2. **13–17 yaş:** Genç hesaplar için veli onayı gerekip gerekmediği; mevcut tasarım: 13 yaş altı kayıt yok, gençlerde sohbet
-   varsayılan kapalı, mola hatırlatıcısı zorunlu, aday olamaz, özel mesaj yok.
+   varsayılan kapalı, mola hatırlatıcısı zorunlu, özel mesaj yok.
 3. **Demo sakinler:** Oyunun canlandırdığı sakinlerin “demo” etiketiyle açıkça işaretlenmesi yeterli bilgilendirme mi;
-   doldurma kipinde seçimlere katılmalarının oyun içi seçimlerin dürüstlüğü açısından kullanıcıya nasıl anlatılacağı
    (mevcut metin: Kullanım Koşulları §4a).
-4. **Oyun içi seçimler ve siyaset:** Gerçek siyasi parti/kişi propagandasının yasaklanması ve moderasyonu (koşullar §4);
-   seçim dönemlerinde (YSK yasakları) ek önlem gerekip gerekmediği.
+4. **Siyasi içerik:** Oyun içi seçimler v0.47'de kaldırıldı; gerçek siyasi parti/kişi propagandasının sohbette yasaklanması
+   ve moderasyonu (koşullar §4) yeterli mi.
 5. **Sanal varlıklar:** Akçenin nakde çevrilemediği, parsellerin tapu olmadığı, oyun dışı alım satımın yasak olduğu
    hükümlerinin tüketici mevzuatı ve kumar/şans oyunu mevzuatı karşısında yeterliliği. Gerçek parayla satış (kozmetik vb.)
    eklenecekse mesafeli satış sözleşmesi, ön bilgilendirme ve cayma hakkı metinleri gerekir.

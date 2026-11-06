@@ -78,7 +78,7 @@ test('kayıt: yaş beyanı ve zorunlu onaylar; 13 yaş altı reddedilir, 13–17
   assert.deepEqual(onaylar.map((o) => `${o.belge}:${o.onay}`), ['KOSULLAR:1', 'KVKK:1', 'PAZARLAMA:0']);
 });
 
-test('e-posta doğrulanmadan pazar ve seçim işlemleri kapalı; bağlantı tek kullanımlık', async () => {
+test('e-posta doğrulanmadan pazar işlemleri kapalı; bağlantı tek kullanımlık', async () => {
   const c = istemci();
   const k = await c('/api/kayit', kayitGovdesi('Dogrulamasiz'));
   assert.equal(k.veri.dogrulamaGerekli, true);
@@ -326,38 +326,4 @@ test('içerik ön taraması: kimlik/telefon numarası içeren metin engellenir',
   for (const m of ['2024 yılında 3 kez', 'Fiyat 1.250.000 akçe, 2.500 de olur', '12.05.2024 saat 14.30', '100 200 300 400 500']) {
     assert.equal(icerikDenetle(m).karar, 'TEMIZ', m);
   }
-});
-
-test('görevden alma: sakinlerin dilekçesi eşiği geçince muhtarlık boşalır', async () => {
-  const hucreler = tarimHucreleri([33.2, 40.1]);
-  const [muhtar, b, c] = [await dogrulanmisOyuncu('Muhtarx', 'G1'), await dogrulanmisOyuncu('Sakinb', 'G2'), await dogrulanmisOyuncu('Sakinc', 'G3')];
-  for (const [i, x] of [muhtar, b, c].entries()) assert.equal((await x(`/api/parsel/${hucreler[i]}/edin`, {})).durum, 200);
-  const mahalleId = db.prepare(`SELECT region_id FROM parcels WHERE id = ?`).get(hucreler[0]).region_id;
-  const muhtarId = (await muhtar('/api/ben')).veri.kullanici.id;
-  // İmza kütüğüne yalnızca yeterince eski hesaplar girer (SECIM.secmenMinHesapYasiMs)
-  for (const ad of ['muhtarx', 'sakinb', 'sakinc']) db.prepare(`UPDATE users SET created_at = datetime('now', '-2 days') WHERE email = ?`).run(`${ad}@test.local`);
-  // Görevde bir muhtar kur (seçim akışı secim.test.js'te sınanır)
-  const t = Date.now();
-  const secimId = db.prepare(`INSERT INTO secimler (region_id, tur, asama, duyuru_at, adaylik_at, kampanya_at, oylama_at, itiraz_at, bitis_at, created_at)
-                              VALUES (?, 'MUHTAR', 'SONUCLANDI', ?, ?, ?, ?, ?, ?, ?)`).run(mahalleId, t - 9e6, t - 8e6, t - 7e6, t - 6e6, t - 5e6, t - 4e6, t - 9e6).lastInsertRowid;
-  const adayId = db.prepare(`INSERT INTO adaylar (secim_id, user_id, manifesto, vaatler, butce, durum, created_at) VALUES (?, ?, 'Mahallemiz için', '["Park"]', '{}', 'AKTIF', ?)`)
-    .run(secimId, muhtarId, t).lastInsertRowid;
-  const gun = 24 * 3600e3;
-  db.prepare(`INSERT INTO muhtarlar (region_id, user_id, secim_id, aday_id, baslangic, bitis) VALUES (?, ?, ?, ?, ?, ?)`).run(mahalleId, muhtarId, secimId, adayId, t - 20 * gun, t + 10 * gun);
-
-  const kisa = await b('/api/gorevden-alma', { bolgeId: mahalleId, makam: 'MUHTAR', gerekce: 'kısa' });
-  assert.equal(kisa.durum, 400);
-  assert.equal((await muhtar('/api/gorevden-alma', { bolgeId: mahalleId, makam: 'MUHTAR', gerekce: 'Kendi kendimi görevden almak istiyorum, deneme' })).durum, 403);
-  const d = await b('/api/gorevden-alma', { bolgeId: mahalleId, makam: 'MUHTAR', gerekce: 'Vaatlerin hiçbiri başlamadı, duyuru da yapılmıyor.' });
-  assert.equal(d.durum, 200);
-  assert.equal(d.veri.esik, 2);
-  const bilgi = (await c(`/api/mahalle/${mahalleId}`)).veri;
-  assert.equal(bilgi.dilekceler[0].imza, 1);
-  assert.equal(bilgi.dilekceler[0].imzaHakki, true);
-  assert.equal((await muhtar(`/api/gorevden-alma/${d.veri.id}/imza`, {})).durum, 403, 'hedef imzalayamaz');
-  assert.equal((await b(`/api/gorevden-alma/${d.veri.id}/imza`, {})).durum, 409, 'iki kez imza yok');
-  const im = await c(`/api/gorevden-alma/${d.veri.id}/imza`, {});
-  assert.equal(im.veri.durum, 'BASARILI');
-  assert.equal((await c(`/api/mahalle/${mahalleId}`)).veri.muhtar, null, 'makam boşaldı');
-  assert.ok(db.prepare(`SELECT 1 FROM audit_events WHERE action = 'RECALL_SUCCEEDED' AND public = 1`).get());
 });

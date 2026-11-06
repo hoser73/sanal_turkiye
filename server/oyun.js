@@ -1,12 +1,11 @@
 // Oyun motoru (modüler monolit, plan §13.2): parsel, imar, inşaat, tarım, pazar, görev.
 // Bütün kurallar SUNUCUDA denetlenir (§3.2); her değişiklik tek atomik işlemde yapılır (§8.4).
 const db = require('./db');
-const { IMAR, IMAR_KAYNAK_NOTU, YAPILAR, URUNLER, TARIM, NPC_PAZAR, HESAP, GOREVLER, BELEDIYE, BOZULMA, BAKIM, HAVA, CARSI, OZELLIK, SIYASI_EYLEMLER, OYUN_HIZI } = require('./config/rules');
+const { IMAR, IMAR_KAYNAK_NOTU, YAPILAR, URUNLER, TARIM, NPC_PAZAR, HESAP, GOREVLER, BOZULMA, BAKIM, HAVA, CARSI, SIYASI_EYLEMLER, OYUN_HIZI } = require('./config/rules');
 const { adaParsel } = require('./harita/ada');
 const SIHIRBAZ_ILK_EKIN = () => require('./sihirbaz').SIHIRBAZ.ilkEkinMs;
 const L = require('./lib/ledger');
 const I = require('./harita/izgara');
-const belediye = require('./belediye');
 const { OyunHatasi } = L;
 const bildir = (userId, metin, link) => require('./pazar').bildir(userId, metin, link);
 
@@ -52,7 +51,7 @@ function gorevTamamla(userId, kod, tx) {
 }
 function gorevler(userId) {
   const biten = new Set(db.prepare(`SELECT quest_code FROM quest_progress WHERE user_id = ?`).all(userId).map((r) => r.quest_code));
-  return GOREVLER.filter((g) => OZELLIK.siyaset || g.kod !== 'ILK_OY').map((g) => ({ ...g, tamam: biten.has(g.kod) }));   // seçim görevi siyasetle açılır
+  return GOREVLER.map((g) => ({ ...g, tamam: biten.has(g.kod) }));
 }
 
 // ---------- Yapı tamamlama (tembel, idempotent) ----------
@@ -177,7 +176,6 @@ function parselKarti(id, userId, komsuImar = {}, { hafif = false } = {}) {
   const imar = IMAR[p.zoning_type];
   const benim = !!userId && p.owner_user_id === userId;
   const t = simdi();
-  const hizmetler = belediye.mahalleHizmetleri(p.region_id);
 
   // Çevre hücreleri (5 × 5): kayıtlı ızgara parselleri ve gerçek tarlalar. Bir hücreyi gerçek bir tarla kaplıyorsa
   // (tarla_hucreleri) o hücrenin sahibi tarlanın sahibidir; kimlik tarlanınkidir (satın alma ve geçiş o tarlaya).
@@ -232,8 +230,7 @@ function parselKarti(id, userId, komsuImar = {}, { hafif = false } = {}) {
   }
 
   return {
-    id: p.id, mahalle: p.mahalle, mahalleId: p.region_id, ilce: p.ilce, belediyeId: p.ilce_id, il: p.il, plaka: p.plaka,
-    hizmetler: [...hizmetler].map((k) => ({ kod: k, ad: BELEDIYE.projeler[k].ad, ikon: BELEDIYE.projeler[k].ikon, etki: BELEDIYE.projeler[k].etki })),
+    id: p.id, mahalle: p.mahalle, mahalleId: p.region_id, ilce: p.ilce, il: p.il, plaka: p.plaka,
     konum: { lon: p.centroid_lon, lat: p.centroid_lat }, hucre: { x: p.grid_x, y: p.grid_y },
     adaParsel: adaParsel(p.grid_x, p.grid_y),   // oyun içi Ada/Parsel no (gerçek tapu değil)
     geometri: parselGeometrisi(p), tarla: tarlaBilgisi(p),
@@ -267,7 +264,7 @@ function parselKarti(id, userId, komsuImar = {}, { hafif = false } = {}) {
     susSecenekleri: benim ? require('./ciftlik').susSecenekleri(userId) : null,
     bakim: { toplam: L.yuvarla(yapilar.reduce((a, s) => a + bakimMaliyeti(s, t), 0)), esik: BAKIM.etkisizEsik, yipranma: BAKIM.yipranmaGunluk },
     ekin: ekin && { ...ekinDurumu(ekin, yapilar, t),
-      sulamaMaliyeti: L.yuvarla(sulamaBirimi(yapilar, hizmetler, p.plaka) * verimKati(p) * (benim ? require('./koy-meydani').oran(userId, 'CESME') : 1)) },
+      sulamaMaliyeti: L.yuvarla(sulamaBirimi(yapilar, p.plaka) * verimKati(p) * (benim ? require('./koy-meydani').oran(userId, 'CESME') : 1)) },
     tarimMi: p.zoning_type === 'TARIM',
     uretim: require('./uretim').parselUretimi(id, userId),
     ...require('./kira').parselKira(id, userId),
@@ -334,7 +331,6 @@ const parselEdin = db.transaction((userId, id, ihale = null) => {
   const tx = L.yeniTx();
   if (ihale) L.aktar({ kaynak: ihale.kaynak, hedef: 'SYS:SINK', tutar: bedel, sebep: `İhale ile tahsis ${id}`, tx });
   else L.harca(userId, bedel, `Birincil tahsis ${id}`, tx);
-  belediye.belediyePayi(p.ilce_id, bedel, 'tahsisPayi', 'tahsis payı', tx);
   L.denetim({ anahtar: `PARCEL_ACQUIRED:${tx}`, aktor: userId, eylem: 'PARCEL_ACQUIRED', varlik: id,
     sonra: { bedel, imar: p.zoning_type }, bolge: p.region_id, herkese: true });
   const gorev = gorevTamamla(userId, 'ILK_PARSEL', tx);
@@ -355,12 +351,9 @@ const insaatBaslat = db.transaction((userId, id, tip) => {
   require('./ciftlik').seviyeKontrol(userId, y.minSeviye, y.ad);
   const tx = L.yeniTx();
   L.harca(userId, y.maliyet, `İnşaat: ${y.ad} (${id})`, tx);   // kaynak ayrımı
-  belediye.belediyePayi(p.ilce_id, y.maliyet, 'ruhsatPayi', 'ruhsat harcı', tx);
   const t = simdi();
-  // Belediyenin yol bakımı yaptığı mahallede inşaat daha kısa sürer
   // Nalburdan alınan kalıp seti kendiliğinden kullanılır (inşaat kısalır); kısa inşaatta harcanmaz
-  const sureKalipsiz = y.sureMs * (belediye.mahalleHizmetleri(p.region_id).has('YOL_BAKIMI') ? 1 - BELEDIYE.etki.insaatKisalma : 1)
-    * (1 - require('./uretim').meslekBonusu(userId, 'MIMAR'));
+  const sureKalipsiz = y.sureMs * (1 - require('./uretim').meslekBonusu(userId, 'MIMAR'));
   const kalip = sureKalipsiz >= KALIP_MIN_MS && require('./carsi').stoktanKullan(userId, 'KALIP_SETI', `Kalıp seti: ${y.ad} (${id})`, tx);
   const sure = Math.round(sureKalipsiz * (kalip ? 1 - CARSI.etki.kalipKisalma : 1));
   const yapiId = yapiEkle.run(id, userId, tip, y.taban, y.taban * y.kat, t, t + sure).lastInsertRowid;
@@ -383,11 +376,10 @@ const bakimMaliyeti = (s, t = simdi()) => L.yuvarla((YAPILAR[s.type]?.maliyet ||
 function aktifYapiVar(yapilar, tip, t = simdi()) {
   return yapilar.some((s) => s.type === tip && s.status === 'ACTIVE' && saglik(s, t) >= BAKIM.etkisizEsik);
 }
-// Sulama birim maliyeti: su deposu yarıya, belediyenin sulama kanalı ayrıca yarıya indirir; kurak ilde (gerçek hava) ayrıca indirim
-function sulamaBirimi(yapilar, hizmetler, plaka = null) {
+// Sulama birim maliyeti: su deposu yarıya indirir; kurak ilde (gerçek hava) ayrıca indirim
+function sulamaBirimi(yapilar, plaka = null) {
   let b = TARIM.sulamaMaliyeti;
   if (aktifYapiVar(yapilar, 'SU_DEPOSU')) b /= 2;
-  if (hizmetler.has('SULAMA_KANALI')) b *= 1 - BELEDIYE.etki.sulamaIndirim;
   if (plaka) b *= 1 - require('./iklim').kuraklik(plaka).indirim;
   return L.yuvarla(b);
 }
@@ -460,7 +452,7 @@ const sula = db.transaction((userId, id) => {
     throw new OyunHatasi(429, 'Toprak hâlâ nemli; biraz sonra tekrar sula');
   }
   const kat = verimKati(p);
-  const birim = sulamaBirimi(yapilar, belediye.mahalleHizmetleri(p.region_id), p.plaka) * require('./koy-meydani').oran(userId, 'CESME');   // köy çeşmesi
+  const birim = sulamaBirimi(yapilar, p.plaka) * require('./koy-meydani').oran(userId, 'CESME');   // köy çeşmesi
   const tx = L.yeniTx();
   L.harca(userId, L.yuvarla(birim * kat), `Sulama/enerji (${id})`, tx);
   L.denetim({ aktor: userId, eylem: 'CROP_WATERED', varlik: id, bolge: p.region_id });
@@ -484,7 +476,6 @@ const hasat = db.transaction((userId, id) => {
   let bonus = 0;
   if (aktifYapiVar(yapilar, 'SULAMA_HATTI')) bonus += TARIM.sulamaHattiBonus;
   if (aktifYapiVar(yapilar, 'SERA')) bonus += TARIM.seraBonus;
-  if (belediye.mahalleHizmetleri(p.region_id).has('SULAMA_KANALI')) bonus += BELEDIYE.etki.hasatBonus;
   bonus += require('./uretim').meslekBonusu(userId, 'CIFTCI');
   bonus += require('./kooperatif').hasatPrimi(userId);
   bonus += require('./koleksiyon').hasatBonusu(p.owner_user_id, p.il_id);   // yöre seti tamamsa
@@ -520,10 +511,7 @@ const bakimYap = db.transaction((userId, id) => {
   // Nalburdan alınan bakım kiti bakımı ücretsiz yapar; yalnızca bedel kitin fiyatını aşıyorsa harcanır
   const kit = bedel > CARSI.urunler.BAKIM_KITI.fiyat && require('./carsi').stoktanKullan(userId, 'BAKIM_KITI', `Bakım kiti (${id})`, tx);
   const tutar = kit ? 0 : bedel;
-  if (!kit) {
-    L.harca(userId, tutar, `Yapı bakımı (${id})`, tx);
-    belediye.belediyePayi(p.ilce_id, tutar, 'ruhsatPayi', 'bakım ruhsat payı', tx);
-  }
+  if (!kit) L.harca(userId, tutar, `Yapı bakımı (${id})`, tx);
   const guncelle = db.prepare(`UPDATE structures SET bakim_at = ? WHERE id = ?`);
   // Bakımsız dönemde kira birikmez: eşiğin altındaki kira yapısının sayacı bakımla yeniden başlar
   const kiraSifirla = db.prepare(`UPDATE structures SET gelir_at = ? WHERE id = ?`);
@@ -566,9 +554,8 @@ const npcSat = db.transaction((userId, urun, miktar) => {
   const adet = Math.min(miktar, kalan);
   // Ortalama fiyat: satış ilerledikçe fiyat düşer (sınırsız geri alım yok)
   const ort = (birimFiyat(urun, satilan) + birimFiyat(urun, satilan + adet)) / 2;
-  const pazarYeri = belediye.pazarBonusu(userId);   // belediyenin semt pazarı olan mahallede parseli varsa
   const koopPrimi = require('./kooperatif').satisPrimi(userId);
-  const tutar = L.yuvarla(ort * adet * (pazarYeri ? 1 + BELEDIYE.etki.pazarBonus : 1) * (1 + koopPrimi) * require('./koy-meydani').oran(userId, 'PAZAR_YERI') * require('./mini-etkinlik').tuccarKat());   // kuruş hassasiyeti (defter 2 basamak)
+  const tutar = L.yuvarla(ort * adet * (1 + koopPrimi) * require('./koy-meydani').oran(userId, 'PAZAR_YERI') * require('./mini-etkinlik').tuccarKat());   // kuruş hassasiyeti (defter 2 basamak)
   if (tutar < 0.01) throw new OyunHatasi(409, 'Tüccarın bugünkü fiyatı bu miktara bir kuruş bile etmiyor; daha çok ürünle ya da yarın dene', 'DEGERSIZ');
   const tx = L.yeniTx();
   L.envanterDegis(userId, urun, -adet, 'NPC pazar satışı', tx);
@@ -579,7 +566,7 @@ const npcSat = db.transaction((userId, urun, miktar) => {
   L.denetim({ anahtar: `TRADE_SETTLED:${tx}`, aktor: userId, eylem: 'TRADE_SETTLED', varlik: urun,
     sonra: { adet, tutar, karsi: 'NPC' }, herkese: false });
   const gorev = gorevTamamla(userId, 'ILK_SATIS', tx);
-  return { tamam: true, adet, tutar, birimFiyat: L.yuvarla(ort), kismi: adet < miktar, pazarYeri, koopPrimi, gorev };
+  return { tamam: true, adet, tutar, birimFiyat: L.yuvarla(ort), kismi: adet < miktar, koopPrimi, gorev };
 });
 
 // ---------- Ziyaret (§7.1) ----------
@@ -625,8 +612,6 @@ function oyuncuOzeti(userId) {
     limitler: { maxParsel: HESAP.maxParsel, maxParselMahalle: HESAP.maxParselMahalle },
     baslangicTarlasi: require('./baslangic').hakVar(userId),   // istemci "Tarlamı al" düğmesini gösterir
     sihirbaz: require('./sihirbaz').aktifMi(userId),   // ilk giriş sihirbazı sürüyor mu
-    // Seçimlerde aday olmuş ya da makam taşımış oyuncuya köy yönetimi seviyeden bağımsız açık kalır
-    siyasette: !!db.prepare(`SELECT 1 FROM adaylar WHERE user_id = ? UNION SELECT 1 FROM muhtarlar WHERE user_id = ? UNION SELECT 1 FROM belediye_uyeleri WHERE user_id = ? LIMIT 1`).get(userId, userId, userId),
     simdi: t,
   };
 }
@@ -646,7 +631,7 @@ function haberAkisi({ ilId = null, limit = 30 } = {}) {
         CASE r.type WHEN 'MAHALLE' THEN rl.id WHEN 'ILCE' THEN ri.id WHEN 'IL' THEN r.id END AS il_id
       FROM audit_events a LEFT JOIN users u ON u.id = a.actor_id LEFT JOIN regions r ON r.id = a.region_id
         LEFT JOIN regions ri ON ri.id = r.parent_id LEFT JOIN regions rl ON rl.id = ri.parent_id
-      WHERE a.public = 1 ${OZELLIK.siyaset ? '' : `AND a.action NOT IN (${SIYASI_EYLEMLER.map((x) => `'${x}'`).join(',')})`} ORDER BY a.id DESC LIMIT 400
+      WHERE a.public = 1 AND a.action NOT IN (${SIYASI_EYLEMLER.map((x) => `'${x}'`).join(',')}) ORDER BY a.id DESC LIMIT 400
     ) ${ilId ? 'WHERE il_id = ?' : ''} ORDER BY id DESC LIMIT ?`).all(...(ilId ? [ilId, limit] : [limit]));
   return satirlar.map((s) => ({ ...s, after: s.after_json ? JSON.parse(s.after_json) : null, after_json: undefined }));
 }
@@ -733,9 +718,7 @@ function ilIstatistikleri() {
     SELECT rl.plaka, rl.name AS ad,
       COUNT(p.id) AS parsel, COUNT(DISTINCT p.owner_user_id) AS oyuncu,
       (SELECT COUNT(*) FROM listings l JOIN parcels pp ON pp.id = l.parcel_id WHERE pp.il_id = rl.id AND l.status = 'ACTIVE') AS ilan,
-      (SELECT COUNT(*) FROM structures s JOIN parcels pp ON pp.id = s.parcel_id WHERE pp.il_id = rl.id) AS yapi,
-      (SELECT COUNT(*) FROM secimler x JOIN regions rm ON rm.id = x.region_id JOIN regions rc ON rc.id = rm.parent_id
-        WHERE rc.parent_id = rl.id AND x.asama IN ('DUYURU','ADAYLIK','KAMPANYA','OYLAMA','ITIRAZ')) AS secim
+      (SELECT COUNT(*) FROM structures s JOIN parcels pp ON pp.id = s.parcel_id WHERE pp.il_id = rl.id) AS yapi
     FROM regions rl LEFT JOIN parcels p ON p.il_id = rl.id AND p.owner_user_id IS NOT NULL
     WHERE rl.type = 'IL' GROUP BY rl.id ORDER BY rl.plaka`).all();
 }

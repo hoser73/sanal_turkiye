@@ -175,11 +175,11 @@ function gizlilik(h) {
           : `<button type="button" class="dugme ince" data-h="onay" data-belge="${k}" data-onay="${o.onay ? 0 : 1}">${o.onay ? 'İzni geri çek' : 'İzin ver'}</button>`}</div></li>`).join('')}</ul>
     </section>
     <section><h3>Verilerim</h3>
-      <p>KVKK m.11 kapsamında hesabınla ilgili tüm kayıtları (cüzdan, parseller, ilanlar, adaylıklar, onaylar, oturumlar…) makinece okunabilir bir dosya olarak indirebilirsin. Gizli oy ilkesi gereği oy içerikleri kimseyle ilişkilendirilmez ve dosyada yer almaz.</p>
+      <p>KVKK m.11 kapsamında hesabınla ilgili tüm kayıtları (cüzdan, parseller, ilanlar, onaylar, oturumlar…) makinece okunabilir bir dosya olarak indirebilirsin.</p>
       <a class="dugme" href="/api/hesap/veri" download>⬇️ Verilerimi indir (JSON)</a>
     </section>
     <section class="tehlike-bolge"><h3>Hesabı sil</h3>
-      <p>Kimlik bilgilerin (e-posta, parola, doğum yılı, 2FA) kalıcı olarak silinir; parsellerin devlete döner, açık ilan ve tekliflerin kapanır, makamların boşalır.
+      <p>Kimlik bilgilerin (e-posta, parola, doğum yılı, 2FA) kalıcı olarak silinir; parsellerin devlete döner, açık ilan ve tekliflerin kapanır.
       Ekonomi defteri ve denetim kaydı diğer oyuncuların işlem bütünlüğü için “Ayrılan oyuncu” adıyla anonim kalır. <b>Bu işlem geri alınamaz.</b></p>
       <details><summary>Hesabımı silmek istiyorum</summary>
         <form class="form" data-form="sil">${parolaAlani(h)}

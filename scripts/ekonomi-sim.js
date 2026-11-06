@@ -12,7 +12,7 @@ const dizin = fs.mkdtempSync(path.join(os.tmpdir(), 'st-ekosim-'));
 Object.assign(process.env, {
   VERI_DIZINI: dizin, KARO_KAYNAGI: 'sahte', HAVA_KAYNAGI: 'sahte', SESSIZ: '1', GUNLUK_SESSIZ: '1', OTOMATIK_DOGRULA: '1',
   KIMLIK_HIZ_CARPANI: '1000', API_HIZ_SINIRI: '1000000', AGIR_HIZ_SINIRI: '1000000', BAKIM_ARALIGI_MS: '0', ONBELLEK: 'kapali',
-  HATIRLATMA: 'kapali', YAPAY_ZEKA: 'kapali', SIYASET: 'kapali',
+  HATIRLATMA: 'kapali', YAPAY_ZEKA: 'kapali',
 });
 
 // Yapay saat: pazartesi 06.00 (Türkiye) başlar

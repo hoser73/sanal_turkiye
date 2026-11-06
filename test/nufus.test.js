@@ -1,4 +1,4 @@
-// Yaşayan nüfus: demo sakinlerin yerleşmesi, oyun kurallarıyla eylemleri, doldurma kipinde seçim, sohbet yanıtı ve taşınma.
+// Yaşayan nüfus: demo sakinlerin yerleşmesi, oyun kurallarıyla eylemleri, sohbet yanıtı ve taşınma.
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
@@ -9,8 +9,7 @@ const app = require('../server/index');
 const db = require('../server/db');
 const I = require('../server/harita/izgara');
 const nufus = require('../server/nufus');
-const secim = require('../server/secim');
-const { NUFUS, SECIM } = require('../server/config/rules');
+const { NUFUS } = require('../server/config/rules');
 const { sahteImar, KOD_AD } = require('../server/harita/imar');
 
 let sunucu, taban;
@@ -47,15 +46,6 @@ function mahalleHucreleri([lon, lat], imar = 'TARIM') {
     if (KOD_AD[sahteImar(x, y)] === imar) liste.push(I.parselId(x, y));
   }
   return liste;
-}
-function asamayaGetir(secimId, asama) {
-  const s = db.prepare('SELECT * FROM secimler WHERE id = ?').get(secimId);
-  const hedef = { ADAYLIK: s.adaylik_at, KAMPANYA: s.kampanya_at, OYLAMA: s.oylama_at, ITIRAZ: s.itiraz_at, BITTI: s.bitis_at }[asama];
-  const k = hedef - Date.now() + 5;
-  db.prepare(`UPDATE secimler SET duyuru_at = duyuru_at - ?, adaylik_at = adaylik_at - ?, kampanya_at = kampanya_at - ?,
-              oylama_at = oylama_at - ?, itiraz_at = itiraz_at - ?, bitis_at = bitis_at - ? WHERE id = ?`).run(k, k, k, k, k, k, secimId);
-  secim.secimBakim();
-  return db.prepare('SELECT * FROM secimler WHERE id = ?').get(secimId);
 }
 const demolar = (mahalleId) => db.prepare(`SELECT * FROM users WHERE is_npc = 1 AND npc_mahalle = ? AND npc_durum = 'AKTIF'`).all(mahalleId);
 
@@ -102,40 +92,11 @@ test('demo sakin eylemi: tarımcı ekim yapar, bakiye kuralları geçerlidir', a
   assert.ok(nufus.eylem(n).includes('hasat'));
 });
 
-test('doldurma kipi: demo sakinlerle seçim açılır, demo adaylar çıkar, oy kullanılır; aynı cihaz şüphesi oluşmaz', async () => {
-  secim.secimBakim({ zorla: true });
-  let s = db.prepare(`SELECT * FROM secimler WHERE region_id = ? AND tur = 'MUHTAR'`).get(mahalle);
-  assert.ok(s, 'tek gerçek oyuncu + demo sakinlerle seçim duyuruldu');
-  s = asamayaGetir(s.id, 'ADAYLIK');
-  for (let i = 0; i < 4; i++) nufus.siyaset();
-  const adaylar = (await ilk(`/api/mahalle/${mahalle}`)).veri.secim.adaylar;
-  assert.ok(adaylar.length >= 1 && adaylar.every((a) => a.demo), 'demo adaylar etiketli');
-  s = asamayaGetir(s.id, 'KAMPANYA');
-  assert.equal(s.doldurma, 1);
-  const kutuk = db.prepare(`SELECT COUNT(*) c FROM secmen_kutugu WHERE secim_id = ?`).get(s.id).c;
-  assert.equal(kutuk, 4, '1 gerçek + 3 demo seçmen');
-  s = asamayaGetir(s.id, 'OYLAMA');
-  // Gerçek oyuncu da oy kullanır
-  assert.equal((await ilk(`/api/secim/${s.id}/oy`, { adayId: adaylar[0].id })).durum, 200);
-  for (let i = 0; i < 5; i++) nufus.siyaset();
-  const katilim = db.prepare(`SELECT COUNT(*) c FROM secim_katilim WHERE secim_id = ?`).get(s.id).c;
-  assert.ok(katilim >= 3);
-  s = asamayaGetir(s.id, 'ITIRAZ');
-  const sonuc = JSON.parse(s.sonuc_json);
-  assert.equal(sonuc.denetim.supheli, 0, 'her demo sakinin cihazı ayrı');
-  assert.equal(sonuc.demoKatilim, katilim - 1);
-  s = asamayaGetir(s.id, 'BITTI');
-  assert.equal(s.asama, 'SONUCLANDI');
-  assert.ok((await ilk(`/api/mahalle/${mahalle}`)).veri.muhtar, 'muhtar seçildi');
-});
-
-test('gerçek oyuncu eşiğe ulaşınca demo sakin aday olamaz', async () => {
-  const s = { region_id: mahalle, tur: 'MUHTAR' };
-  const n = demolar(mahalle)[0];
-  assert.equal(secim.adayUygunlugu(n.id, s, 'MUHTAR').uygun, true);
+test('yeni gerçek oyuncular mahalleye katılır; eşiğin altında demo sakinler kalır', async () => {
   for (const [i, ad] of ['ikinci', 'ucuncu'].entries()) await oyuncu(ad, hucreler[i + 10]);
-  assert.equal(secim.doldurmaKipi(SECIM.turler.MUHTAR, mahalle), false);
-  assert.match(secim.adayUygunlugu(n.id, s, 'MUHTAR').sebepler.join(), /yeterli gerçek oyuncu/);
+  const m = nufus.aktifMahalleler().find((x) => x.id === mahalle);
+  assert.equal(m.gercek, 3);
+  assert.ok(m.gercek < NUFUS.cekilmeEsigi && demolar(mahalle).length > 0);
 });
 
 test('sohbet: gerçek oyuncunun mahalle mesajına demo sakin yanıt verir (etiketli)', async () => {
@@ -163,8 +124,5 @@ test('mahallede gerçek oyuncu çoğalınca demo sakinler ilan açıp taşınır
     assert.equal(db.prepare(`SELECT npc_durum FROM users WHERE id = ?`).get(n.id).npc_durum, 'TASINDI');
     assert.equal(db.prepare(`SELECT COUNT(*) c FROM parcels WHERE owner_user_id = ?`).get(n.id).c, 0);
   }
-  // Demo muhtar taşındıysa makam boşaldı
-  const m = db.prepare(`SELECT m.* FROM muhtarlar m JOIN users u ON u.id = m.user_id WHERE m.region_id = ? AND u.is_npc = 1 AND m.bitis > ?`).get(mahalle, Date.now());
-  assert.equal(m, undefined);
   assert.equal((await nufus.nufusDongusu()).yerlesen, 0, 'yeterli gerçek oyuncu olan mahalleye yeni demo sakin gelmez');
 });

@@ -56,8 +56,6 @@ const TEMALAR = {
       'etiket-yol': { 'text-color': '#5a3511', 'text-halo-color': '#f6ead0', 'text-halo-width': 1.6 },
       'etiket-mahalle': ETIKET_CIFTLIK, 'etiket-koy': ETIKET_CIFTLIK, 'etiket-kasaba': ETIKET_CIFTLIK, 'etiket-sehir': { ...ETIKET_CIFTLIK, 'text-halo-width': 2.6 },
       'simge-isaret': ETIKET_CIFTLIK, 'il-hava': ETIKET_CIFTLIK,
-      'secim-etiket': { 'text-color': '#ffffff', 'text-halo-color': '#0b4d40', 'text-halo-width': 2 },
-      'belediye-etiket': { 'text-color': '#ffffff', 'text-halo-color': '#6b1d12', 'text-halo-width': 2 },
     },
   },
 };

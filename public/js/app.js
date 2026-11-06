@@ -8,8 +8,6 @@ import { yolBolumu } from './yol-ui.js';
 import { haritaKur } from './harita.js';
 import { kaynaklariAyarla } from './stil.js';
 import { GRAFIK, varsayilanGrafik } from './dunya3d.js';
-import { mahallePaneli as mahalleSekmesi, yenidenSayimHTML } from './secim-ui.js';
-import { belediyePaneli as belediyeSekmesi } from './belediye-ui.js';
 import { parselPazarBolumu, pazarPaneli as pazarSekmesi, netOnizleme, borsaUrunSec, sevkiyatOnizle } from './pazar-ui.js';
 import { hesapKur, hesapDurumuCiz, urlTokenleri, epostaDogrula, sikayetAc, hesapAc } from './hesap-ui.js';
 import { canliBaslat, canliYenile, canliDinle, servisCalisaniKaydet } from './canli.js';
@@ -45,11 +43,7 @@ const durum = {
   konum: null,          // haritanın merkezindeki il / ilçe (kırıntı ve "bu ildeki haberler")
   sahne: undefined,     // parsel 3B sahnesi (ilk kullanımda kurulur; WebGL yoksa null)
   akisFiltre: 'turkiye',
-  mahalleId: null,      // Yönetim sekmesinde gösterilen mahalle
-  belediyeId: null,     // Yönetim sekmesinde gösterilen ilçe belediyesi
-  yonetimAlt: 'mahalle',
-  projeTaslak: null,    // muhtar talebinden doldurulan proje teklifi
-  makbuzlar: {},        // oy makbuzları: yalnızca bu oturumda, oy verildikten hemen sonra gösterilir
+  mahalleId: null,      // haritada seçilen mahalle (mahalle sohbet kanalı)
 };
 const kipOku = () => { try { return localStorage.getItem('st-kip') || '2d'; } catch { return '2d'; } };
 const kipYaz = (k) => { try { localStorage.setItem('st-kip', k); } catch { /* özel pencere */ } };
@@ -68,13 +62,7 @@ const AKIS_METIN = {
   COOP_JOINED: (a) => ['🤝', `<b>${esc(a.aktor)}</b> “${esc(a.after?.ad)}” kooperatifine katıldı`],
   LANDMARK_COLLECTED: (a) => ['📔', `<b>${esc(a.aktor)}</b> ${esc(a.after?.simge)} kartını topladı`],
   PRODUCTION_COLLECTED: (a) => ['⚙️', `<b>${esc(a.aktor)}</b> ${a.after?.miktar} ${esc(urunAd(a.after?.urun))} üretti`],
-  REFERENDUM_PROPOSED: (a) => ['🗳️', `Referandum önerisi: “${esc(a.after?.soru)}”`],
-  REFERENDUM_OPENED: (a) => ['🗳️', `Referandum oylaması açıldı: “${esc(a.after?.soru)}”`],
-  REFERENDUM_CLOSED: (a) => ['📊', `Referandum sonucu: “${esc(a.after?.soru)}” → <b>${esc(a.after?.kazanan ?? 'nisap yok')}</b>`],
   SEASON_CLOSED: (a) => ['🏆', `Sezon kapandı; kürsü: ${esc((a.after?.ilk3 || []).join(', '))}`],
-  RECALL_STARTED: (a) => ['✍️', `<b>${esc(a.aktor)}</b> görevden alma dilekçesi başlattı`],
-  RECALL_SUCCEEDED: () => ['⚖️', 'Görevden alma dilekçesi imza eşiğini geçti'],
-  OFFICE_VACATED: (a) => ['🪑', `Bir makam boşaldı: ${esc(a.after?.sebep)}`],
   PARCEL_ACQUIRED: (a) => ['📍', `<b>${esc(a.aktor)}</b> bir parsel edindi`],
   STRUCTURE_STARTED: (a) => ['🏗️', `<b>${esc(a.aktor)}</b> ${esc(yapiAd(a.after?.tip))} inşaatına başladı`],
   STRUCTURE_COMPLETED: (a) => ['✅', `<b>${esc(a.aktor)}</b> ${esc(yapiAd(a.after?.tip))} tamamladı`],
@@ -83,27 +71,7 @@ const AKIS_METIN = {
   PARCEL_VISITED: (a) => ['👋', `<b>${esc(a.aktor)}</b>, ${esc(tamlayan(a.after?.sahip || ''))} parselini ziyaret etti`],
   LISTING_CREATED: (a) => ['🏷️', `<b>${esc(a.aktor)}</b> bir parseli ${akce(a.after?.fiyat)} fiyatla ilana çıkardı`],
   PARCEL_TRADED: (a) => ['🤝', `Bir parsel ${akce(a.after?.fiyat)} bedelle el değiştirdi: <b>${esc(a.after?.satici)}</b> → <b>${esc(a.aktor)}</b>`],
-  ELECTION_ANNOUNCED: (a) => ['📣', `${secimAd(a)} seçimi duyuruldu`],
-  CANDIDACY_OPENED: (a) => ['📝', `${secimAd(a)} seçiminde adaylık başvuruları açıldı`],
-  CANDIDATE_REGISTERED: (a) => ['🙋', `<b>${esc(a.aktor)}</b> ${a.after?.makam === 'BASKAN' ? 'belediye başkanlığına' : a.after?.makam === 'MECLIS' ? 'belediye meclisine' : 'muhtarlığa'} aday oldu`],
-  CAMPAIGN_STARTED: (a) => ['📋', `${secimAd(a)} seçiminde kampanya başladı; kütükte ${sayi(a.after?.kutuk)} seçmen`],
-  VOTING_OPENED: (a) => ['🗳️', `${secimAd(a)} seçiminde oylama başladı`],
-  VOTING_CLOSED: (a) => ['📊', `${secimAd(a)} seçiminde oylama bitti: ${sayi(a.after?.toplam)} seçmen oy kullandı`],
-  OBJECTION_FILED: () => ['⚖️', 'Seçim sonucuna itiraz edildi'],
-  ELECTION_CLOSED: (a) => (a.after?.tur === 'BELEDIYE'
-    ? ['🏛️', `<b>${esc(a.after?.kazanan)}</b> belediye başkanı seçildi${a.after?.meclis?.length ? `; meclis: ${a.after.meclis.map(esc).join(', ')}` : ''}`]
-    : ['🏅', `<b>${esc(a.after?.kazanan)}</b> muhtar seçildi (${sayi(a.after?.oy)}/${sayi(a.after?.toplam)} oy)`]),
-  ELECTION_ANNULLED: (a) => ['⚠️', `${secimAd(a)} seçimi iptal edildi; yenilenecek`],
-  ELECTION_NO_CANDIDATE: (a) => ['🗳️', `${secimAd(a)} seçiminde aday çıkmadı`],
-  PROJECT_PROPOSED: (a) => ['📝', `Başkan <b>${esc(a.aktor)}</b> meclise teklif etti: ${esc(a.after?.ad)} (${akce(a.after?.maliyet)})`],
-  COUNCIL_VOTE: (a) => ['🙋', `Meclis üyesi <b>${esc(a.aktor)}</b>, ${esc(a.after?.ad)} için “${({ EVET: 'evet', HAYIR: 'hayır', CEKIMSER: 'çekimser' })[a.after?.oy]}” dedi`],
-  PROJECT_APPROVED: (a) => ['✅', `Meclis onayladı: <b>${esc(a.after?.ad)}</b> yapılıyor`],
-  PROJECT_REJECTED: (a) => ['✖️', `Meclis reddetti: ${esc(a.after?.ad)}`],
-  PROJECT_COMPLETED: (a) => ['🏁', `<b>${esc(a.after?.ad)}</b> hizmete açıldı`],
-  MUHTAR_REQUEST: (a) => ['📨', `Muhtar <b>${esc(a.aktor)}</b> belediyeden ${esc(a.after?.ad)} istedi`],
-  MUHTAR_ANNOUNCEMENT: (a) => ['📢', `Muhtar <b>${esc(a.aktor)}</b>: “${esc(a.after?.metin)}”`],
 };
-const secimAd = (a) => (a.after?.tur === 'BELEDIYE' ? 'Belediye' : 'Muhtarlık');
 const yapiAd = (t) => durum.kurallar?.yapilar[t]?.ad || t;
 const urunAd = (u) => durum.kurallar?.urunler[u]?.ad || u;
 const urunIkon = (u) => durum.kurallar?.urunler[u]?.ikon || '🧺';
@@ -188,8 +156,6 @@ async function basla() {
   const [kurallar, bolgeler] = await Promise.all([api('/api/kurallar'), api('/api/bolgeler')]);
   durum.kurallar = kurallar;
   durum.bolgeler = bolgeler;
-  // Siyaset kapalıysa (sunucu ayarı) Yönetim sekmesi ve açılım kartı yok; Köy sekmesi yalnızca haberler
-  if (!siyasetAcik()) { delete SEKME_GRUP.haberler; delete SEKME_GRUP.yonetim; ACILIMLAR.splice(ACILIMLAR.findIndex((x) => x.kod === 'yonetim'), 1); }
   kaynaklariAyarla(kurallar.haritaKaynak);
   const tokenler = urlTokenleri();
   await benYenile({ sessiz: true });
@@ -209,9 +175,6 @@ async function basla() {
     ilTik: ilSec,
     ilceTik: ilceSec,
     mahalleAlanTik: mahalleAlanSec,
-    mahalleTik: mahalleAc,
-    belediyeTik: belediyeAc,
-    siyaset: siyasetAcik(),
     konumDegisti,
     kip: baslangicKip,
     tema: gorunumTercihi(),
@@ -374,8 +337,7 @@ async function mahalleAlanSec(ilceId, yerId, lngLat) {
   try {
     const r = await api(`/api/ilce/${ilceId}/mahalle`, { yerId });
     durum.harita.yereGit({ merkez: [lngLat.lng, lngLat.lat], zoom: 14.6 });
-    if (r.id && siyasetAcik()) mahalleAc(r.id);
-    else if (r.id) { mahalleAc(r.id); tost(`📍 ${r.ad || 'Mahalle'}`); }
+    if (r.id) { mahalleSec(r.id); tost(`📍 ${r.ad || 'Mahalle'}`); }
     else tost(`📍 ${r.ad}: henüz oyuncu yok. Giriş yapıp ilk parseli sen edinebilirsin.`);
   } catch (e) { tost(e.message, 'hata'); }
 }
@@ -525,20 +487,18 @@ function ustCiz() {
 
 // ================= Panel =================
 // Sekmeler 4 ana bölümde toplanır (Çiftlik, Pazar, Köy, Ben); seçili parsel varsa başta "Parsel" görünür.
-// Pazar = pazar + çarşı, Köy = haberler + yönetim: bölümün üstünde alt sekmeler çıkar. İç sekme adları değişmedi.
-const siyasetAcik = () => !!durum.kurallar?.ozellikler?.siyaset;
-const SEKME_GRUP = { pazar: ['pazar', 'carsi'], carsi: ['pazar', 'carsi'], haberler: ['haberler', 'yonetim'], yonetim: ['haberler', 'yonetim'] };
-const ALT_AD = { pazar: '📈 Pazar', carsi: '🏪 Çarşı', haberler: '📰 Haberler', yonetim: '🏛️ Yönetim' };
+// Pazar = pazar + çarşı (bölümün üstünde alt sekmeler çıkar), Köy = haberler. İç sekme adları değişmedi.
+const SEKME_GRUP = { pazar: ['pazar', 'carsi'], carsi: ['pazar', 'carsi'] };
+const ALT_AD = { pazar: '📈 Pazar', carsi: '🏪 Çarşı' };
 const grupBasi = (ad) => SEKME_GRUP[ad]?.[0] || ad;
 // Seviyeyle açılan bölümler: yeni oyuncuyu derin sistemlerle boğmamak için (kurallar sunucuda ayrıca denetlenir)
 const ACILIMLAR = [
   { seviye: 3, kod: 'balik', ikon: '🎣', ad: 'Balık tutma', metin: 'Göl, nehir ya da kıyıda balık tut; nadir balıkları koleksiyonuna ekle.' },
   { seviye: 3, kod: 'komsuluk', ikon: '🤝', ad: 'Komşuluk', metin: 'Komşu ol, birbirinizin tarlasını sulayın, hediye gönderin.' },
   { seviye: 4, kod: 'carsi', ikon: '🏪', ad: 'Çarşı', metin: 'Banka, nalbur, market ve zirai bayi: gübre, ilaç, aşı ve daha fazlası.' },
-  { seviye: 5, kod: 'yonetim', ikon: '🏛️', ad: 'Köy yönetimi', metin: 'Muhtarlık ve belediye seçimlerine katıl, aday ol, projelere oy ver.' },
 ];
 const seviyem = () => durum.ben?.seviye?.seviye || 1;
-const acikMi = (kod) => { const a = ACILIMLAR.find((x) => x.kod === kod); return !a || !durum.ben || seviyem() >= a.seviye || (kod === 'yonetim' && durum.ben.siyasette); };
+const acikMi = (kod) => { const a = ACILIMLAR.find((x) => x.kod === kod); return !a || !durum.ben || seviyem() >= a.seviye; };
 function kilitliBolum(kod) {
   const a = ACILIMLAR.find((x) => x.kod === kod);
   return `<div class="kilit-ekrani"><div class="kilit-ikon">${a.ikon}<span>🔒</span></div><h3>${esc(a.ad)}</h3><p>${esc(a.metin)}</p>
@@ -563,7 +523,7 @@ async function panelCiz() {
   const kap = $('#panelIcerik');
   const no = ++panelCizimNo;
   const ciz = {
-    parsel: parselPaneli, arazilerim: arazilerimPaneli, yonetim: yonetimPaneli, gorevler: gorevlerPaneli, carsi: carsiPaneli, pazar: pazarPaneli, haberler: haberlerPaneli,
+    parsel: parselPaneli, arazilerim: arazilerimPaneli, gorevler: gorevlerPaneli, carsi: carsiPaneli, pazar: pazarPaneli, haberler: haberlerPaneli,
   }[durum.sekme];
   $('.sekmeler [data-sekme="parsel"]').hidden = !durum.kart;
   const grup = SEKME_GRUP[durum.sekme];
@@ -660,10 +620,7 @@ function parselPaneli() {
   parcalar.push(`
     <p class="mono">${k.adaParsel ? `Ada ${k.adaParsel.ada} · Parsel ${k.adaParsel.parsel} · ` : ''}${esc(k.id)}</p>
     <h2 class="kart-baslik">${esc(k.mahalle)}</h2>
-    <p class="alt-yazi">${esc(k.ilce)} · ${esc(k.il)} <span class="plaka">${esc(k.plaka)}</span>${siyasetAcik() ? `
-      · <button type="button" class="bag" data-eylem="mahalle-ac" data-id="${k.mahalleId}">🗳️ Mahalle</button>
-      · <button type="button" class="bag" data-eylem="belediye-ac" data-id="${k.belediyeId}">🏛️ Belediye</button>` : ''}</p>
-    ${k.hizmetler?.length ? `<p class="hizmet-ciplar">${k.hizmetler.map((h) => `<span class="cip hizmet-cip" title="${esc(h.etki)}">${h.ikon} ${esc(h.ad)}</span>`).join('')}</p>` : ''}
+    <p class="alt-yazi">${esc(k.ilce)} · ${esc(k.il)} <span class="plaka">${esc(k.plaka)}</span></p>
     <span class="cip" style="background:${imar.renk}">${IMAR_IKON[imar.tip] || ''} ${esc(imar.ad)}</span>
     ${k.pazar?.ilan ? `<span class="cip satilik-cip">🏷️ Satılık · ${akce(k.pazar.ilan.fiyat)}</span>` : ''}
     <dl class="istatistik">
@@ -1050,32 +1007,10 @@ function gunlukGorevKarti(d) {
     <button class="dugme altin genis" data-eylem="gorev-odul" ${d.hepsi && !d.alindi ? '' : 'disabled'}>${d.alindi ? '✓ Bugünkü ödül alındı' : d.hepsi ? `🎁 Ödülü al (${akce(d.odul)})` : '🎁 Üçünü de bitir, ödülü al'}</button></div>`;
 }
 
-// ---------- Yönetim: mahalle (muhtarlık) ve ilçe belediyesi ----------
-async function yonetimPaneli() {
-  const alt = durum.yonetimAlt;
-  const segment = `<div class="segment" role="tablist">
-    <button type="button" data-eylem="yonetim-alt" data-alt="mahalle" aria-selected="${alt === 'mahalle'}">🗳️ Mahalle · muhtarlık</button>
-    <button type="button" data-eylem="yonetim-alt" data-alt="belediye" aria-selected="${alt === 'belediye'}">🏛️ İlçe belediyesi</button></div>`;
-  const icerik = alt === 'belediye'
-    ? await belediyeSekmesi({ ben: durum.ben, belediyeId: durum.belediyeId, sunucuSimdi, makbuzlar: durum.makbuzlar, taslak: durum.projeTaslak })
-    : await mahalleSekmesi({ ben: durum.ben, mahalleId: durum.mahalleId, sunucuSimdi, makbuzlar: durum.makbuzlar });
-  durum.projeTaslak = null;
-  return segment + icerik;
-}
-function mahalleAc(id) {
+// Haritada seçilen mahalle: mahalle sohbet kanalı ona geçer
+function mahalleSec(id) {
   durum.mahalleId = Number(id);
   sohbetKanallariniYenile();
-  if (!siyasetAcik()) return;
-  durum.yonetimAlt = 'mahalle';
-  if (window.matchMedia('(max-width: 820px)').matches) panelBoyut('');
-  sekmeSec('yonetim');
-}
-function belediyeAc(id) {
-  if (!siyasetAcik()) return;
-  durum.belediyeId = Number(id);
-  durum.yonetimAlt = 'belediye';
-  if (window.matchMedia('(max-width: 820px)').matches) panelBoyut('');
-  sekmeSec('yonetim');
 }
 
 // ---------- Pazar ----------
@@ -1201,47 +1136,12 @@ async function eylemDagit(b, e = null) {
     case 'sikayet':
       if (!girisli()) return authAc('giris');
       return sikayetAc(b.dataset.tur, b.dataset.id, b.dataset.baslik || 'İçerik');
-    case 'dilekce-imza':
-      return eylem(`/api/gorevden-alma/${b.dataset.id}/imza`, {}, (r) => (r.durum === 'BASARILI' ? 'İmza eşiği aşıldı: makam boşaldı' : `İmzan eklendi (${r.imza}/${r.esik})`));
-    // ---- Mahalle / seçim
-    case 'mahalle-ac':
-      return mahalleAc(b.dataset.id);
     case 'sekme':
       return sekmeSec(b.dataset.sekme);
     case 'panel-yenile':
       return panelCiz();
-    case 'belediye-ac':
-      return belediyeAc(b.dataset.id);
-    case 'yonetim-alt':
-      durum.yonetimAlt = b.dataset.alt;
-      $('#panelIcerik').scrollTop = 0;
-      return panelCiz();
     case 'yere-git':
       return durum.harita.yereGit({ merkez: [Number(b.dataset.lon), Number(b.dataset.lat)], zoom: Number(b.dataset.zoom) || 15 });
-    case 'meclis-oy':
-      return eylem(`/api/proje/${b.dataset.proje}/oy`, { oy: b.dataset.oy }, (r) => `Meclis oyun kaydedildi: ${({ EVET: 'evet', HAYIR: 'hayır', CEKIMSER: 'çekimser' })[r.oy]}`);
-    case 'talep-teklif':
-      durum.projeTaslak = { tur: b.dataset.tur, mahalleId: Number(b.dataset.mahalle), talepId: Number(b.dataset.talep) };
-      await panelCiz();
-      $('.proje-form')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      return;
-    case 'talep-kapat': {
-      const gerekce = prompt('Talebi neden kapatıyorsun? (10–300 karakter, muhtara iletilir)');
-      if (!gerekce) return;
-      return eylem(`/api/talep/${b.dataset.talep}/kapat`, { gerekce }, 'Talep gerekçesiyle kapatıldı');
-    }
-    case 'adaylik-geri':
-      if (!confirm('Adaylıktan çekilmek istiyor musun?')) return;
-      return eylem(`/api/secim/${b.dataset.secim}/adaylik-geri`, null, 'Adaylıktan çekildin');
-    case 'yeniden-say': {
-      const r = await api(`/api/secim/${b.dataset.secim}/yeniden-say`).catch((err) => ({ hata: err.message }));
-      const yer = $(`.yeniden-sayim[data-secim="${b.dataset.secim}"]`);
-      if (yer) yer.innerHTML = r.hata ? `<p class="sebep">${esc(r.hata)}</p>` : yenidenSayimHTML(r);
-      return;
-    }
-    case 'makbuz-kopyala':
-      try { await navigator.clipboard.writeText(b.dataset.makbuz); tost('Makbuz kopyalandı'); } catch { tost(b.dataset.makbuz); }
-      return;
     case 'akis-filtre':
       durum.akisFiltre = b.dataset.filtre;
       return panelCiz();
@@ -1288,11 +1188,6 @@ async function eylemDagit(b, e = null) {
     case 'ortak-bitir':
       if (!confirm('Ortaklığı sonlandırmak istiyor musun?')) return;
       return eylem(`/api/ortak/${b.dataset.id}/bitir`, {}, 'Ortaklık sonlandı');
-    case 'ref-imza':
-      return eylem(`/api/referandum/${b.dataset.id}/imza`, {}, (r) => `İmzan eklendi (${r.imza}/${r.esik})`);
-    case 'ref-oy':
-      if (!confirm(`Oyun “${b.dataset.oy === 'EVET' ? 'Evet' : 'Hayır'}”. Gizli oy geri alınamaz. Onaylıyor musun?`)) return;
-      return eylem(`/api/referandum/${b.dataset.id}/oy`, { oy: b.dataset.oy }, (r) => `Oyun sandıkta. Makbuz: ${r.makbuz} (yalnızca oyunun sayıldığını kanıtlar)`);
     case 'danisman': {
       b.disabled = true;
       try {
@@ -1506,14 +1401,6 @@ $('#panelIcerik').addEventListener('click', (e) => {
 });
 
 $('#panelIcerik').addEventListener('change', (e) => {
-  const pf = e.target.closest('.proje-form');
-  if (pf && e.target.name === 'tur') {
-    const etki = pf.querySelector('[data-proje-etki]');
-    if (etki) etki.textContent = durum.kurallar.belediye?.projeler?.[e.target.value]?.etki || '';
-    return;
-  }
-  const vaat = e.target.closest('[data-vaat]');
-  if (vaat) { eylem(`/api/vaat/${vaat.dataset.vaat}`, { durum: vaat.value }, 'Vaat durumu güncellendi'); return; }
   const f = e.target.closest('[data-filtre]');
   if (!f) return;
   durum.pazarFiltre[f.dataset.filtre] = f.value;
@@ -1566,59 +1453,6 @@ $('#panelIcerik').addEventListener('submit', (e) => {
     return eylem(`/api/ilan/${e.target.dataset.ilan}/teklif`, { tutar: Number(v(e.target).tutar) },
       (r) => (r.npcKabul ? `🤝 Teklifin kabul edildi; parsel artık senin (${akce(r.fiyat)})` : `💬 ${akce(r.tutar)} teklifin iletildi; tutar kilitlendi`));
   }
-  if (e.target.matches('.proje-form')) {
-    e.preventDefault();
-    const f = e.target;
-    const govde = { tur: f.tur.value, hedefMahalleId: Number(f.hedefMahalleId.value), gerekce: f.gerekce.value };
-    if (f.talepId) govde.talepId = Number(f.talepId.value);
-    return eylem(`/api/belediye/${f.dataset.belediye}/proje`, govde, (r) => `📝 Teklif meclis gündeminde${r.nitelikli ? ' (nitelikli çoğunluk gerekir)' : ''}`);
-  }
-  if (e.target.matches('.talep-form')) {
-    e.preventDefault();
-    return eylem(`/api/mahalle/${e.target.dataset.mahalle}/talep`, { tur: e.target.tur.value, aciklama: e.target.aciklama.value }, '📨 Talebin belediye başkanına iletildi');
-  }
-  if (e.target.matches('.aday-form')) {
-    e.preventDefault();
-    const f = e.target;
-    const vaatler = [...f.querySelectorAll('[name="vaat"]')].map((x) => x.value.trim()).filter(Boolean);
-    const makam = f.querySelector('input[name="makam"]:checked')?.value;
-    return eylem(`/api/secim/${f.dataset.secim}/aday`, { makam, manifesto: f.manifesto.value, vaatler, butce: f.butce.value === '' ? null : Number(f.butce.value) },
-      '🙋 Adaylığın açıklandı. Kampanya başlayınca seçmenler manifestonu görecek.');
-  }
-  if (e.target.matches('.oy-pusulasi')) {
-    e.preventDefault();
-    const f = e.target;
-    const makamlar = (f.dataset.makamlar || 'MUHTAR').split(',');
-    const secimler = {}, adlar = [];
-    for (const m of makamlar) {
-      const secilen = f.querySelector(`input[name="oy-${m}"]:checked`);
-      if (!secilen) { tost(makamlar.length > 1 ? 'Pusulanın her bölümünde bir aday seç' : 'Bir aday seç', 'hata'); return; }
-      secimler[m] = Number(secilen.value);
-      adlar.push(secilen.closest('.aday-karti').querySelector('b').textContent);
-    }
-    if (!confirm(`Oyunu ${adlar.join(' ve ')} için kullanmak istiyor musun? Oy gizlidir ve değiştirilemez.`)) return;
-    const govde = makamlar.length === 1 && makamlar[0] === 'MUHTAR' ? { adayId: secimler.MUHTAR } : { secimler };
-    return eylem(`/api/secim/${f.dataset.secim}/oy`, govde, (r) => {
-      durum.makbuzlar[f.dataset.secim] = r.makbuz;
-      return '🗳️ Oyun gizli olarak kaydedildi. Makbuzunu sakla.';
-    });
-  }
-  if (e.target.matches('.makbuz-form')) {
-    e.preventDefault();
-    const f = e.target;
-    api(`/api/secim/${f.dataset.secim}/makbuz`, { makbuz: f.makbuz.value })
-      .then((r) => tost(r.dahil ? '✓ Bu makbuzun oyu sayıma dahil' : '✗ Bu makbuz bu seçimde bulunamadı', r.dahil ? '' : 'hata'))
-      .catch((err) => tost(err.message, 'hata'));
-    return;
-  }
-  if (e.target.matches('.itiraz-form')) {
-    e.preventDefault();
-    return eylem(`/api/secim/${e.target.dataset.secim}/itiraz`, { sebep: e.target.sebep.value }, '⚖️ İtirazın kaydedildi; itiraz süresi sonunda değerlendirilecek');
-  }
-  if (e.target.matches('.duyuru-form')) {
-    e.preventDefault();
-    return eylem(`/api/mahalle/${e.target.dataset.mahalle}/duyuru`, { metin: e.target.metin.value }, '📢 Duyurun mahalleye iletildi');
-  }
   if (e.target.matches('.kira-form')) {
     e.preventDefault();
     const d = v(e.target);
@@ -1634,12 +1468,6 @@ $('#panelIcerik').addEventListener('submit', (e) => {
     const d = v(e.target);
     return eylem('/api/sevkiyat', { urun: d.urun, miktar: Number(d.miktar), kaynak: d.kaynak, hedef: d.hedef, mod: d.mod },
       (r) => `🚚 Sevkiyat yola çıktı (${r.km} km, nakliye ${akce(r.maliyet)}, tahmini satış ${akce(r.tahminiGelir)})`);
-  }
-  if (e.target.matches('.ref-form')) {
-    e.preventDefault();
-    const d = v(e.target);
-    return eylem(`/api/belediye/${e.target.dataset.ilce}/referandum`, { soru: d.soru, aciklama: d.aciklama },
-      (r) => (r.durum === 'OYLAMA' ? '🗳️ Referandum oylaması açıldı' : `Öneri imzaya açıldı (${r.esik} imza gerekli)`));
   }
   if (e.target.matches('.uretim-form')) {
     e.preventDefault();
@@ -1660,13 +1488,6 @@ $('#panelIcerik').addEventListener('submit', (e) => {
     const d = v(e.target);
     return eylem('/api/borsa/emir', { urun: d.urun, yon: d.yon, fiyat: Number(d.fiyat), miktar: Number(d.miktar), gun: Number(d.gun) },
       (r) => (r.dolan ? `${r.dolan} adet hemen eşleşti${r.kalan ? `, ${r.kalan} adet defterde bekliyor` : ''}` : 'Emrin deftere yazıldı'));
-  }
-  if (e.target.matches('.dilekce-form')) {
-    e.preventDefault();
-    const d = v(e.target);
-    const [makam, hedefId] = d.hedef.split(':');
-    return eylem('/api/gorevden-alma', { bolgeId: Number(e.target.dataset.bolge), makam, hedefId: Number(hedefId), gerekce: d.gerekce },
-      (r) => `Dilekçe açıldı; ilk imza senden (${r.esik} imza gerekli)`);
   }
   if (e.target.matches('.fiyat-form')) {
     e.preventDefault();
@@ -1698,14 +1519,6 @@ function sayaclariGuncelle() {
     const bas = Number(el.dataset.ilerlemeBas), son = Number(el.dataset.ilerlemeSon);
     el.style.width = `${Math.min(100, ((t - bas) / (son - bas)) * 100)}%`;
   }
-  // Mahalle sekmesi: seçim aşaması değiştiyse (geri sayım bitti) yeniden çiz
-  if (biten && !yenilemeBekliyor && durum.sekme === 'yonetim') {
-    yenilemeBekliyor = true;
-    setTimeout(async () => {
-      try { await panelCiz(); await haritaYenile(); } finally { yenilemeBekliyor = false; }
-    }, 1500);
-    return;
-  }
   if (biten && !yenilemeBekliyor && durum.secili) {
     yenilemeBekliyor = true;
     setTimeout(async () => {
@@ -1720,7 +1533,7 @@ function sayaclariGuncelle() {
 
 // ================= Bildirimler =================
 // Bildirim türü simgesi: metin bir emojiyle başlıyorsa o, değilse bağlantı türünden
-const BILDIRIM_SIMGE = { mahalle: '🗳️', belediye: '🏛️', pazar: '💰', parsel: '🌾', arazilerim: '🧺', komsuluk: '🤝', gorevler: '🎯', yonetim: '🛡️' };
+const BILDIRIM_SIMGE = { pazar: '💰', parsel: '🌾', arazilerim: '🧺', komsuluk: '🤝', gorevler: '🎯', yonetim: '🛡️' };
 function bildirimSimgesi(n) {
   const e = /^(\p{Extended_Pictographic}(\uFE0F|\u200D\p{Extended_Pictographic})*)\s*/u.exec(n.text);
   if (e) return { simge: e[1], metin: n.text.slice(e[0].length) };
@@ -1730,27 +1543,24 @@ async function bildirimAc() {
   const kutu = $('#bildirimKutu');
   if (!kutu.hidden) { kutu.hidden = true; return; }
   const liste = await api('/api/bildirimler');
-  // Aynı metinli bildirimler (ör. farklı mahallelerde aynı seçim aşaması) en yenisinin yerinde tek satırda "×N" toplanır
+  // Aynı metinli bildirimler en yenisinin yerinde tek satırda "×N" toplanır
   const metinle = new Map();
   for (const n of liste) {
     const g = metinle.get(n.text);
     if (g) { g.adet++; g.yeni ||= !n.okundu; } else metinle.set(n.text, { ...n, adet: 1, yeni: !n.okundu });
   }
   const gruplar = [...metinle.values()];
-  // Senin için (tarla, pazar, komşu, görev) üstte; köy haberleri (seçim, belediye) ayrı başlık altında
-  const koyMu = (n) => /^(mahalle|belediye):/.test(n.link || '');
-  const senin = gruplar.filter((n) => !koyMu(n)), koy = gruplar.filter(koyMu);
   const yeniSayi = liste.filter((n) => !n.okundu).length;
   kutu.innerHTML = `<div class="bildirim-baslik"><b>Bildirimler</b>${yeniSayi ? `<span class="bildirim-yeni">${yeniSayi >= 60 ? '60+' : yeniSayi} yeni</span>` : ''}
       <button type="button" class="bildirim-kapat" aria-label="Kapat">✕</button></div>
-    ${gruplar.length ? [['Senin için', senin], ['🏘️ Köyden haberler', koy]].filter(([, l]) => l.length).map(([b, l]) => `<h4 class="bildirim-grup">${b}</h4><ul>${l.map((n) => {
+    ${gruplar.length ? `<ul>${gruplar.map((n) => {
       const { simge, metin } = bildirimSimgesi(n);
       return `<li><button type="button" class="${n.yeni ? 'yeni' : ''}" data-link="${esc(n.link || '')}">
         <span class="bildirim-simge">${simge}</span>
         <span class="bildirim-govde"><span class="bildirim-metin">${esc(metin)}</span>
           <span class="bildirim-alt"><time>${zamanOnce(n.created_at)}</time>${n.adet > 1 ? `<span class="bildirim-adet">×${n.adet}</span>` : ''}</span></span>
         ${n.yeni ? '<span class="bildirim-nokta" aria-label="yeni"></span>' : ''}</button></li>`;
-    }).join('')}</ul>`).join('')
+    }).join('')}</ul>`
     : '<div class="bildirim-bos"><span>🔔</span><b>Her şey yolunda</b><p>Yeni bir şey olduğunda burada göreceksin.</p></div>'}`;
   kutu.hidden = false;
   if (liste.some((n) => !n.okundu)) { await api('/api/bildirimler/okundu', {}); benYenile({ sessiz: true }); }
@@ -1764,12 +1574,10 @@ $('#bildirimKutu').addEventListener('click', (e) => {
   $('#bildirimKutu').hidden = true;
   baglantiyaGit(b.dataset.link);
 });
-// Bildirim bağlantıları: "parsel:TR-…", "mahalle:<id>", "belediye:<id>", "pazar:borsa", "arazilerim", "yonetim"
+// Bildirim bağlantıları: "parsel:TR-…", "pazar:borsa", "arazilerim", "yonetim" (kaldırılan seçim bölümünün eski "mahalle:" / "belediye:" bağlantıları bir şey yapmaz)
 function baglantiyaGit(link) {
   const [tur, deger] = String(link || '').split(':');
   if (tur === 'parsel' && deger) { durum.harita.parseleGit(deger); parselSec(deger); }
-  else if (tur === 'mahalle' && deger) mahalleAc(deger);
-  else if (tur === 'belediye' && deger) belediyeAc(deger);
   else if (tur === 'pazar') { durum.pazarAlt = deger || 'ilanlar'; sekmeSec('pazar'); }
   else if (tur === 'arazilerim') sekmeSec('arazilerim');
   else if (tur === 'komsuluk') ciftlikAlt('komsular');

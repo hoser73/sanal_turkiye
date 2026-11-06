@@ -15,8 +15,6 @@ const pazar = require('./pazar');
 const piyasa = require('./piyasa');
 piyasa.hazineId(true);   // Hazine (oyunun alıcısı) hesabı açılışta hazır olsun
 const arama = require('./arama');
-const secim = require('./secim');
-const belediye = require('./belediye');
 const hesap = require('./hesap');
 const moderasyon = require('./moderasyon');
 const ekonomi = require('./ekonomi');
@@ -32,13 +30,12 @@ const kozmetik = require('./kozmetik');
 const zaman = require('./zaman');
 const lojistik = require('./lojistik');
 const kira = require('./kira');
-const referandum = require('./referandum');
 const nufus = require('./nufus');
 const posta = require('./posta');
 const imar = require('./harita/imar');
 const { parselHazirla, komsuImarlari, koordinatlar } = require('./harita/parsel');
 const { npcSeedEt } = require('./npc');
-const { IMAR, IMAR_KAYNAK_NOTU, YAPILAR, URUNLER, BIRIM, HESAP, PAZAR, BELEDIYE, BOZULMA, BAKIM, BORSA, MEVSIMLER, LIG, RECETELER, MESLEKLER, OZELLIK } = require('./config/rules');
+const { IMAR, IMAR_KAYNAK_NOTU, YAPILAR, URUNLER, BIRIM, HESAP, PAZAR, BOZULMA, BAKIM, BORSA, MEVSIMLER, LIG, RECETELER, MESLEKLER } = require('./config/rules');
 const { OyunHatasi } = require('./lib/ledger');
 const { gunluk, istekGunlugu, sonHatalar } = require('./lib/gunluk');
 const { ortakYanit } = require('./lib/onbellek');   // herkese aynı uçlar: kısa süreli önbellek
@@ -104,20 +101,16 @@ app.use(['/api/sifre', '/api/eposta', '/api/giris/2fa', '/api/2fa', '/api/hesap/
   hizSiniri({ windowMs: 15 * 60_000, limit: kimlikSiniri(20) }));
 // Oturum yalnızca API isteklerinde okunur (statik dosyalar için her seferinde oturum sorgusu yapılmaz)
 app.use((req, res, next) => (req.path.startsWith('/api/') ? auth.kimlik(req, res, next) : next()));
-// Siyaset kapalıyken (OZELLIK.siyaset) seçim, muhtarlık ve belediye uçları kapalıdır
-const SIYASI_YOLLAR = /^\/api\/(secim|vaat|proje|talep|mahalle|mahallelerim|belediye|belediyelerim|referandum|gorevden-alma|harita\/secimler|harita\/belediyeler)(\/|$)/i;   // Express yönlendirmesi büyük/küçük harf ayırmaz
-app.use((req, _res, next) => (OZELLIK.siyaset || !SIYASI_YOLLAR.test(req.path) ? next() : next(new OyunHatasi(404, 'Bu bölüm şimdilik kapalı', 'KAPALI'))));
-// Bakım işleri (süresi dolan inşaat, ilan, seçim, proje, borsa emri, hava, kira, referandum…). Eskiden her /api
+// Bakım işleri (süresi dolan inşaat, ilan, borsa emri, hava, kira, ihale…). Eskiden her /api
 // isteğinde hepsi çalışıyordu (her istekte bir düzine tablo taraması). Artık en sık BAKIM_ARALIGI_MS'de bir (varsayılan
 // 1 sn; testte 0 = her istekte) ve ayrıca zamanlayıcıyla; her iş ayrı korunur: biri hata verirse istekler düşmez.
 const BAKIM_ARALIGI = Number(process.env.BAKIM_ARALIGI_MS ?? 1000);
 const BAKIM_ISLERI = [
-  ['inşaat', () => oyun.bekleyenleriIsle()], ['pazar', () => pazar.pazarBakim()], ['seçim', () => secim.secimBakim()],
-  ['belediye', () => belediye.belediyeBakim()], ['görevden alma', () => moderasyon.gorevdenAlmaBakim()], ['borsa', () => ekonomi.borsaBakim()],
+  ['inşaat', () => oyun.bekleyenleriIsle()], ['pazar', () => pazar.pazarBakim()], ['borsa', () => ekonomi.borsaBakim()],
   ['hava', () => dunya.havaBakim()],
-  ['lojistik', () => lojistik.lojistikBakim()], ['kira', () => kira.kiraBakim()], ['referandum', () => referandum.referandumBakim()],
+  ['lojistik', () => lojistik.lojistikBakim()], ['kira', () => kira.kiraBakim()],
   ['endeks', () => piyasa.endeksBakim()], ['hazine', () => piyasa.hazineBakim()], ['hasat yarışı', () => require('./hasat-yarisi').yarisBakim()], ['ihale', () => require('./ihale').ihaleBakim()], ['fiyat alarmı', () => require('./alarm').alarmBakim()],
-].filter(([ad]) => OZELLIK.siyaset || !['seçim', 'belediye', 'görevden alma', 'referandum'].includes(ad));   // siyaset kapalıyken döngüler durur
+];
 let sonBakim = 0;
 function bakim() {
   const t = Date.now();
@@ -175,13 +168,11 @@ yz.rotalar(app, { h, auth });
 kozmetik.rotalar(app, { h, auth });
 zaman.rotalar(app, { h });
 lojistik.rotalar(app, { h, auth });
-if (OZELLIK.siyaset) referandum.rotalar(app, { h, auth });
 // Geliştirme posta kutusu: SMTP yokken doğrulama/sıfırlama iletileri burada görünür (üretimde kapalı)
 if (process.env.NODE_ENV !== 'production') app.get('/api/gelistirici/posta', h(() => posta.gelistirmeKutusu()));
 
 // ---- Statik oyun verisi
-app.get('/api/kurallar', h(ortakYanit(10 * 60_000, () => ({ surum: require('../package.json').version, haritaKaynak: HARITA_KAYNAK, yoresel: require('./config/rules').YORESEL, hayvanlar: require('./config/rules').HAYVANLAR, susler: require('./config/rules').SUSLER, receteler: RECETELER, meslekler: MESLEKLER, mevsimler: MEVSIMLER, lig: LIG, ozellikler: OZELLIK, bozulma: BOZULMA, bakim: BAKIM, borsa: { ucretOrani: BORSA.ucretOrani, sureler: BORSA.sureler, minTutar: BORSA.minTutar }, birim: BIRIM, imar: IMAR, imarKaynakNotu: IMAR_KAYNAK_NOTU, yapilar: YAPILAR, urunler: URUNLER, hesap: HESAP,
-  belediye: { projeler: BELEDIYE.projeler, gelir: BELEDIYE.gelir },
+app.get('/api/kurallar', h(ortakYanit(10 * 60_000, () => ({ surum: require('../package.json').version, haritaKaynak: HARITA_KAYNAK, yoresel: require('./config/rules').YORESEL, hayvanlar: require('./config/rules').HAYVANLAR, susler: require('./config/rules').SUSLER, receteler: RECETELER, meslekler: MESLEKLER, mevsimler: MEVSIMLER, lig: LIG, bozulma: BOZULMA, bakim: BAKIM, borsa: { ucretOrani: BORSA.ucretOrani, sureler: BORSA.sureler, minTutar: BORSA.minTutar }, birim: BIRIM, imar: IMAR, imarKaynakNotu: IMAR_KAYNAK_NOTU, yapilar: YAPILAR, urunler: URUNLER, hesap: HESAP,
   pazar: { ucretOrani: PAZAR.ucretOrani, minUcret: PAZAR.minUcret, maxFiyat: PAZAR.maxFiyat, ilanSureleri: PAZAR.ilanSureleri,
     aliciKosullari: Object.fromEntries(Object.entries(PAZAR.aliciKosullari).map(([k, v]) => [k, v.ad])) } }))));
 
@@ -255,12 +246,7 @@ app.get('/api/piyasa/endeks', h(ortakYanit(30000, (req) => piyasa.bolgeEndeksi(m
 app.get('/api/portfoy', auth.girisGerekli, h((req) => piyasa.portfoy(uid(req))));
 app.post('/api/parsel/:id/hazineye-sat', auth.dogrulanmisGerekli, hazir((req) => piyasa.hazineyeSat(uid(req), parselId(req), req.body)));
 
-// ---- Mahalle ve muhtarlık seçimi (§6)
-const bboxOku = (req) => {
-  const b = metin(req.query.bbox).split(',').map(Number);
-  if (b.length !== 4 || b.some((v) => !Number.isFinite(v))) throw new OyunHatasi(400, 'bbox=w,s,e,n gerekli');
-  return b;
-};
+
 // Tarla karosu (deneme ilçeleri): tarlalar karo başına bir kez üretilip saklanır, değişmez → önbelleklenir ve sıkıştırılır
 app.get('/api/harita/tarla/:kx/:ky', h(async (req, res) => {
   const kx = karoNo(req.params.kx), ky = karoNo(req.params.ky);
@@ -271,31 +257,6 @@ app.get('/api/harita/tarla/:kx/:ky', h(async (req, res) => {
   if (/\bgzip\b/.test(req.get('accept-encoding') || '')) res.set('content-encoding', 'gzip').send(require('zlib').gzipSync(govde));
   else res.send(govde);
 }));
-// Siyaset kapalıyken (OZELLIK.siyaset) seçim ve belediye uçları hiç kaydedilmez (yukarıdaki kapı da ayrıca 404 verir)
-function siyasiRotalar() {
-  app.get('/api/mahalle/:id', h((req) => secim.mahalleBilgisi(req.params.id, req.kullanici?.id ?? null)));
-  app.get('/api/mahallelerim', auth.girisGerekli, h((req) => secim.mahallelerim(uid(req))));
-  app.get('/api/harita/secimler', h((req) => secim.haritaSecimleri(bboxOku(req))));
-  app.get('/api/secim/:id/yeniden-say', agirSinir, h(ortakYanit(30000, (req) => secim.yenidenSay(req.params.id), (req) => String(Number(req.params.id) || 0))));
-  app.post('/api/secim/:id/aday', auth.dogrulanmisGerekli, h((req) => secim.adayOl(uid(req), req.params.id, req.body)));
-  app.post('/api/secim/:id/adaylik-geri', auth.dogrulanmisGerekli, h((req) => secim.adaylikGeriCek(uid(req), req.params.id)));
-  app.post('/api/secim/:id/oy', auth.dogrulanmisGerekli, h((req) =>
-    secim.oyVer(uid(req), req.params.id, req.body, secim.cihazOzeti(req.ip, req.get('user-agent')))));
-  app.post('/api/secim/:id/makbuz', h((req) => secim.makbuzDogrula(req.params.id, req.body?.makbuz)));
-  app.post('/api/secim/:id/itiraz', auth.dogrulanmisGerekli, h((req) => secim.itirazEt(uid(req), req.params.id, req.body)));
-  app.post('/api/mahalle/:id/duyuru', auth.dogrulanmisGerekli, h((req) => secim.duyuruYap(uid(req), req.params.id, req.body)));
-  app.post('/api/vaat/:id', auth.dogrulanmisGerekli, h((req) => secim.vaatGuncelle(uid(req), req.params.id, req.body)));
-
-  // ---- İlçe belediyesi (§6.1, §6.3, §6.4)
-  app.get('/api/belediye/:id', h((req) => belediye.belediyeBilgisi(req.params.id, req.kullanici?.id ?? null)));
-  app.get('/api/belediyelerim', auth.girisGerekli, h((req) => belediye.belediyelerim(uid(req))));
-  app.get('/api/harita/belediyeler', h((req) => belediye.haritaBelediyeleri(bboxOku(req))));
-  app.post('/api/belediye/:id/proje', auth.dogrulanmisGerekli, h((req) => belediye.projeTeklif(uid(req), req.params.id, req.body)));
-  app.post('/api/proje/:id/oy', auth.dogrulanmisGerekli, h((req) => belediye.meclisOyu(uid(req), req.params.id, req.body)));
-  app.post('/api/mahalle/:id/talep', auth.dogrulanmisGerekli, h((req) => belediye.talepGonder(uid(req), req.params.id, req.body)));
-  app.post('/api/talep/:id/kapat', auth.dogrulanmisGerekli, h((req) => belediye.talepKapat(uid(req), req.params.id, req.body)));
-}
-if (OZELLIK.siyaset) siyasiRotalar();
 
 // ---- Oyuncu eylemleri
 // Misafir için 200 + null: istemci oturum durumunu hata üretmeden öğrenir

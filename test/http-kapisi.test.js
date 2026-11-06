@@ -1,4 +1,4 @@
-// HTTP kapısı: siyaset kapalıyken büyük/küçük harf oyunu siyasi uçları açmaz; Express ve gövde ayrıştırıcı hataları 4xx
+// HTTP kapısı: kaldırılan siyasi uçlar (v0.47) büyük/küçük harfle de yok; Express ve gövde ayrıştırıcı hataları 4xx
 // (500 ve hata günlüğü değil); hız sınırı Türkçe JSON döner; istemci hata raporu boş olamaz; hata günlüğü döner.
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
@@ -7,7 +7,6 @@ const path = require('path');
 const { ortamKur, istemciUret } = require('./yardimci');
 
 const VERI = ortamKur('http-kapisi');
-process.env.SIYASET = 'kapali';
 const app = require('../server/index');
 
 let sunucu, taban;
@@ -21,13 +20,13 @@ const istemci = istemciUret(() => taban);
 const hataDosyasi = () => path.join(VERI, 'gunluk', 'hatalar.jsonl');
 const sunucuHatasiVar = () => fs.existsSync(hataDosyasi()) && fs.readFileSync(hataDosyasi(), 'utf8').includes('sunucu hatası');
 
-test('siyaset kapalıyken büyük harfli siyasi yollar da 404', async () => {
+test('kaldırılan siyasi uçlar büyük harfle de 404', async () => {
   const A = istemci();
-  for (const yol of ['/api/Secim/1/aday', '/api/SECIM/1/oy', '/api/Mahalle/1/duyuru', '/api/Gorevden-Alma', '/api/GOREVDEN-ALMA/1/imza', '/api/Belediye/1/proje']) {
-    const r = await A(yol, {});
-    assert.equal(r.durum, 404, yol); assert.equal(r.veri.kod, 'KAPALI', yol);
+  for (const yol of ['/api/Secim/1/aday', '/api/SECIM/1/oy', '/api/Mahalle/1/duyuru', '/api/Gorevden-Alma', '/api/GOREVDEN-ALMA/1/imza', '/api/Belediye/1/proje', '/api/belediye/1/referandum']) {
+    assert.equal((await A(yol, {})).durum, 404, yol);
   }
   assert.equal((await A('/api/Mahallelerim')).durum, 404);
+  assert.ok(!sunucuHatasiVar());
 });
 
 test('bozuk yüzde kodlaması ve desteklenmeyen sıkıştırma 4xx; sunucu hatası günlüğe yazılmaz', async () => {

@@ -384,11 +384,8 @@ const KOLEKSIYON = {
   },
 };
 
-// ---------- Açılıp kapatılabilen bölümler. Siyaset (muhtarlık ve belediye seçimleri, meclis projeleri, referandum,
-// görevden alma) ancak yeterince gerçek oyuncu olunca anlam kazanır: SIYASET=acik ile açılır. Kapalıyken seçim ve proje
-// döngüleri durur, siyasi haberler ve ekranlar gizlenir; daha önce tamamlanmış belediye hizmetleri etkisini sürdürür.
-const OZELLIK = { siyaset: process.env.SIYASET === 'acik' };
-// Siyasi denetim kaydı eylemleri (siyaset kapalıyken haber akışında gösterilmez)
+// Kaldırılan siyaset bölümünün (seçim, belediye, referandum, görevden alma; v0.47) denetim kaydı eylemleri: eski kayıtlar
+// silinemez (audit_events), haber akışında gösterilmez
 const SIYASI_EYLEMLER = ['ELECTION_ANNOUNCED', 'CANDIDACY_OPENED', 'CANDIDATE_REGISTERED', 'CANDIDATE_WITHDRAWN', 'CAMPAIGN_STARTED', 'VOTING_OPENED',
   'VOTING_CLOSED', 'VOTE_CAST', 'OBJECTION_FILED', 'ELECTION_CLOSED', 'ELECTION_ANNULLED', 'ELECTION_NO_CANDIDATE', 'OFFICE_VACATED', 'PROMISE_UPDATED',
   'PROJECT_PROPOSED', 'COUNCIL_VOTE', 'PROJECT_APPROVED', 'PROJECT_REJECTED', 'PROJECT_COMPLETED', 'MUHTAR_REQUEST', 'MUHTAR_ANNOUNCEMENT', 'REQUEST_CLOSED',
@@ -566,8 +563,8 @@ const HESAP = {
 
 // KVKK ve sözleşme metinleri: sürüm değişince oyuncudan yeniden onay istenir
 const YASAL = {
-  KOSULLAR:  { surum: '2026-10-taslak-2', ad: 'Kullanım Koşulları', yol: '/yasal/kullanim-kosullari.html', zorunlu: true },
-  KVKK:      { surum: '2026-10-taslak-2', ad: 'KVKK Aydınlatma Metni', yol: '/yasal/kvkk.html', zorunlu: true },
+  KOSULLAR:  { surum: '2026-11-taslak-3', ad: 'Kullanım Koşulları', yol: '/yasal/kullanim-kosullari.html', zorunlu: true },
+  KVKK:      { surum: '2026-11-taslak-3', ad: 'KVKK Aydınlatma Metni', yol: '/yasal/kvkk.html', zorunlu: true },
   PAZARLAMA: { surum: '2026-10-taslak', ad: 'Ticari elektronik ileti izni', yol: '/yasal/kvkk.html#iletiler', zorunlu: false },
 };
 const ROLLER = { OYUNCU: 'Oyuncu', MODERATOR: 'Moderatör', DENETCI: 'Denetçi', ADMIN: 'Yönetici' };
@@ -648,78 +645,6 @@ const PIYASA = {
   },
 };
 
-// §6 mahalle muhtarlığı seçimi. Süreler gündür; SECIM_HIZI yalnızca seçim takvimini hızlandırır
-// (geliştirme/demo: SECIM_HIZI=1440 → 1 gün = 1 dakika). Oyun içi seçimdir; gerçek kamu seçimi değildir.
-const SECIM_HIZI = Number(process.env.SECIM_HIZI || 1);
-const gun = (n) => Math.round((n * 24 * 3600 * 1000) / SECIM_HIZI);
-const SECIM = {
-  asamalar: [   // duyuru → adaylık → kampanya → oylama → itiraz → sonuç → devir (§6.2)
-    { kod: 'DUYURU',   ad: 'Duyuru',   sureMs: gun(1) },
-    { kod: 'ADAYLIK',  ad: 'Adaylık',  sureMs: gun(2) },
-    { kod: 'KAMPANYA', ad: 'Kampanya', sureMs: gun(2) },
-    { kod: 'OYLAMA',   ad: 'Oylama',   sureMs: gun(2) },
-    { kod: 'ITIRAZ',   ad: 'İtiraz',   sureMs: gun(1) },
-  ],
-  muhtarDonemMs: gun(30),                   // §6.1 muhtar: 30 gün
-  yenidenDenemeMs: gun(3),                  // aday çıkmazsa / iptal olursa yeni seçime kadar bekleme
-  minSecmen: Number(process.env.SECIM_MIN_SECMEN || 3),   // seçim için en az bu kadar oyuncu sakin (NPC sayılmaz)
-  aday: {                                   // §6.2: hesap yaşı, oyun içi itibar, asgari etkinlik; ücretli adaylık yok
-    minHesapYasiMs: gun(7),
-    minItibar: 25,
-    minEtkinlik: 5,                         // son 30 günde en az bu kadar oyun eylemi
-    manifestoMaks: 600, vaatMaks: 5, vaatUzunluk: 120, butceMaks: 100000,
-  },
-  secmenMinHesapYasiMs: gun(1),             // kütük dondurulurken hesap en az bu kadar eski olmalı (çoklu hesap önlemi)
-  duyuruMaks: 400,
-  itirazMin: 10, itirazMaks: 500,
-  gunMs: gun(1),
-};
-// Seçim türleri: aynı motor (server/secim.js) her türün takvimi, bölgesi ve makamlarıyla çalışır
-SECIM.turler = {
-  MUHTAR: {
-    ad: 'Muhtarlık', bolge: 'MAHALLE', sakinKolonu: 'region_id', asamalar: SECIM.asamalar,
-    donemMs: SECIM.muhtarDonemMs, minSecmen: SECIM.minSecmen,
-    makamlar: { MUHTAR: { ad: 'Mahalle muhtarı', koltuk: 1, aday: { minHesapYasiMs: gun(7), minItibar: 25, minEtkinlik: 5 } } },
-  },
-  BELEDIYE: {   // §6.1: başkan ve meclis 90 gün; §23 belediye seçim sıklığı 90 gün
-    ad: 'Belediye', bolge: 'ILCE', sakinKolonu: 'ilce_id',
-    asamalar: [
-      { kod: 'DUYURU', ad: 'Duyuru', sureMs: gun(2) }, { kod: 'ADAYLIK', ad: 'Adaylık', sureMs: gun(3) },
-      { kod: 'KAMPANYA', ad: 'Kampanya', sureMs: gun(3) }, { kod: 'OYLAMA', ad: 'Oylama', sureMs: gun(2) },
-      { kod: 'ITIRAZ', ad: 'İtiraz', sureMs: gun(2) },
-    ],
-    donemMs: gun(90), minSecmen: Number(process.env.BELEDIYE_MIN_SECMEN || 5),
-    makamlar: {
-      BASKAN: { ad: 'Belediye başkanı', koltuk: 1, aday: { minHesapYasiMs: gun(14), minItibar: 40, minEtkinlik: 10 } },
-      MECLIS: { ad: 'Meclis üyesi', koltuk: 5, aday: { minHesapYasiMs: gun(7), minItibar: 25, minEtkinlik: 5 } },
-    },
-  },
-};
-
-// §6.3 belediye bütçesi ve projeleri. Oranlar kuralla sabittir: başkan para basamaz, oran belirleyemez.
-const BELEDIYE = {
-  gelir: {
-    tahsisPayi: 0.10,        // birincil tahsis bedelinin (zaten oyundan çıkan) payı ilçe kasasına
-    ruhsatPayi: 0.10,        // inşaat maliyetinin payı (ruhsat harcı)
-    islemPayi: 0.5,          // oyuncular arası pazar işlem masrafının payı
-    sakinBasiGunluk: 4,      // ilçede parseli olan her aktif oyuncu için günlük devlet katkısı
-    gunlukTavan: 200,
-  },
-  meclisOylamaMs: gun(1),
-  nitelikliOran: 2 / 3,      // başkanın çıkarı olan mahalle ya da büyük proje: nitelikli çoğunluk
-  buyukProjeEsigi: 800,
-  projeler: {
-    SULAMA_KANALI: { ad: 'Sulama kanalı', ikon: '💧', maliyet: 600, sureMs: gun(3), etki: 'Mahalledeki tarlalarda sulama maliyeti %50 azalır, hasat verimi %10 artar' },
-    YOL_BAKIMI:    { ad: 'Yol bakımı',    ikon: '🛣️', maliyet: 500, sureMs: gun(3), etki: 'Mahalledeki inşaatlar %25 daha kısa sürer' },
-    PARK:          { ad: 'Mahalle parkı', ikon: '🌳', maliyet: 400, sureMs: gun(2), etki: 'Mahalle çekiciliği +0,08 (tahsis bedeli ve gelişmişlik skoru)', cekicilik: 0.08 },
-    PAZAR_YERI:    { ad: 'Semt pazarı',   ikon: '🧺', maliyet: 900, sureMs: gun(4), etki: 'Mahallede parseli olan oyuncular NPC pazarında %8 daha yüksek fiyat alır' },
-  },
-  etki: { sulamaIndirim: 0.5, hasatBonus: 0.10, insaatKisalma: 0.25, pazarBonus: 0.08 },
-  gerekce: [20, 600], talep: [10, 400],
-};
-// Oyun içi itibar: herkese açık, basit ve şeffaf formül
-const ITIBAR = { gorev: 5, parsel: 4, yapi: 3, hasat: 2, islem: 3, hesapGunu: 1, maks: 100 };
-
 // İlk 10 dakika görevleri (§12.2)
 const GOREVLER = [
   { kod: 'ILK_PARSEL', ad: 'İlk parselini edin',        odul: 30, ipucu: 'Haritada yeşil (tarım) boş bir parsele tıkla ve "Edin" de.' },
@@ -729,7 +654,6 @@ const GOREVLER = [
   { kod: 'ILK_SATIS',  ad: 'Ürününü pazarda sat',        odul: 20, ipucu: 'Pazar → Tüccara sat.' },
   { kod: 'ILK_YAPI',   ad: 'Parseline bir geliştirme yap', odul: 25, ipucu: 'Tel çit, sulama hattı ya da bir ev iyi bir başlangıç.' },
   { kod: 'KOMSU_ZIYARET', ad: 'Bir komşunu ziyaret et',  odul: 15, ipucu: 'Başka bir oyuncunun parseline tıklayıp "Ziyaret et".' },
-  { kod: 'ILK_OY',     ad: 'Mahalle seçiminde oy kullan', odul: 15, ipucu: 'Mahalle sekmesinde oylama açıkken oy pusulanı doldur.' },
 ];
 
 // Haftalık takvim ve memleket: hafta numaraları baslangic'tan 7'şer gün (hasat yarışı, haftalık sipariş özeti). Eski 28
@@ -739,19 +663,11 @@ const LIG = {
   memleketBeklemeMs: 30 * 24 * 3600 * 1000,
 };
 
-// §6.5 görevden alma (geri çağırma) ve moderasyon
-const GOREVDEN_ALMA = {
-  imzaOrani: 0.4,        // makam bölgesindeki oyuncu sakinlerin (hedef hariç) %40'ı
-  minImza: 2,
-  sureMs: gun(5),        // dilekçe 5 gün açık kalır
-  korumaOrani: 0.2,      // görev süresinin ilk %20'sinde dilekçe başlatılamaz (balayı)
-  beklemeMs: gun(10),    // başarısız dilekçeden sonra aynı makam için bekleme
-  gerekceMin: 20,
-};
+// Moderasyon
 const MODERASYON = {
   sebepler: { SPAM: 'İstenmeyen içerik / reklam', TACIZ: 'Taciz veya hakaret', NEFRET: 'Nefret söylemi', DOLANDIRICILIK: 'Dolandırıcılık / manipülasyon',
-    COKLU_HESAP: 'Çoklu hesap / oy kaçakçılığı', UYGUNSUZ_AD: 'Uygunsuz ad', KISISEL_VERI: 'Kişisel verinin ifşası', DIGER: 'Diğer' },
-  hedefTurleri: ['KULLANICI', 'PARSEL', 'DUYURU', 'MESAJ', 'ILAN', 'PROJE'],
+    COKLU_HESAP: 'Çoklu hesap', UYGUNSUZ_AD: 'Uygunsuz ad', KISISEL_VERI: 'Kişisel verinin ifşası', DIGER: 'Diğer' },
+  hedefTurleri: ['KULLANICI', 'PARSEL', 'MESAJ', 'ILAN'],
   // İki kişi kuralı: bu işlemler öneren dışında ikinci bir yetkilinin onayıyla uygulanır
   islemler: {
     ICERIK_GIZLE: { ad: 'İçeriği gizle', ikiKisi: false },
@@ -759,8 +675,6 @@ const MODERASYON = {
     PARSEL_COZ: { ad: 'Parsel dondurmayı kaldır', ikiKisi: true },
     HESAP_ASKI: { ad: 'Hesabı askıya al', ikiKisi: true },
     HESAP_AC: { ad: 'Askıyı kaldır', ikiKisi: true },
-    GOREVDEN_AL: { ad: 'Görevden al (kural ihlali)', ikiKisi: true, denetciGerekli: true },
-    SECIM_IPTAL: { ad: 'Seçimi iptal et', ikiKisi: true, denetciGerekli: true },
   },
   acikSikayetSiniri: 10,
 };
@@ -813,12 +727,8 @@ const AFET = {
   tekrarMs: 12 * 3600 * 1000,   // aynı ilde aynı afet en çok 12 saatte bir
 };
 
-// §6.6 referandum: ilçe sakinlerinin gizli oyla danışma oylaması (başkan ya da sakinlerin %25'inin imzasıyla açılır)
-const REFERANDUM = { sureMs: gun(3), imzaOrani: 0.25, minImza: 2, nisapOrani: 0.3, soruMin: 15, soruMax: 200, aciklamaMax: 600 };
-
 // §7.7 yaşayan nüfus: gerçek oyuncusu az olan mahallelerde boşluğu dolduran, açıkça "demo sakin" etiketli simüle vatandaşlar.
-// Aynı kurallarla oynarlar; mahallede gerçek oyuncu çoğaldıkça taşınırlar. Seçimlere yalnızca "doldurma kipi"nde katılırlar:
-// bölgedeki gerçek oyuncu sayısı seçim eşiğinin altındayken. Eşiğe ulaşılınca yalnızca gerçek oyuncular aday olur ve oy kullanır.
+// Aynı kurallarla oynarlar; mahallede gerçek oyuncu çoğaldıkça taşınırlar.
 const NUFUS = {
   etkin: process.env.NUFUS !== 'kapali',
   mahalleHedef: 4,             // gerçek oyuncusu olan mahallede hedef sakin sayısı (gerçek + demo)
@@ -834,4 +744,4 @@ const NUFUS = {
   baslangicBakiye: 500,
 };
 
-module.exports = { BIRLESTIRME, IHALE, FIYAT_ALARMI, GUNLUK_SANDIK, MINI_ETKINLIK, IMECE, YARDIM, KOLEKSIYON, SEVIYE_KILIDI, OZELLIK, SIYASI_EYLEMLER, BULMACA, KOY_MEYDANI, HASAT_YARISI, MEVSIM_YOLU, PIYASA, CARSI, KOMSULUK, YORESEL, YORESEL_KURAL, BALIK, ETKINLIKLER, HATIRLATMA, HAYVANLAR, YEM_FIYATI, SEVIYE, GUNLUK_ODUL, SIPARIS, SUSLER, SUS_MAKS, NUFUS, LOJISTIK, KIRA, ORTAKLIK, AFET, REFERANDUM, KOZMETIK, RECETELER, MESLEKLER, MESLEK, KOOPERATIF, LIG, MEVSIMLER, HAVA, BOLGE, BOZULMA, BAKIM, BORSA, GOREVDEN_ALMA, MODERASYON, YASAL, ROLLER, BIRIM, OYUN_HIZI, IMAR, IMAR_KAYNAK_NOTU, IL_CEKICILIK, YERLESIM_CEKICILIK, YAPILAR, URUNLER, TARIM, NPC_PAZAR, PAZAR, SECIM, SECIM_HIZI, BELEDIYE, ITIBAR, HESAP, GOREVLER };
+module.exports = { BIRLESTIRME, IHALE, FIYAT_ALARMI, GUNLUK_SANDIK, MINI_ETKINLIK, IMECE, YARDIM, KOLEKSIYON, SEVIYE_KILIDI, SIYASI_EYLEMLER, BULMACA, KOY_MEYDANI, HASAT_YARISI, MEVSIM_YOLU, PIYASA, CARSI, KOMSULUK, YORESEL, YORESEL_KURAL, BALIK, ETKINLIKLER, HATIRLATMA, HAYVANLAR, YEM_FIYATI, SEVIYE, GUNLUK_ODUL, SIPARIS, SUSLER, SUS_MAKS, NUFUS, LOJISTIK, KIRA, ORTAKLIK, AFET, KOZMETIK, RECETELER, MESLEKLER, MESLEK, KOOPERATIF, LIG, MEVSIMLER, HAVA, BOLGE, BOZULMA, BAKIM, BORSA, MODERASYON, YASAL, ROLLER, BIRIM, OYUN_HIZI, IMAR, IMAR_KAYNAK_NOTU, IL_CEKICILIK, YERLESIM_CEKICILIK, YAPILAR, URUNLER, TARIM, NPC_PAZAR, PAZAR, HESAP, GOREVLER };

@@ -171,7 +171,6 @@ function devret(ilan, aliciId, fiyat, teklif) {
   }
   if (fiyat > ucret) L.aktar({ kaynak, hedef: L.hesap(ilan.seller_id), tutar: fiyat - ucret, sebep: `Parsel satışı ${p.id}`, tx });
   L.aktar({ kaynak, hedef: 'SYS:SINK', tutar: ucret, sebep: `İşlem masrafı ${p.id}`, tx });
-  require('./belediye').belediyePayi(p.ilce_id, ucret, 'islemPayi', 'pazar işlem payı', tx);
 
   // Sahiplik devri: eski kaydı kapat, yenisini aç; parsel sürümü kilidiyle
   db.prepare(`UPDATE parcel_ownership SET end_at = datetime('now') WHERE parcel_id = ? AND end_at IS NULL`).run(p.id);

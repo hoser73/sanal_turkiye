@@ -17,7 +17,6 @@ function ortamKur(ad) {
   process.env.ONBELLEK = 'kapali';    // testler süreleri elle ilerletir: bakım her istekte çalışsın
   process.env.GUNLUK_SESSIZ = '1';      // beklenen hata günlükleri test çıktısını kirletmesin (dosyaya yine yazılır)
   process.env.HATIRLATMA = 'kapali';     // hatırlatma zamanlayıcısı testte elle çağrılır
-  process.env.SIYASET = process.env.SIYASET || 'acik';   // seçim/belediye testleri; kapalı hâli siyaset.test.js sınar
   process.env.MINI_ETKINLIK = 'kapali';   // hafta sonu etkinliği sonuçları değiştirmesin; mini-etkinlik.test.js açar
   process.env.YAPAY_ZEKA = 'kapali';     // testler gerçek API çağırmaz; yz testi sahte yanıt verici takar
   return dizin;

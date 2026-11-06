@@ -9,7 +9,7 @@ Yaşayan dijital ülke simülasyonu. **81 ilin tamamı açık**: gerçek Türkiy
 ```bash
 npm install
 npm start            # http://localhost:3400
-npm run dev          # geliştirme: dosya değişince yeniden başlar, seçim takvimi hızlı (aşağıya bakın)
+npm run dev          # geliştirme: dosya değişince yeniden başlar
 npm test             # kabul testleri (155; ağ ve gerçek yapay zekâ kullanmaz; PostgreSQL testi gömülü PGlite ile)
 npm run rol -- e-posta ADMIN   # yetkili rolü ver (MODERATOR / DENETCI / ADMIN; panel için 2FA zorunlu)
 npm run yedek        # çevrimiçi yedek (data/yedekler, gzip, bütünlük denetimi, 14 yedek döndürme)
@@ -29,11 +29,26 @@ Ortam değişkenleri (v0.7 eklemeleri): `NUFUS=kapali` (demo sakinleri kapatır)
 
 Ortam değişkenleri (v0.6 eklemeleri): `TABAN_URL` (e-posta bağlantıları; üretimde zorunlu), `SMTP_URL` (yoksa iletiler geliştirme posta kutusuna düşer: `/gelistirici/posta.html`), `POSTA_GONDEREN`, `SIFRELEME_ANAHTARI` (64 hex; 2FA sırlarını şifreler, üretimde zorunlu), `OTOMATIK_DOGRULA=1` (yalnız geliştirme), `YONETICI_2FA_ZORUNLU` (varsayılan açık), `KIMLIK_HIZ_CARPANI`, `API_HIZ_SINIRI` (dakikada IP başı, 600), `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_KONU` (web push; yoksa geliştirmede üretilir), `HAVA_KAYNAGI` (open-meteo / sahte / kapali), `LIG_HIZI`, `ANTHROPIC_API_KEY` + `YAPAY_ZEKA` (kapali ile devre dışı) + `YZ_MODEL` (varsayılan claude-opus-5-5), `VEKTOR_TILEJSON` / `YUKSELTI_KARO` / `HARF_KARO` / `EK_KARO_KOKENLERI` (kendi karo sunucusu: docs/karo-sunucusu.md), `GUNLUK_DUZEYI`.
 
-Önceki ortam değişkenleri: `PORT` (3400), `OYUN_HIZI` (1 = tasarım süreleri), `SECIM_HIZI` (1 = gerçek seçim takvimi; 1440 = 1 gün 1 dakika), `SECIM_MIN_SECMEN` (muhtarlık seçimi için en az oyuncu sakin, varsayılan 3), `BELEDIYE_MIN_SECMEN` (belediye seçimi için ilçede en az oyuncu sakin, varsayılan 5), `VERI_DIZINI`, `KARO_KAYNAGI=sahte` (ağsız geliştirme/test: imar deseni deterministik, sınırlar gerçek), `NODE_ENV`.
-
-`npm run dev` seçimleri tek başına denemek için `SECIM_HIZI=1440 SECIM_MIN_SECMEN=1 BELEDIYE_MIN_SECMEN=1` ile çalışır (1 oyun günü = 1 dakika): muhtarlık seçimi ≈ 8 dakika, belediye seçimi ≈ 12 dakika, meclis oylaması 1 dakika, proje yapımı 2–4 dakika, muhtarlık dönemi 30, belediye dönemi 90 dakika; günlük devlet katkısı dakikada bir işler. `npm start` gerçek süreleri kullanır.
+Önceki ortam değişkenleri: `PORT` (3400), `OYUN_HIZI` (1 = tasarım süreleri), `VERI_DIZINI`, `KARO_KAYNAGI=sahte` (ağsız geliştirme/test: imar deseni deterministik, sınırlar gerçek), `NODE_ENV`.
 
 > Not: v0.1–0.2'nin Meram ızgarası ulusal ızgarayla uyumsuz olduğundan eski `data/sanalturkiye.db` dosyası kullanılmaz (silinmedi).
+
+## v0.47 — siyaset kaldırıldı: oyun arsa al-sat
+
+Oyunun özü gerçek hayattaki gibi arsa alıp geliştirmek, değerlendiğinde satıp kâr etmek. Muhtarlık ve belediye seçimleri bu
+amaca hizmet etmediği için **bütünüyle kaldırıldı** (v0.41'den beri varsayılan olarak kapalıydı):
+
+- **Silinenler:** `server/secim.js`, `server/belediye.js`, `server/referandum.js`; görevden alma dilekçesi ve "seçimi iptal et" /
+  "görevden al" moderasyon işlemleri (`moderasyon.js`); demo sakinlerin adaylığı, oyu, muhtar duyurusu, meclis projeleri (`nufus.js`);
+  istemcide Yönetim sekmesi, `secim-ui.js`, `belediye-ui.js`, `dilekce-ui.js`, haritadaki seçim/belediye işaretleri, yönetim panelinin
+  seçim denetimi / meclis kararları / dilekçe sekmeleri; "Mahalle seçiminde oy kullan" görevi; `SIYASET`, `SECIM_HIZI`,
+  `SECIM_MIN_SECMEN`, `BELEDIYE_MIN_SECMEN` ortam değişkenleri; ilgili testler (`secim`, `belediye`, `siyaset`, referandum, görevden alma).
+- **Kural değişiklikleri:** tahsis, ruhsat, bakım ve pazar masrafının belediye kasasına giden payı yok (oyuncunun ödediği değişmez; tutar
+  yine oyundan çıkar). Belediye hizmetlerinin etkileri (sulama kanalı, yol bakımı, semt pazarı) yok.
+- **Veri:** seçim, aday, oy, muhtar, belediye üyeliği, proje, talep, referandum ve dilekçe tabloları sunucu açılışında silinir
+  (`db.js`); KVKK veri dışa aktarımı ve hesap silme bunları artık içermez. Denetim kaydındaki eski siyasi olaylar silinemez, haber
+  akışında gösterilmez (`SIYASI_EYLEMLER`). Eski "mahalle:" / "belediye:" bildirim bağlantıları bir şey yapmaz.
+- Mahalle bir **bölge** olarak kalır: endeks, mahalle sohbeti, parsel sınırları, demo sakinler.
 
 ## v0.46 — parsel birleştirme
 
@@ -412,7 +427,6 @@ Dokular ve modeller kendi çizimimizdir (tuvalde üretilir); hiçbir oyunun gör
 | PostgreSQL | Dışa aktarım gerçek PostgreSQL 18 + PostGIS 3.6 üzerinde (PGlite) test edilir: şema, yükleme, defter dengesi, değiştirilemez denetim kaydı, uzamsal sorgu. Para sütunları `NUMERIC(14,2)`, ikili veri `BYTEA`, yabancı anahtarlar ertelenebilir. Uygulamanın kendisi hâlâ SQLite'ta çalışır | `scripts/postgres-aktar.js`, `test/postgres.test.js` |
 | Hukuk | Koşullar ve KVKK taslak-2 (demo sakinler §4a, yurt dışı aktarım tablosu); sürüm değiştiği için oyunculardan yeniden onay istenir. Hukukçu için kontrol listesi | `public/yasal/*`, `docs/hukuk-kontrol-listesi.md` |
 
-> `npm run dev` `SECIM_MIN_SECMEN=1` kullandığından tek gerçek oyuncu eşiği zaten karşılar; doldurma kipini görmek için `SECIM_MIN_SECMEN=3` ile başlatın.
 
 ## v0.6 — hepsi bir arada
 
@@ -470,52 +484,6 @@ Sonuç `imar_karolari` tablosunda önbelleklenir ve haritaya 64×64 PNG imar kar
 - Ortak model tablosu `public/js/modeller.js` hem haritayı hem sahneyi besler.
 - **Arama**: il, ilçe, mahalle ve köy (Türkçe karakter duyarsız). **Kırıntı**: Türkiye › İl › İlçe, harita gezildikçe güncellenir. **Bağlantı**: konum adres çubuğunda (`#konum=…`), parsel `?parsel=TR-…` ile paylaşılır.
 
-### Mahalle muhtarlığı seçimi (plan §6, §14.3) — `server/secim.js`
-| Aşama | Süre | Ne olur |
-|---|---|---|
-| Duyuru | 1 gün | Mahallede ≥ 3 oyuncu sakin olunca ve görevde muhtar yokken seçim kendiliğinden açılır; sakinlere bildirim |
-| Adaylık | 2 gün | Ücretsiz. Şartlar: mahallede parsel, hesap ≥ 7 gün, itibar ≥ 25, son 30 günde ≥ 5 oyun eylemi. Manifesto, en fazla 5 vaat, tahmini bütçe |
-| Kampanya | 2 gün | **Seçmen kütüğü dondurulur** (o anda mahallede parseli olan, hesabı ≥ 1 gün olanlar); sonradan parsel alarak oy kazanılamaz |
-| Oylama | 2 gün | Tek hesap tek oy. Aday sırası her seçmene rastgele (eşit görünürlük) |
-| İtiraz | 1 gün | Sayım, katılım, sayım özeti ve denetim bulguları açıklanır; seçmen ve adaylar itiraz eder; herkes bağımsız yeniden sayım yapabilir |
-| Sonuç / devir | — | Yeniden sayım + denetim kararı: kesinleşir (muhtar 30 gün görev alır, vaatleri takip listesine geçer) ya da iptal edilip yenilenir |
-
-**Gizli oy tasarımı**
-- `secim_katilim` *kim* oy kullandı (tekil oy), `secim_oylari` *ne* oylandı: oy kaydında kullanıcı kimliği ve zaman yok; ROWID'siz tablo ve rastgele birincil anahtar sayesinde ekleme sırasından eşleştirme yapılamaz. Oylar ve katılım kayıtları tetikleyicilerle değiştirilemez / silinemez; denetim günlüğünde tercih tutulmaz.
-- Seçmen bir **makbuz** alır: makbuz yalnızca oyunun sayıma *girdiğini* doğrular, *kime* verildiğini değil (oy satın alana kanıt gösterilemez).
-- **Sayım özeti**: tüm pusulaların sıralı listesinin SHA-256 özeti; itiraz sonunda ve herkesin isteğiyle bağımsız yeniden sayımla karşılaştırılır.
-- **Çoklu hesap denetimi** (§20.1): katılımda tuzlanmış IP + tarayıcı özeti tutulur; aynı cihazdan oy kullanan hesap kümeleri bulgu olarak açıklanır. Oylar gizli olduğundan şüpheli oylar ayıklanamaz; şüpheli sayısı kazanan ile ikinci arasındaki farka eşit ya da büyükse **seçim iptal edilir ve yenilenir**.
-- Eşitlikte açık kura (seçim ve aday kimliğinden türetilen, herkesin doğrulayabileceği sıra).
-
-**Muhtar yetkileri**: mahalleye duyuru, vaat takip ekranında vaat durumlarını güncelleme. Bütçe ve proje yetkileri belediye modülüyle gelecek; seçilmiş oyuncular kendi varlıklarına ayrıcalık yaratamaz (§1.3).
-**Oyuncu azsa**: seçim açılmaz, "geçici yönetim" sürer (§23).
-
-**İtibar** (herkese açık formül): görev × 5 + parsel × 4 + aktif yapı × 3 + hasat × 2 + işaretsiz pazar işlemi × 3 + hesap günü × 1, en fazla 100.
-
-### İlçe belediyesi (plan §6.1, §6.3, §6.4, Senaryo C) — `server/belediye.js`
-**Seçim**: başkan (1 koltuk) ve meclis (5 koltuk) aynı yerel seçimde, 90 günlük dönem için seçilir; aynı motor (`server/secim.js`, `SECIM.turler`). Bir seçimde tek makama aday olunur. Başkan şartı: hesap ≥ 14 gün, itibar ≥ 40, son 30 günde ≥ 10 eylem; meclis: muhtarlıkla aynı. Pusula iki bölümlüdür (başkan + meclis) ama **tek makbuz** verir; makama aday çıkmazsa o bölüm pusulada yer almaz. İptal kuralı her makamın belirleyici farkına (başkan: 1.–2. farkı; meclis: son koltuk ile ilk dışarıda kalan farkı) bakar.
-
-**Kasa** (`BEL:<ilçe>` hesabı) — gelir oranları kuralla sabittir; başkan para basamaz, oran değiştiremez:
-| Kaynak | Pay |
-|---|---|
-| Birincil tahsis bedeli (zaten oyundan çıkan tutar) | %10 |
-| İnşaat ruhsatı (yapı maliyeti) | %10 |
-| Oyuncular arası pazar işlem masrafı | %50 |
-| Devlet katkısı: ilçede parseli olan aktif oyuncu başına | 4 akçe / gün (tavan 200) |
-
-**Proje akışı (Senaryo C)**: muhtar → *talep* → başkan → *meclis gündemi* (1 gün) → açık oylama → **yapım** (bütçe kasadan `PROJE:<id>` emanetine) → **hizmette** (emanet harcanır, etki başlar).
-- **Meclis kararı**: başkan meclise başkanlık eder ve oy kullanır. Toplantı yeter sayısı = oy kullanabilen üyelerin salt çoğunluğu. Evet > hayır; eşitlikte başkanın bulunduğu taraf. Meclis oyları **açıktır** (kamu kararı); vatandaş oyu gizlidir.
-- **Çıkar çatışması** (§3.4): hedef mahallede parseli olan üye o kararda oy kullanamaz. Başkanın hedef mahallede parseli varsa ya da proje ≥ 800 akçe ise **nitelikli çoğunluk (2/3)** gerekir. Tüm üyeler çıkarlıysa karar alınamaz.
-
-| Proje | Maliyet | Süre | Etki (hedef mahallede) |
-|---|---|---|---|
-| 💧 Sulama kanalı | 600 | 3 gün | Sulama maliyeti %50 düşer, hasat verimi %10 artar |
-| 🛣️ Yol bakımı | 500 | 3 gün | İnşaatlar %25 kısa sürer |
-| 🌳 Mahalle parkı | 400 | 2 gün | Mahalle çekiciliği +0,08 (tahsis bedeli, gelişmişlik skoru) |
-| 🧺 Semt pazarı | 900 | 4 gün | Mahallede parseli olanlar NPC pazarında %8 daha yüksek fiyat alır (nitelikli çoğunluk) |
-
-**Faaliyet panosu** (§6.4): kasa ve gelir kalemleri, gündemdeki / emanetteki / harcanan tutar, projeler ve isim isim meclis oyları, karar gerekçeleri, muhtar talepleri, mahalle hizmetleri, idari kararlar zaman çizelgesi ve yetki sınırları herkese açıktır. Haritada ilçe merkezinde belediye, hedef mahallede proje işaretleri görünür.
-
 ### Oyun ve pazar (v0.1–0.2'den)
 İmar motoru (TAKS/KAKS, izin matrisi), inşaat, tarla döngüsü, NPC taban talebi, 7 görev, oyuncular arası pazar (ilan, teklif + emanet kilidi, hemen al, atomik devir, manipülasyon işaretleri, bildirimler). Pazar ve haber akışı il bazında süzülebilir.
 
@@ -552,6 +520,6 @@ public/js/
 
 1. **Hukuk**: yasal metinlerin hukukçu incelemesi (docs/hukuk-kontrol-listesi.md): veri sorumlusu bilgileri, VERBİS, yurt dışı aktarım dayanakları, demo sakinlerin bilgilendirmesi, OSM türetilmiş veri lisansı.
 2. **PostgreSQL'e geçiş (çalışma zamanı)**: şema ve veri aktarımı doğrulandı; kalan iş uygulama katmanının eşzamanlı better-sqlite3'ten `pg`'ye taşınması, çok sunuculu WebSocket köprüsü (LISTEN/NOTIFY), tembel bakım işleri için danışma kilidi (docs/postgres-gecisi.md).
-3. **İmar değişikliği önerileri** (§3.4) ve bağlayıcı referandum türleri; birleşik parseli ayırma (ifraz).
+3. Birleşik parseli ayırma (ifraz); imar değişikliğinin arsa değerine etkisi.
 4. Kendi karo sunucumuz (PMTiles, docs/karo-sunucusu.md) ve Open-Meteo ticari aboneliği.
 5. Dolu dünyada yük testi; yavaş sorgular için indeks gözden geçirmesi.

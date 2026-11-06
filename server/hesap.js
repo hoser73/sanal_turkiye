@@ -57,7 +57,7 @@ function veriDisaAktar(userId) {
   const tum = (sql, ...p) => db.prepare(sql).all(...p);
   const u = db.prepare(`SELECT id, email, display_name, dogum_yili, status, rol, created_at, email_dogrulandi_at, totp_aktif, ayarlar FROM users WHERE id = ?`).get(userId);
   return {
-    aciklama: 'Sanal Türkiye kişisel veri dışa aktarımı (KVKK m.11). Oy içerikleri gizli oy ilkesi gereği kimseyle ilişkilendirilmeden saklanır ve bu dosyada yer almaz.',
+    aciklama: 'Sanal Türkiye kişisel veri dışa aktarımı (KVKK m.11).',
     olusturma: new Date().toISOString(),
     hesap: { ...u, ayarlar: JSON.parse(u.ayarlar || '{}'), totp_aktif: !!u.totp_aktif },
     oturumlar: tum(`SELECT tarayici, created_at, son_gorulme, expires_at FROM sessions WHERE user_id = ? AND ikinci_adim = 1`, userId),
@@ -73,22 +73,12 @@ function veriDisaAktar(userId) {
     islemler: tum(`SELECT id, parcel_id, price, CASE WHEN seller_id = ? THEN 'SATIS' ELSE 'ALIS' END AS yon, created_at FROM trades WHERE seller_id = ? OR buyer_id = ?`, userId, userId, userId),
     bildirimler: tum(`SELECT text, link, read_at, created_at FROM notifications WHERE user_id = ? ORDER BY id`, userId),
     gorevler: tum(`SELECT * FROM quest_progress WHERE user_id = ?`, userId),
-    adayliklar: tum(`SELECT a.secim_id, a.makam, a.durum, a.manifesto, a.vaatler, a.created_at FROM adaylar a WHERE a.user_id = ?`, userId),
-    secimKatilimlari: tum(`SELECT secim_id, gun FROM secim_katilim WHERE user_id = ?`, userId),
-    itirazlar: tum(`SELECT secim_id, sebep, durum, yanit, created_at FROM itirazlar WHERE user_id = ?`, userId),
-    duyurular: tum(`SELECT region_id, metin, created_at FROM mahalle_duyurulari WHERE user_id = ?`, userId),
-    belediyeGorevleri: tum(`SELECT region_id, makam, baslangic, bitis FROM belediye_uyeleri WHERE user_id = ?`, userId),
-    muhtarlikGorevleri: tum(`SELECT region_id, baslangic, bitis FROM muhtarlar WHERE user_id = ?`, userId),
-    projeTeklifleri: tum(`SELECT id, region_id, tur, maliyet, durum, created_at FROM projeler WHERE teklif_eden_id = ?`, userId),
-    meclisOylari: tum(`SELECT proje_id, oy, created_at FROM proje_oylari WHERE user_id = ?`, userId),
-    talepler: tum(`SELECT * FROM talepler WHERE user_id = ?`, userId),
     meslek: db.prepare(`SELECT meslek, meslek_xp, memleket_plaka FROM users WHERE id = ?`).get(userId),
     uretimler: tum(`SELECT parcel_id, recete, parti, cikti, baslangic, bitis, durum FROM uretimler WHERE user_id = ? ORDER BY id`, userId),
     kooperatif: tum(`SELECT k.ad, u.katilim FROM kooperatif_uyeleri u JOIN kooperatifler k ON k.id = u.koop_id WHERE u.user_id = ?`, userId),
     sevkiyatlar: tum(`SELECT urun, miktar, kaynak_plaka, hedef_plaka, mod, maliyet, gelir, durum, cikis, varis FROM sevkiyatlar WHERE user_id = ?`, userId),
     kiralar: tum(`SELECT parcel_id, CASE WHEN sahip_id = ? THEN 'KIRAYA_VEREN' ELSE 'KIRACI' END AS rol, gunluk, gun, durum, baslangic, bitis FROM kiralar WHERE sahip_id = ? OR kiraci_id = ?`, userId, userId, userId),
     ortakliklar: tum(`SELECT parcel_id, pay, durum FROM ortaklar WHERE sahip_id = ? OR ortak_id = ?`, userId, userId),
-    referandumKatilimlari: tum(`SELECT ref_id FROM referandum_katilim WHERE user_id = ?`, userId),
     koleksiyon: tum(`SELECT simge, created_at FROM koleksiyon WHERE user_id = ?`, userId),
     rozetler: tum(`SELECT kod, ad, created_at FROM rozetler WHERE user_id = ?`, userId),
     sohbetMesajlari: tum(`SELECT kanal, metin, gizlendi, created_at FROM sohbet_mesajlari WHERE user_id = ? ORDER BY id`, userId),
@@ -96,7 +86,7 @@ function veriDisaAktar(userId) {
     pushAbonelikSayisi: db.prepare(`SELECT COUNT(*) c FROM push_abonelikleri WHERE user_id = ?`).get(userId).c,
     sikayetler: tum(`SELECT hedef_tur, hedef_id, sebep, aciklama, durum, created_at FROM sikayetler WHERE sikayetci_id = ?`, userId),
     olayKaydi: tum(`SELECT action, entity, after_json, created_at FROM audit_events WHERE actor_id = ? ORDER BY id`, userId),
-    // Giriş yolları, banka, balık, kozmetik ve imzalar (KVKK m.11: işlenen bütün kişisel veriler)
+    // Giriş yolları, banka, balık, kozmetik (KVKK m.11: işlenen bütün kişisel veriler)
     telefon: (() => {
       const t = db.prepare(`SELECT telefon_sifreli, telefon_dogrulandi_at FROM users WHERE id = ?`).get(userId);
       if (!t?.telefon_sifreli) return null;
@@ -107,28 +97,23 @@ function veriDisaAktar(userId) {
     bankaVadeli: tum(`SELECT tutar, faiz, bas, vade, durum, kapandi_at FROM banka_vadeli WHERE user_id = ? ORDER BY id`, userId),
     balikAtislari: tum(`SELECT * FROM balik_atislari WHERE user_id = ? ORDER BY id`, userId),
     kozmetikler: tum(`SELECT kod, created_at FROM kozmetikler WHERE user_id = ?`, userId),
-    referandumImzalari: tum(`SELECT ref_id, created_at FROM referandum_imzalar WHERE user_id = ?`, userId),
-    gorevdenAlmaImzalari: tum(`SELECT dilekce_id, created_at FROM gorevden_alma_imzalar WHERE user_id = ?`, userId),
   };
 }
 
 // Hesap silme: parola (parolasız hesapta son 15 dakikada açılmış oturum) + (açıksa) 2FA + "SİL" onayı. Açık ilan/teklif/
-// ihale teklifi/adaylık kapatılır, vadeli hesaplar bozdurulur, makamlar boşalır, parseller devlete döner (üzerindeki
+// ihale teklifi kapatılır, vadeli hesaplar bozdurulur, parseller devlete döner (üzerindeki
 // yapılar kaldırılır), kimlik verileri silinir.
 function hesapSil(req, res) {
   const userId = req.kullanici.id;
   if (metin(req.body?.onayMetni).toLocaleUpperCase('tr-TR') !== 'SİL') throw new OyunHatasi(400, 'Onaylamak için SİL yaz');
   auth.yenidenKimlik(userId, req.body, { taze: auth.tazeOturumMu(req) });
   const pazar = require('./pazar');
-  const yonetim = require('./moderasyon');
   db.transaction(() => {
     for (const i of db.prepare(`SELECT id FROM listings WHERE seller_id = ? AND status = 'ACTIVE'`).all(userId)) pazar.ilanIptal(userId, i.id);
     for (const b of db.prepare(`SELECT listing_id FROM bids WHERE buyer_id = ? AND status = 'ACTIVE'`).all(userId)) pazar.teklifGeriCek(userId, b.listing_id);
     require('./ihale').tekliflerIade(userId);
     // Açık vadeli hesaplar bozdurulur: anapara cüzdana döner (silinen hesap bir daha kapatamazdı)
     for (const v of db.prepare(`SELECT id FROM banka_vadeli WHERE user_id = ? AND durum = 'ACIK'`).all(userId)) require('./carsi').vadeliKapat(userId, v.id);
-    db.prepare(`UPDATE adaylar SET durum = 'CEKILDI' WHERE user_id = ? AND durum = 'AKTIF'
-      AND secim_id NOT IN (SELECT id FROM secimler WHERE asama IN ('OYLAMA', 'ITIRAZ'))`).run(userId);
     if (db.prepare(`SELECT 1 FROM kooperatif_uyeleri WHERE user_id = ?`).get(userId)) require('./kooperatif').ayril(userId);
     db.prepare(`UPDATE uretimler SET durum = 'TOPLANDI' WHERE user_id = ? AND durum = 'URETIMDE'`).run(userId);
     db.prepare(`UPDATE kiralar SET durum = 'IPTAL' WHERE (sahip_id = ? OR kiraci_id = ?) AND durum = 'TEKLIF'`).run(userId, userId);
@@ -141,8 +126,6 @@ function hesapSil(req, res) {
     // Kiracıysa başkasının tarlasındaki ekini kapanır (tarla sahibine boş döner)
     db.prepare(`UPDATE crops SET status = 'HARVESTED', harvested_qty = 0 WHERE user_id = ? AND status = 'GROWING'`).run(userId);
     db.prepare(`UPDATE ortaklar SET durum = 'BITTI' WHERE (sahip_id = ? OR ortak_id = ?) AND durum IN ('DAVET', 'AKTIF')`).run(userId, userId);
-    yonetim.tumMakamlariBosalt(userId, 'Hesap sahibi hesabını sildi');
-    db.prepare(`UPDATE gorevden_alma SET durum = 'DUSTU', kapandi_at = ? WHERE hedef_id = ? AND durum = 'ACIK'`).run(Date.now(), userId);
     const parseller = db.prepare(`SELECT id FROM parcels WHERE owner_user_id = ?`).all(userId);
     for (const p of parseller) require('./oyun').parseliBosalt(p.id);
     const { email: eposta, telefon_ozet: telefonOzet } = db.prepare(`SELECT email, telefon_ozet FROM users WHERE id = ?`).get(userId);

@@ -1,10 +1,10 @@
-// Moderasyon ve denetim paneli: şikâyetler, iki kişi kuralıyla işlemler, seçim ve meclis denetimi, dilekçeler,
-// ekonomi gözlemi. Yalnızca yetkili roller (2FA zorunlu) erişir; tüm kararlar denetim kaydına yazılır.
-import { api, esc, zamanOnce, sure } from './yardimci.js';
+// Moderasyon ve denetim paneli: şikâyetler, işaretli mesajlar, iki kişi kuralıyla işlemler, ekonomi gözlemi,
+// sistem ve sponsorlar. Yalnızca yetkili roller (2FA zorunlu) erişir; tüm kararlar denetim kaydına yazılır.
+import { api, esc, zamanOnce } from './yardimci.js';
 
 const $ = (s) => document.querySelector(s);
 let veri = null, sekme = 'sikayet', ekonomi = null;
-const SEKMELER = { sikayet: 'Şikâyetler', sohbet: 'İşaretli mesajlar', islem: 'İşlemler', secim: 'Seçim denetimi', meclis: 'Meclis kararları', dilekce: 'Dilekçeler', ekonomi: 'Ekonomi', sistem: 'Sistem', sponsor: 'Sponsorlar' };
+const SEKMELER = { sikayet: 'Şikâyetler', sohbet: 'İşaretli mesajlar', islem: 'İşlemler', ekonomi: 'Ekonomi', sistem: 'Sistem', sponsor: 'Sponsorlar' };
 const ms = (t) => (t ? zamanOnce(t) : '—');
 const cip = (d) => `<span class="cip ${esc(String(d).toLowerCase())}">${esc(d)}</span>`;
 function tost(m, tur = '') {
@@ -29,7 +29,7 @@ function ciz() {
   ].map(([a, b, d]) => `<div class="karo ${d ? 'dikkat' : ''}"><b>${b}</b><span>${a}</span></div>`).join('');
   const gorunur = Object.entries(SEKMELER).filter(([k]) => k !== 'sponsor' || veri.ben.rol === 'ADMIN');
   $('#sekmeler').innerHTML = gorunur.map(([k, v]) => `<button role="tab" data-sekme="${k}" aria-selected="${k === sekme}">${v}</button>`).join('');
-  $('#icerik').innerHTML = ({ sikayet, sohbet, islem, secim, meclis, dilekce, ekonomi: ekonomiCiz, sistem: sistemCiz, sponsor: sponsorCiz })[sekme]();
+  $('#icerik').innerHTML = ({ sikayet, sohbet, islem, ekonomi: ekonomiCiz, sistem: sistemCiz, sponsor: sponsorCiz })[sekme]();
 }
 
 function sikayet() {
@@ -67,34 +67,10 @@ function islem() {
   return `<div class="kart"><h2 style="margin-top:0">Yeni işlem öner</h2>
     <form class="islem-form" id="islemForm">
       <label>İşlem<select name="tur">${Object.entries(veri.tanimlar.islemler).map(([k, v]) => `<option value="${k}">${esc(v.ad)}${v.ikiKisi ? ' · iki kişi' : ''}${v.denetciGerekli ? ' · denetçi' : ''}</option>`).join('')}</select></label>
-      <label>Hedef<input name="hedef" required placeholder="parsel: TR-… · hesap: kullanıcı no · içerik: DUYURU:12 · görev: MUHTAR:bölge:kullanıcı · seçim: no"></label>
+      <label>Hedef<input name="hedef" required placeholder="parsel: TR-… · hesap: kullanıcı no · içerik: DUYURU:12"></label>
       <label>Gerekçe (herkese açık kayda geçer)<textarea name="gerekce" rows="2" minlength="10" required></textarea></label>
       <button class="d b">Öner</button></form></div>
     <div class="kart"><table><thead><tr><th>#</th><th>İşlem</th><th>Durum</th><th>Öneren</th><th>Onaylayan</th><th>Zaman</th><th></th></tr></thead><tbody>${satir || '<tr><td colspan="7" class="kucuk">Kayıt yok.</td></tr>'}</tbody></table></div>`;
-}
-
-function secim() {
-  return `<div class="kart"><p class="kucuk">Bağımsız yeniden sayım, kayıtlı pusula özetinden sonucu yeniden hesaplar ve ilk sayımın özet değeriyle karşılaştırır. Oylar gizli olduğundan kimin kime oy verdiği hiçbir yerde görünmez.</p>
-    <table><thead><tr><th>#</th><th>Bölge</th><th>Tür</th><th>Aşama</th><th>Katılım</th><th>İtiraz</th><th>Özet</th><th></th></tr></thead><tbody>
-    ${veri.secimler.map((s) => `<tr><td>${s.id}</td><td>${esc(s.bolge)}</td><td>${esc(s.tur)}</td><td>${cip(s.asama)}${s.iptal_sebebi ? `<div class="kucuk">${esc(s.iptal_sebebi)}</div>` : ''}</td>
-      <td>${s.katilim}</td><td>${s.itiraz}</td><td class="mono">${esc((s.ozet_hash || '—').slice(0, 12))}</td>
-      <td><button class="d" data-k="yeniden-say" data-id="${s.id}">Yeniden say</button>
-        ${s.asama !== 'IPTAL' ? `<button class="d t" data-k="oner" data-tur="SECIM_IPTAL" data-hedef="${s.id}">İptal öner</button>` : ''}<div class="kucuk" id="sayim-${s.id}"></div></td></tr>`).join('')
-      || '<tr><td colspan="8" class="kucuk">Seçim yok.</td></tr>'}</tbody></table></div>`;
-}
-
-function meclis() {
-  return `<div class="kart"><table><thead><tr><th>#</th><th>İlçe</th><th>Proje</th><th>Durum</th><th>Teklif eden</th><th>Karar</th></tr></thead><tbody>
-    ${veri.kararlar.map((p) => `<tr><td>${p.id}</td><td>${esc(p.ilce)}</td><td>${esc(p.tur)} · ₳${p.maliyet}${p.nitelikli ? ' <span class="cip">nitelikli</span>' : ''}</td>
-      <td>${cip(p.durum)}</td><td>${esc(p.teklif_eden)}</td><td class="kucuk">${p.karar ? esc(p.karar.sebep) : '—'}</td></tr>`).join('')
-      || '<tr><td colspan="6" class="kucuk">Karar yok.</td></tr>'}</tbody></table></div>`;
-}
-
-function dilekce() {
-  return `<div class="kart"><table><thead><tr><th>#</th><th>Bölge</th><th>Makam</th><th>Hedef</th><th>İmza</th><th>Durum</th><th>Bitiş</th></tr></thead><tbody>
-    ${veri.dilekceler.map((d) => `<tr><td>${d.id}</td><td>${esc(d.bolge)}</td><td>${esc(d.makam)}</td><td>${esc(d.hedef)}</td><td>${d.imza}/${d.esik}</td><td>${cip(d.durum)}</td>
-      <td class="kucuk">${d.durum === 'ACIK' && d.bitis > Date.now() ? `${sure(d.bitis - Date.now())} sonra` : ms(d.bitis)}</td></tr>`).join('')
-      || '<tr><td colspan="7" class="kucuk">Dilekçe yok.</td></tr>'}</tbody></table></div>`;
 }
 
 let sistem = null;
@@ -205,11 +181,6 @@ document.addEventListener('click', async (e) => {
         if (!confirm('Bu işletme varsayılan adına dönsün mü?')) break;
         await put(`/api/yonetim/isletme/${b.dataset.kategori}`, { sifirla: true });
         sponsorlar = null; tost('Varsayılana döndü'); ciz(); break;
-      case 'yeniden-say': {
-        const r = await api(`/api/secim/${b.dataset.id}/yeniden-say`);
-        document.getElementById(`sayim-${b.dataset.id}`).textContent = r.uyumlu ? `✓ ilk sayımla uyumlu (${r.toplam} pusula)` : '✖️ UYUŞMUYOR — incele';
-        break;
-      }
     }
   } catch (err) { tost(err.message, 'hata'); } finally { b.disabled = false; }
 });

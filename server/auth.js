@@ -137,7 +137,7 @@ function girisGerekli(req, _res, next) {
   if (req.kullanici.status !== 'ACTIVE') return next(new OyunHatasi(403, 'Hesap askıya alınmış', 'ASKIDA'));
   next();
 }
-// Pazar, seçim ve belediye işlemleri doğrulanmış e-posta ister (çoklu hesap ve kötüye kullanıma karşı)
+// Pazar ve parsel işlemleri doğrulanmış e-posta ister (çoklu hesap ve kötüye kullanıma karşı)
 function dogrulanmisGerekli(req, res, next) {
   girisGerekli(req, res, (e) => {
     if (e) return next(e);
