@@ -33,6 +33,34 @@ Ortam değişkenleri (v0.6 eklemeleri): `TABAN_URL` (e-posta bağlantıları; ü
 
 > Not: v0.1–0.2'nin Meram ızgarası ulusal ızgarayla uyumsuz olduğundan eski `data/sanalturkiye.db` dosyası kullanılmaz (silinmedi).
 
+## v0.48 — arsa fiyatı gerçek konuma göre
+
+Gerçek hayattaki gibi denize, şehir merkezine yakın ve düz arsa pahalı; dağda, yamaçta, merkezden uzakta ucuz. Bütün Türkiye
+için her parselin **konum çarpanı** hesaplanır ve arsa taban bedeli = alan × imar m² fiyatı × konum çarpanı olur (eskiden il ve
+yerleşim türüne göre kaba bir çekicilik katsayısıydı). Mahalle endeksi bunun üstüne talep ve satışlarla oynamayı sürdürür.
+
+- **Etkenler** (`server/harita/konum.js`, kurallar `server/config/konum-fiyat.js`):
+  - **Bölge:** 81 ilin fiyat seviyesi (Türkiye = 1; Muğla 1,95, İstanbul 1,65, Antalya/İzmir 1,35 … Hakkari/Ardahan 0,33) ve
+    bilinen pahalı/ucuz ilçeler (Beşiktaş ×2,4, Çeşme ×2,6, Bodrum ×2, Kaş ×1,6 … Gündoğmuş ×0,35, Akseki ×0,3). Değerler 2025
+    civarı il ortalama konut m² fiyatlarının **yaklaşık** oranlarından derlendi; resmî değerleme değildir.
+  - **Kıyı:** OpenStreetMap kıyı şeridine uzaklık (z10 vektör karoları, 3 × 3): kıyıda ×2,8, 500 m ×1,9, 1 km ×1,4, 3 km'de
+    etkisiz; göl kıyısı ×1,3.
+  - **Merkez:** en yakın şehir (il merkezi dahil) ve kasaba/ilçe merkezi: şehir merkezinde ×1,6'ya, kasaba merkezinde ×1,3'e kadar;
+    kasabadan 12 km'den uzak köyler giderek ucuzlar (en çok ×0,7). Komşu ülke ve adaların yerleşimleri sayılmaz.
+  - **Arazi:** AWS arazi karolarından (z11 ≈ 60 m) eğim ve çevresine göre yükseklik: %8'den dik yamaç ve çevresinden 120 m'den
+    yüksek (dağ, sırt) yer ucuzlar (ikisi birlikte en çok ×0,33). Ova ve vadi tabanı tam değer.
+  - **Yol:** ana yola ≈ 60 m içinde ×1,08.
+  - Sonuç ×0,1–×15 arasında. Örnekler: Bodrum sahili ×13, Beşiktaş ×13, Alanya sahili ×3,8, Çankaya ×2,3, Alanya dağ köyü ×0,7,
+    Hakkari dağ köyü ×0,1.
+- **Kayıt:** `parcels.konum_kati`, `konum_surum`, `konum_json` (döküm). Parsel ilk kez açılırken hesaplanır; formül sürümü
+  (`KONUM.surum`) değişince ya da eski parsellerde sunucu açılışında arka planda tamamlanır (`eksikKonumlariDoldur`). Harita
+  verisine ulaşılamazsa eski çekicilik katsayısı geçici olarak kullanılır. Yükselti karoları `VERI_DIZINI/yukselti` altında saklanır.
+- **Arayüz:** parsel kartının değer kutusunda ve çiftlikteki komşu/genişletme sayfalarında konum çipleri ("Konum ×9,12 · Bölge
+  ×3,9 · Denize 480 m ×1,9 · Bodrum merkezine 620 m · Düz arazi").
+- **Başlangıç hediyesi** en çok ₳300 (`HESAP.baslangicHediyeUst`): kıyıdaki pahalı tarlayı seçen farkı kendisi öder (sihirbazda
+  "kalan ₳X senden"); hediyeyle bile alınamayacak tarla önerilmez. Pahalı tarlayı bedava alıp Hazine'ye satma açığı kapanır.
+- Var olan parsellerin değeri yeni formülle yeniden hesaplanır (portföy kâr/zararı buna göre değişir).
+
 ## v0.47 — siyaset kaldırıldı: oyun arsa al-sat
 
 Oyunun özü gerçek hayattaki gibi arsa alıp geliştirmek, değerlendiğinde satıp kâr etmek. Muhtarlık ve belediye seçimleri bu

@@ -136,9 +136,11 @@ const parselDegeri = (p, t = simdi()) => tahminiDeger(p, q.yapilar.all(p.id), t)
 // Boş parselin tahsis fiyatı: taban bedel × güncel mahalle çarpanı (ucuz tahsis + hemen Hazine'ye satış kârı olmasın)
 const tahsisFiyati = (p, t = simdi()) => Math.round(birincilBedel(p) * require('./piyasa').mahalleCarpani(p.region_id, t).carpan);
 
+// Arsa taban bedeli: alan × imar m² fiyatı × konum çarpanı (harita/konum.js: il, ilçe, kıyı, merkez, arazi, yol).
+// Konum değeri henüz hesaplanmamış parselde mahallenin eski çekicilik katsayısı kullanılır.
 function birincilBedel(parsel) {
   const imar = IMAR[parsel.zoning_type];
-  return Math.round(parsel.area_m2 * imar.m2Fiyat * parsel.attractiveness);
+  return Math.round(parsel.area_m2 * imar.m2Fiyat * (parsel.konum_kati ?? parsel.attractiveness));
 }
 
 function parselGetir(id) {
@@ -236,6 +238,8 @@ function parselKarti(id, userId, komsuImar = {}, { hafif = false } = {}) {
     geometri: parselGeometrisi(p), tarla: tarlaBilgisi(p),
     imarKaynak: { surum: p.zoning_source, not: IMAR_KAYNAK_NOTU },
     alan: p.area_m2, durum: p.status, geomVersiyon: p.geom_version,
+    // Arsa değerini belirleyen konum etkenleri (harita/konum.js): kat = çarpan; döküm kıyı, merkez, arazi, yol
+    konumDegeri: p.konum_json ? { kat: p.konum_kati, ...JSON.parse(p.konum_json) } : null,
     imar: { tip: p.zoning_type, ...imar },
     imarKullanimi: imarKullanimi(p, yapilar),
     parca: 1 + p.uye_sayisi,

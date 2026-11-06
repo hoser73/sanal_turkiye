@@ -3,7 +3,7 @@
 // boş alana dokun → inşaat atölyesi. Eylemler paneldeki ortak dağıtıcıdan (eylemDagit) geçer; sonuçlar sunucudan gelir.
 // Çiftçi dokunulan yere yürüyüp işi yapar, ardından efekt ("+N", uçuşan ürünler) çıkar. Geri: haritaya dönüş.
 import * as THREE from '/vendor/three/three.module.js';
-import { api, esc, akce, sayi, sure, tamlayan } from './yardimci.js';
+import { api, esc, akce, sayi, sure, tamlayan, konumCipleri } from './yardimci.js';
 import { endeksGrafigi, degisimCipi, kisaTarih } from './grafik.js';
 import { S } from './model3d.js';
 import { tarlaCercevesi } from './tarla-geo.js';
@@ -285,12 +285,13 @@ export function ciftlikIciKur({ durum, eylemDagit, sunucuSimdi, ayrintiAc, dunya
       <div class="ci-deger"><small>Tahmini değer</small><b>${akce(d.toplam)}</b>
         <span>Arsa ${akce(d.arsa)}${d.yapilar ? ` · Yapılar ${akce(d.yapilar)}` : ''}${d.susler ? ` · Süsler ${akce(d.susler)}` : ''}</span>
         ${pi ? `<span class="ci-endeks">📈 ${esc(kk.mahalle)} endeksi <b>${sayi(pi.endeks)}</b> ${degisimCipi(pi.degisim7, ' 7g')}</span>` : ''}</div>
+      ${konumCipleri(kk.konumDegeri)}
       ${pi?.seri.length > 1 ? endeksGrafigi(pi.seri, { yukseklik: 86, etiket: false }) : ''}
       ${sonSatis ? `<p class="ci-not">🤝 Son satış ${akce(sonSatis.fiyat)} · ${kisaTarih(sonSatis.tarih)}</p>` : ''}
       ${ilan ? `<p class="ci-not yesil">🏷️ Satılık · ${akce(ilan.fiyat)}</p>` : ''}
       ${yapilar ? `<div class="ci-yapi-ciplari">${yapilar}</div>` : `<p class="ci-not">${kk.sahip ? 'Üstünde yapı yok.' : `Boş arsa · edinme bedeli ${akce(kk.birincilBedel ?? d.arsa)}`}</p>`}
       ${kk.ekin ? `<p class="ci-not">${kk.ekin.ikon} ${esc(kk.ekin.ad)} ${kk.ekin.olgun ? 'hasada hazır' : 'büyüyor'}</p>` : ''}
-      <p class="ci-dipnot">Tahmini değer = arsa (taban bedel × mahalle endeksi) + yapılar + süsler. Endeks talep, yatırım ve satışlarla değişir; oyun içi göstergedir.</p>
+      <p class="ci-dipnot">Tahmini değer = arsa (taban bedel × mahalle endeksi) + yapılar + süsler. Taban bedel konuma göredir: deniz ve merkez yakını pahalı, dağ ve yamaç ucuz. Endeks talep, yatırım ve satışlarla değişir; oyun içi göstergedir.</p>
       ${kk.sahip && !kk.sahip.ben ? `<div class="ci-dugmeler"><button type="button" class="ci-b" data-ci="komsu-gez" data-parsel="${esc(kk.id)}">👋 Çiftliğini gez</button></div>` : ''}`);
   }
   async function komsuKartlariniYukle() {
@@ -803,6 +804,7 @@ export function ciftlikIciKur({ durum, eylemDagit, sunucuSimdi, ayrintiAc, dunya
     const eksik = bedel != null && bakiye < bedel;
     sayfaAc(`${ust2('🏡', 'Çiftliğini büyüt', `${esc(kk.mahalle)} · ${sayi(kk.alan)} m² · ${esc(kk.imar.ad)}`)}
       <p class="ci-not">Yandaki bu boş tarlayı çiftliğine kat: ekip biçebilir, yapı kurabilirsin. Çiftliğinde yan yana görünür.</p>
+      ${konumCipleri(kk.konumDegeri)}
       ${eksik ? `<p class="ci-not ci-uyari">💰 Bu tarla için <b>${akce(bedel)}</b> gerekiyor, sende <b>${akce(bakiye)}</b> var. Ürünlerini hasat edip pazarda sat ya da günlük görevleri tamamla; para biriktiğinde buradan alabilirsin.</p>` : ''}
       <div class="ci-dugmeler"><button type="button" class="ci-b altin" data-eylem="genislet" data-parsel="${esc(kk.id)}" data-hedef="zemin" ${bedel == null || eksik ? 'disabled' : ''}>🏡 Çiftliğe kat${bedel != null ? ` (${akce(bedel)})` : ''}</button></div>`);
   }

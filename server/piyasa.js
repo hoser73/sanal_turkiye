@@ -58,7 +58,7 @@ function bolgeSinyalleri(t, regionId = null, { haric = null } = {}) {
   const harita = new Map();
   // Arsa toplamı mahallenin bütün sahipli arsalarıdır (satıcınınki dahil: küçük bir arsaya yığılan yapılar oranı
   // şişiremesin). Talep yalnızca e-postası doğrulanmış oyuncular ve demo sakinlerden; Hazine ve satıcı sayılmaz.
-  for (const x of hazirla(`SELECT p.region_id, p.ilce_id, p.il_id, p.area_m2, p.zoning_type, r.attractiveness, o.start_at, o.reason, o.user_id,
+  for (const x of hazirla(`SELECT p.region_id, p.ilce_id, p.il_id, p.area_m2, p.zoning_type, p.konum_kati, r.attractiveness, o.start_at, o.reason, o.user_id,
         (u.is_npc = 1 OR u.email_dogrulandi_at IS NOT NULL) AS gecerli
       FROM parcel_ownership o JOIN parcels p ON p.id = o.parcel_id JOIN regions r ON r.id = p.region_id JOIN users u ON u.id = o.user_id
       WHERE o.start_at <= ? AND (o.end_at IS NULL OR o.end_at > ?)${f}`).all(ts, ts, ...arg)) {

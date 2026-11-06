@@ -365,6 +365,8 @@ if (require.main === module) {
   nufus.baslat();   // yaşayan nüfus: gerçek oyuncusu az mahallelerde demo sakinler
   require('./hatirlatma').baslat();   // geri çağıran bildirimler (hasat, hayvan, sipariş)
   require('./gelisim').baslat();   // işçiler: olgun ekini hasat eder, susuz tarlayı sular, hayvanları yemler
+  // Arsa konum değeri (kıyı, merkez, arazi…) henüz hesaplanmamış parseller arka planda tamamlanır
+  require('./harita/parsel').eksikKonumlariDoldur().then((n) => n && gunluk.info('konum değerleri tamamlandı', { parsel: n })).catch((e) => gunluk.error('konum doldurma', { hata: e }));
   // Düzenli kapanış (docker stop / systemd): yeni bağlantıları kes, veritabanını kapat
   const kapat = (sinyal) => {
     gunluk.info('kapanıyor', { sinyal });

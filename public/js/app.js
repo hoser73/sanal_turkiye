@@ -2,7 +2,7 @@ import './uygulama.js';   // iOS uygulamasında (Flutter kabuğu) çalışıyors
 import { emojiYedeginiKur } from './emoji.js';
 import { sihirbazKur } from './sihirbaz.js';
 emojiYedeginiKur();   // cihaz emoji çizemiyorsa (ör. iOS Simülatörü) emojiler görsele döner
-import { api, esc, sayi, akce, sure, zamanOnce, tost, ApiHatasi, tamlayan, sayiBulunma } from './yardimci.js';
+import { api, esc, sayi, akce, sure, zamanOnce, tost, ApiHatasi, tamlayan, sayiBulunma, konumCipleri } from './yardimci.js';
 import { endeksGrafigi, degisimCipi, kisaTarih } from './grafik.js';
 import { yolBolumu } from './yol-ui.js';
 import { haritaKur } from './harita.js';
@@ -585,6 +585,7 @@ function degerKutusu(k) {
   return `<div class="kutu deger-kutu">
     <div class="satir"><div><div class="kucuk">${bos ? 'Bugünkü tahmini değer' : 'Tahmini değer'}</div><b class="fiyat">${akce(d.toplam)}</b></div><div class="sag">${endeks}</div></div>
     ${bos ? `<p class="kucuk">Tahsis fiyatı güncel endeksle belirlenir: bugün ${akce(k.birincilBedel)}. Mahalle geliştikçe değeri artar.</p>` : ''}
+    ${konumCipleri(k.konumDegeri)}
     <div class="deger-dokum"><span title="Taban bedel ${akce(d.tahsis)} × endeks ${sayi(pi.endeks)}">🌱 Arsa <b>${akce(d.arsa)}</b></span><span>🏠 Yapılar <b>${akce(d.yapilar)}</b></span><span>🌼 Süsler <b>${akce(d.susler)}</b></span></div>
     ${g ? `<div class="getiri-satir"><span>Alış ${akce(g.alis)}</span><span>Yatırım ${akce(g.yatirim)}</span>${g.kira ? `<span>Kira ${akce(g.kira)}</span>` : ''}
       <b class="${g.getiri >= 0 ? 'arti' : 'eksi'}">${g.getiri >= 0 ? 'Kâr +' : 'Zarar −'}${akce(Math.abs(g.getiri))}${g.getiriYuzde != null ? ` (%${sayi(Math.abs(g.getiriYuzde))})` : ''}</b></div>` : ''}
@@ -596,7 +597,7 @@ function degerKutusu(k) {
         <button class="dugme ince">olunca haber ver</button></form>` : ''}
     <details class="acilir"><summary>Fiyat geçmişi (${pi.fiyatGecmisi.length})</summary>
       <ul class="zaman-cizgisi">${gecmis.slice().reverse().map((x) => `<li><span>${x.ikon} ${esc(x.ad)}${x.fiyat != null ? ` · <b>${akce(x.fiyat)}</b>` : ''}${x.kim ? ` · ${esc(x.kim)}` : ''}</span><time>${kisaTarih(x.tarih)}</time></li>`).join('')}</ul></details>
-    <p class="kucuk">Arsa = taban bedel × mahalle endeksi. Endeks mahalledeki talep, yatırımlar ve gerçek satışlarla değişir; yapılar bakım durumuyla değerlenir. Oyun içi göstergedir.</p></div>`;
+    <p class="kucuk">Arsa = taban bedel × mahalle endeksi. Taban bedel konumdan gelir: ilin ve ilçenin fiyat seviyesi, denize ve merkeze yakınlık, düz ya da dağlık arazi, yol. Endeks mahalledeki talep, yatırımlar ve gerçek satışlarla değişir; yapılar bakım durumuyla değerlenir. Oyun içi göstergedir.</p></div>`;
 }
 
 function parselPaneli() {

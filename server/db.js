@@ -309,6 +309,10 @@ if (kolonEkle('users', 'email_dogrulandi_at', 'TEXT')) db.exec(`UPDATE users SET
 kolonEkle('parcels', 'birlesik_id', 'TEXT REFERENCES parcels(id)');
 kolonEkle('parcels', 'uye_sayisi', 'INTEGER NOT NULL DEFAULT 0');
 db.exec(`CREATE INDEX IF NOT EXISTS ix_parcels_birlesik ON parcels(birlesik_id) WHERE birlesik_id IS NOT NULL`);
+// Konum değeri (harita/konum.js): arsa bedeli çarpanı, formül sürümü ve dökümü (kıyı, merkez, arazi…)
+kolonEkle('parcels', 'konum_kati', 'REAL');
+kolonEkle('parcels', 'konum_surum', 'INTEGER');
+kolonEkle('parcels', 'konum_json', 'TEXT');
 kolonEkle('users', 'totp_sir', 'TEXT');                     // AES-256-GCM ile şifreli
 kolonEkle('users', 'totp_aktif', 'INTEGER NOT NULL DEFAULT 0');
 kolonEkle('users', 'totp_son_adim', 'INTEGER NOT NULL DEFAULT 0');   // aynı kodun yeniden kullanımını engeller

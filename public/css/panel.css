@@ -219,3 +219,10 @@
 .panel .kh-lejant { display: flex; gap: 12px; margin-bottom: 8px; font-size: 12px; color: var(--ps); font-weight: 700; }
 .panel .kh-lejant i { display: inline-block; width: 12px; height: 12px; border-radius: 4px; margin-right: 4px; vertical-align: -1px; }
 .panel .kh-lejant .kh-1 { background: #cfe6b8; } .panel .kh-lejant .kh-2 { background: #6fbf55; } .panel .kh-lejant .kh-3 { background: #f2b233; }
+
+/* Arsa konum değeri çipleri (kart değer kutusu) */
+.konum-ciplari { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 8px 0; }
+.konum-kat { font-size: 13px; padding: 3px 9px; border-radius: 999px; background: #24413a; color: #fff; }
+.konum-cip { font-size: 12px; padding: 3px 8px; border-radius: 999px; background: #eef3ea; color: #33503f; white-space: nowrap; }
+.konum-cip.arti { background: #e6f4dc; color: #2b6a1f; }
+.konum-cip.eksi { background: #fbeee2; color: #8a4b17; }

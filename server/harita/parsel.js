@@ -7,10 +7,15 @@ const { veriSurumu } = require('./karolar');
 const { IMAR, YERLESIM_CEKICILIK } = require('../config/rules');
 const { OyunHatasi } = require('../lib/ledger');
 const { tarlaBul } = require('./tarla');
+const { konumDegeri } = require('./konum');
+const { KONUM } = require('../config/konum-fiyat');
 
 const q = {
   var: db.prepare(`SELECT 1 FROM parcels WHERE id = ?`),
-  birlesik: db.prepare(`SELECT birlesik_id FROM parcels WHERE id = ?`),
+  birlesik: db.prepare(`SELECT birlesik_id, konum_surum FROM parcels WHERE id = ?`),
+  konumIcin: db.prepare(`SELECT p.id, p.grid_x, p.grid_y, p.centroid_lon, p.centroid_lat, r.plaka, r.name AS ilce FROM parcels p
+                         JOIN regions r ON r.id = p.ilce_id WHERE p.id = ?`),
+  konumYaz: db.prepare(`UPDATE parcels SET konum_kati = ?, konum_surum = ?, konum_json = ? WHERE id = ?`),
   ilce: db.prepare(`SELECT id, parent_id, code, name, attractiveness FROM regions WHERE type = 'ILCE' AND source_idx = ?`),
   bolge: db.prepare(`SELECT id FROM regions WHERE code = ?`),
   bolgeEkle: db.prepare(`INSERT OR IGNORE INTO regions (parent_id, type, code, name, plaka, center_lon, center_lat, place_class, attractiveness)
@@ -40,6 +45,28 @@ function mahalleBolgesi(ilceSatir, ilceVeri, lon, lat) {
   return q.bolge.get(kod).id;
 }
 
+// Konum değerini hesaplayıp parsele yazar (yeni parselde ya da formül sürümü değişince). Harita verisine ulaşılamazsa
+// yazmaz: arsa bedeli o zamana dek bölge çekiciliğiyle hesaplanır, sonraki dokunuşta yeniden denenir.
+async function konumGuncelle(id) {
+  const p = q.konumIcin.get(id);
+  if (!p) return null;
+  try {
+    const k0 = I.karoOf(p.grid_x, p.grid_y);
+    const { kod } = await karoSiniflandir(k0.kx, k0.ky);
+    let yol = false;
+    for (let dy = -2; dy <= 2 && !yol; dy++) for (let dx = -2; dx <= 2 && !yol; dx++) {
+      const k = I.karoOf(p.grid_x + dx, p.grid_y + dy);
+      if (k.kx === k0.kx && k.ky === k0.ky && KOD_AD[kod[k.i]] === 'YOL') yol = true;   // aynı karodaki hücreler (karo kenarında yaklaşık)
+    }
+    const r = await konumDegeri({ lon: p.centroid_lon, lat: p.centroid_lat, plaka: p.plaka, ilce: p.ilce, yol });
+    q.konumYaz.run(r.kat, KONUM.surum, JSON.stringify(r.ayrinti), id);
+    return r;
+  } catch (e) {
+    console.warn(`Konum değeri hesaplanamadı (${id}): ${e.message}`);
+    return null;
+  }
+}
+
 // Döndürdüğü kimlik asıl parseldir: deneme ilçesinde hücre bir tarlaya aitse tarlanın kimliği (tarla.js); başka bir
 // parsele katılmış (birleştirilmiş) hücrede o parselin kimliği (birlestirme.js)
 async function parselHazirla(id) {
@@ -48,6 +75,7 @@ async function parselHazirla(id) {
   if (tarla) {
     if (q.var.get(tarla.id)) {
       q.tarlaGuncelle.run(tarla.alan_m2, tarla.merkez_lon, tarla.merkez_lat, tarla.id);   // önce kare olarak açılmış ya da tarla yeniden üretilmişse
+      if (q.birlesik.get(tarla.id)?.konum_surum !== KONUM.surum) await konumGuncelle(tarla.id);
       return tarla.id;
     }
     const c = I.idCoz(tarla.id);
@@ -59,10 +87,15 @@ async function parselHazirla(id) {
         tarla.merkez_lon, tarla.merkez_lat, c.x, c.y);
       db.prepare(`UPDATE parcels SET geom_version = 'tarla-v1' WHERE id = ?`).run(tarla.id);
     })();
+    await konumGuncelle(tarla.id);
     return tarla.id;
   }
   const kayit = q.birlesik.get(id);
-  if (kayit) return kayit.birlesik_id || id;
+  if (kayit?.birlesik_id) return kayit.birlesik_id;
+  if (kayit) {
+    if (kayit.konum_surum !== KONUM.surum) await konumGuncelle(id);
+    return id;
+  }
   let kod, ilce;
   try {
     ({ kod, ilce } = await hucreImari(x, y));
@@ -78,6 +111,7 @@ async function parselHazirla(id) {
     q.parselEkle.run(id, mahalleId, ilceSatir.id, ilceSatir.parent_id, ilceSatir.code, I.hucreAlani(x, y), kod, veriSurumu(),
       Math.round(lon * 1e7) / 1e7, Math.round(lat * 1e7) / 1e7, x, y);
   })();
+  await konumGuncelle(id);
   return id;
 }
 
@@ -123,4 +157,26 @@ async function hucreAra(lon, lat, imarlar, adet, aralik = 2, maksYaricap = 96) {
 
 const satilabilirMi = (imar) => !!IMAR[imar]?.satilik;
 
-module.exports = { parselHazirla, komsuImarlari, hucreAra, koordinatlar, satilabilirMi, mahalleBolgesi };
+// Konum değeri olmayan ya da eski formülle hesaplanmış parseller arka planda tamamlanır (sahipliler önce; sunucu açılışında
+// ve formül sürümü değiştiğinde). Bir parselden sonra kısa ara: harita karosu kaynağı yorulmasın.
+let doldurmaSuruyor = false;
+async function eksikKonumlariDoldur({ ara = 250 } = {}) {
+  if (doldurmaSuruyor) return 0;
+  doldurmaSuruyor = true;
+  let n = 0;
+  try {
+    const sec = db.prepare(`SELECT id FROM parcels WHERE (konum_surum IS NULL OR konum_surum <> ?) AND birlesik_id IS NULL
+                            ORDER BY (owner_user_id IS NULL), id LIMIT 50`);
+    for (let liste = sec.all(KONUM.surum); liste.length; liste = sec.all(KONUM.surum)) {
+      let ilerledi = false;
+      for (const { id } of liste) {
+        if (await konumGuncelle(id)) { n++; ilerledi = true; }
+        if (ara) await new Promise((r) => setTimeout(r, ara));
+      }
+      if (!ilerledi) break;   // veri kaynağına ulaşılamıyor: sonraki açılışta yeniden
+    }
+  } finally { doldurmaSuruyor = false; }
+  return n;
+}
+
+module.exports = { konumGuncelle, eksikKonumlariDoldur, parselHazirla, komsuImarlari, hucreAra, koordinatlar, satilabilirMi, mahalleBolgesi };

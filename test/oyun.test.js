@@ -89,7 +89,9 @@ test('imar ihlalleri engellenir (tarlaya ev, TAKS aşımı, sahibi olmayan)', as
   assert.equal((await c('/api/kayit', { email: 'c@test.local', sifre: 'parola123', dogumYili: 1990, kosullarOnay: true, kvkkOnay: true, ad: 'Cemre' })).durum, 201);
   konut = hucreBul('KONUT');
   const kart = (await c(`/api/parsel/${konut}`)).veri;
-  assert.ok(kart.birincilBedel > kart.alan * 0.4, 'konut bedeli il ve yerleşim çekiciliğini içerir');
+  // Bedel konum değerini içerir: alan × konut m² fiyatı × konum çarpanı (il, ilçe, kıyı, merkez, arazi, yol) × mahalle endeksi
+  assert.ok(kart.konumDegeri?.kat > 0 && kart.konumDegeri.il === require('../server/config/konum-fiyat').IL_FIYAT[kart.plaka]);
+  assert.equal(kart.deger.tahsis, Math.round(kart.alan * 0.4 * kart.konumDegeri.kat), 'taban bedel konum çarpanıyla');
   assert.equal((await c(`/api/parsel/${konut}/edin`, {})).durum, 200);
   assert.equal((await c(`/api/parsel/${konut}/insaat`, { tip: 'PEYZAJ' })).durum, 200);
   odulVer('c@test.local', 300);

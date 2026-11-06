@@ -84,3 +84,22 @@ export function tamlayan(ad) {
   const ek = { a: 'ın', ı: 'ın', e: 'in', i: 'in', o: 'un', u: 'un', ö: 'ün', ü: 'ün' }[u];
   return `${ad}'${UNLULER.includes(ad.at(-1)) ? 'n' : ''}${ek}`;
 }
+
+// Arsa konum değeri dökümü (sunucu harita/konum.js): değeri artıran/azaltan etkenler çip olarak. kd = kart.konumDegeri
+const uzaklik = (m) => (m < 1000 ? `${Math.round(m / 10) * 10} m` : `${sayiBicim.format(Math.round(m / 100) / 10)} km`);
+const carpan = (v) => `×${sayiBicim.format(Math.round(v * 100) / 100)}`;
+export function konumCipleri(kd) {
+  if (!kd) return '';
+  const c = [];
+  const bolge = kd.il * kd.ilce;
+  c.push(`<span class="konum-cip ${bolge >= 1 ? 'arti' : 'eksi'}" title="İl fiyat seviyesi ${carpan(kd.il)} · ilçe ${carpan(kd.ilce)}">📍 Bölge ${carpan(bolge)}</span>`);
+  const k = kd.kiyi;
+  if (k.kat > 1.02) c.push(`<span class="konum-cip arti">${k.denizM != null && (k.golM == null || k.denizM <= k.golM) ? `🌊 Denize ${uzaklik(k.denizM)}` : `🏞️ Göle ${uzaklik(k.golM)}`} ${carpan(k.kat)}</span>`);
+  const m = kd.merkez, yakin = m.kasaba || m.sehir;
+  if (yakin) c.push(`<span class="konum-cip ${m.kat >= 1 ? 'arti' : 'eksi'}">🏙️ ${yakin.ad ? `${esc(yakin.ad)} merkezine` : 'Merkeze'} ${uzaklik(yakin.m)} ${carpan(m.kat)}</span>`);
+  const a = kd.arazi;
+  if (a.kat < 0.97) c.push(`<span class="konum-cip eksi" title="Eğim %${sayiBicim.format(a.egim)} · çevresinden ${a.cevreFarki} m yüksek${a.yukselti != null ? ` · ${a.yukselti} m rakım` : ''}">⛰️ ${a.cevreFarki > 250 ? 'Dağlık' : 'Yamaç'} ${carpan(a.kat)}</span>`);
+  else c.push(`<span class="konum-cip arti">🌾 Düz arazi</span>`);
+  if (kd.yol > 1) c.push(`<span class="konum-cip arti">🛣️ Yola yakın ${carpan(kd.yol)}</span>`);
+  return `<div class="konum-ciplari"><b class="konum-kat" title="Arsa taban bedeli = alan × imar m² fiyatı × konum çarpanı">Konum ${carpan(kd.kat)}</b>${c.join('')}</div>`;
+}

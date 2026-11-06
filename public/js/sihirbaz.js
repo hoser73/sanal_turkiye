@@ -167,7 +167,7 @@ export function sihirbazKur({ durum, tost, ses, benYenile, haritaYenile, ciftlig
             <b class="shz-adano">Ada ${a.adaParsel?.ada ?? '–'} · Parsel ${a.adaParsel?.parsel ?? '–'}</b>
             <span>${esc(a.mahalle)}, ${esc(a.ilce)}</span>
             <small>🌾 Tarım arazisi · ${donum(a.alan)}</small>
-            ${a.hediye ? `<em>🎁 Hediye · değeri ${akce(a.hediye)}</em>` : a.bedel ? `<em>Tahsis bedeli ${akce(a.bedel)}</em>` : ''}
+            ${a.hediye ? `<em>🎁 Hediye · değeri ${akce(a.hediye)}${a.bedel > a.hediye ? ` · kalan ${akce(a.bedel - a.hediye)} senden` : ''}</em>` : a.bedel ? `<em>Tahsis bedeli ${akce(a.bedel)}</em>` : ''}
           </div><i class="shz-tik" aria-hidden="true">✓</i></button>`).join('')}</div>
       <div class="shz-alt"><button type="button" class="shz-b ana" data-shz="al" disabled>Bu arsa benim olsun</button></div>`;
   }

@@ -10,6 +10,7 @@ const oyun = require('./oyun');
 const auth = require('./auth');
 const { hucreAra, parselHazirla } = require('./harita/parsel');
 const IL_MERKEZ = require('./harita/il-merkezleri');
+const { HESAP } = require('./config/rules');
 
 const VARSAYILAN = [32.4325, 37.8397];   // Konya, Meram ovası
 
@@ -32,7 +33,9 @@ function hediyeEt(userId, id) {
   if (p.owner_user_id) throw new OyunHatasi(409, 'Bu arsa az önce başkasına geçti; başka bir arsa seç', 'TAHSISLI');
   if (p.zoning_type !== 'TARIM') throw new OyunHatasi(422, 'Başlangıç arsası tarım arazisi olmalı');
   if (p.area_m2 > ADAY_ALAN_UST) throw new OyunHatasi(422, 'Bu tarla hediye için çok büyük; daha küçük bir tarla seç', 'BUYUK');
-  const bedel = auth.tekrarHesapMi(userId) ? 0 : oyun.tahsisFiyati(p);
+  // Hediye tahsis bedeli kadardır, en çok HESAP.baslangicHediyeUst: kıyıdaki ya da şehirdeki pahalı tarlada farkı oyuncu öder
+  const tahsis = oyun.tahsisFiyati(p), bedel = auth.tekrarHesapMi(userId) ? 0 : hediyeTutari(tahsis);
+  if (tahsis - bedel > L.bakiye(userId)) throw new OyunHatasi(409, `Bu tarla ${akce(tahsis)}; hediye ${akce(bedel)}, kalanı için bakiyen yetmiyor. Daha uygun bir tarla seç`, 'BAKIYE');
   return db.transaction(() => {
     if (q.isaretle.run(Date.now(), userId).changes !== 1) throw new OyunHatasi(409, 'Başlangıç tarlanı zaten aldın', 'ALINDI');
     if (bedel > 0) L.odul(userId, bedel, 'Başlangıç tarlası hediyesi');
@@ -42,6 +45,8 @@ function hediyeEt(userId, id) {
     return { ...r, parsel: id, hediye: bedel };
   })();
 }
+const hediyeTutari = (tahsis) => Math.min(tahsis, HESAP.baslangicHediyeUst);
+const akce = (v) => `₳${Math.round(v).toLocaleString('tr-TR')}`;
 function hakKontrol(userId) {
   const u = q.kullanici.get(userId);
   if (!u || u.is_npc) throw new OyunHatasi(403, 'Yalnızca oyuncular başlangıç tarlası alabilir');
@@ -70,7 +75,8 @@ async function adaylar(userId, { ilce, yer }) {
     const kart = oyun.parselKarti(id, userId, {}, { hafif: true });
     if (kart.sahip || kart.imar.tip !== 'TARIM') continue;
     const aday = { id, mahalle: kart.mahalle, ilce: kart.ilce, il: kart.il, alan: kart.alan, adaParsel: kart.adaParsel,
-      konum: kart.konum, geometri: kart.geometri, tarla: !!kart.tarla, hediye: tekrar ? 0 : kart.birincilBedel ?? null, bedel: kart.birincilBedel ?? null };
+      konum: kart.konum, geometri: kart.geometri, tarla: !!kart.tarla, hediye: tekrar ? 0 : hediyeTutari(kart.birincilBedel ?? 0), bedel: kart.birincilBedel ?? null };
+    if (aday.bedel - aday.hediye > L.bakiye(userId)) continue;   // hediyeyle bile alınamayacak kadar pahalı
     (kart.alan <= ADAY_ALAN_UST ? bulunan : buyukler).push(aday);
   }
   const sonuc = bulunan.slice(0, 3);   // çok büyük tarlalar hediye edilmez
@@ -110,4 +116,4 @@ function rotalar(app, { h, auth }) {
   app.post('/api/baslangic/tarla', auth.girisGerekli, h((req) => baslangicTarlasi(req.kullanici.id, metin(req.body?.parsel) || null)));
 }
 
-module.exports = { rotalar, baslangicTarlasi, hakVar, adaylar };
+module.exports = { rotalar, baslangicTarlasi, hakVar, adaylar, hediyeEt };

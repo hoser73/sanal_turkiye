@@ -550,6 +550,7 @@ const BIRLESTIRME = {
 
 const HESAP = {
   baslangicBakiye: 500,
+  baslangicHediyeUst: 300,   // başlangıç tarlası hediyesi en çok bu kadar (kıyıdaki pahalı tarlada farkı oyuncu öder)
   maxParsel: 8,         // §10.3 tekel/arsa kapama: hesap başı limit
   maxParselMahalle: 4,
   minYas: 13,           // 13 yaş altı kayıt olamaz
