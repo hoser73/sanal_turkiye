@@ -137,10 +137,18 @@ const parselDegeri = (p, t = simdi()) => tahminiDeger(p, q.yapilar.all(p.id), t)
 const tahsisFiyati = (p, t = simdi()) => Math.round(birincilBedel(p) * require('./piyasa').mahalleCarpani(p.region_id, t).carpan);
 
 // Arsa taban bedeli: alan × imar m² fiyatı × konum çarpanı (harita/konum.js: il, ilçe, kıyı, merkez, arazi, yol).
-// Konum değeri henüz hesaplanmamış parselde mahallenin eski çekicilik katsayısı kullanılır.
+// Konum değeri henüz hesaplanmamış parselde mahallenin eski çekicilik katsayısı kullanılır (tahsis o zaman beklenir:
+// parselEdin). Birleşik parselde her hücre kendi konum değeriyle sayılır (asıl parselin alanı toplamdır, parçalar kendi
+// alanını korur): yamaçtaki ucuz hücreyi düz ya da kıyıdaki hücreye katmak değer üretmez.
+let uyeKonumSt = null;
 function birincilBedel(parsel) {
   const imar = IMAR[parsel.zoning_type];
-  return Math.round(parsel.area_m2 * imar.m2Fiyat * (parsel.konum_kati ?? parsel.attractiveness));
+  const kat = (k) => k ?? parsel.attractiveness;
+  if (!parsel.uye_sayisi || parsel.id == null) return Math.round(parsel.area_m2 * imar.m2Fiyat * kat(parsel.konum_kati));
+  uyeKonumSt ??= db.prepare(`SELECT area_m2, konum_kati FROM parcels WHERE birlesik_id = ?`);
+  let toplam = parsel.area_m2 * kat(parsel.konum_kati);
+  for (const u of uyeKonumSt.all(parsel.id)) toplam += u.area_m2 * (kat(u.konum_kati) - kat(parsel.konum_kati));
+  return Math.round(toplam * imar.m2Fiyat);
 }
 
 function parselGetir(id) {
@@ -318,6 +326,9 @@ const parselEdin = db.transaction((userId, id, ihale = null) => {
   if (imar.parselDegil) throw new OyunHatasi(409, `${imar.ad}: bu hücre parsel değildir`);
   if (!imar.satilik) throw new OyunHatasi(409, `${imar.ad} parselleri oyuncu tahsisine kapalıdır`);
   if (p.owner_user_id) throw new OyunHatasi(409, 'Bu parsel zaten tahsis edilmiş', 'TAHSISLI');
+  // Konum değeri (harita verisi) hesaplanamadıysa bedel geçici çekicilik katsayısıyla çıkar: o fiyattan tahsis yapılmaz
+  // (değer sonradan hesaplanınca ucuz alınmış kıyı arsası kâra dönmesin). İhalede bedeli teklif belirler.
+  if (!ihale && p.konum_kati == null) throw new OyunHatasi(503, 'Arsanın konum değeri henüz hesaplanamadı; biraz sonra tekrar dene', 'KONUM_YOK');
   // Önde olunan açık ihaleler de sayılır (ihaleyle tahsiste o ihalenin kendisi hariç)
   const onde = (bolge) => require('./ihale').ondeOlunan(userId, { haric: ihale?.id ?? null, regionId: bolge });
   if (q.parselSayisi.get(userId).c + onde(null) >= HESAP.maxParsel) {

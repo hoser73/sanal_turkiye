@@ -1,3 +1,8 @@
-# Günlük yedek (03:30) ve haftalık yedeklerin başka bir diske/nesne deposuna kopyalanması örneği. crontab -e ile ekleyin.
+# Günlük yedek (03:30). crontab -e ile ekleyin. Yedekler veri dizinindeki yedekler/ altına yazılır ve 14 gün döner;
+# aynı diskte durdukları için ayrıca sunucu dışına kopyalayın (ör. 04:00'te rclone ile nesne deposuna).
+# Karo ve yükselti önbellekleri (karolar/, yukselti/, ftw/) yedeğe girmez; gerektiğinde yeniden indirilir.
+# Şifreleme anahtarı (SIFRELEME_ANAHTARI) yedekte yoktur: parola yöneticisinde ayrıca saklayın.
 30 3 * * * cd /opt/sanalturkiye && VERI_DIZINI=/var/lib/sanalturkiye /usr/bin/node scripts/yedek.js --sakla 14 >> /var/log/sanalturkiye-yedek.log 2>&1
-# Docker ile: docker compose exec -T uygulama node scripts/yedek.js --sakla 14
+# 0 4 * * * rclone copy /var/lib/sanalturkiye/yedekler uzak:sanalturkiye-yedek --max-age 25h >> /var/log/sanalturkiye-yedek.log 2>&1
+# Docker ile (sunucunun crontab'ı; proje klasöründen):
+# 30 3 * * * cd /opt/sanalturkiye && docker compose exec -T uygulama node scripts/yedek.js --sakla 14 >> /var/log/sanalturkiye-yedek.log 2>&1

@@ -1,5 +1,6 @@
 // HTTP kapısı: kaldırılan siyasi uçlar (v0.47) büyük/küçük harfle de yok; Express ve gövde ayrıştırıcı hataları 4xx
-// (500 ve hata günlüğü değil); hız sınırı Türkçe JSON döner; istemci hata raporu boş olamaz; hata günlüğü döner.
+// (500 ve hata günlüğü değil); hız sınırı Türkçe JSON döner; istemci hata raporu boş olamaz; hata günlüğü döner;
+// başka kökenden gelen yazma isteği reddedilir; güvenlik başlıkları ve çerez bayrakları; sağlık ucu.
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
@@ -61,4 +62,42 @@ test('hata günlüğü sınırı aşınca .1\'e taşınır; son hatalar dosyanı
   assert.equal(sonHatalar(5)[0].ileti, 'yeni hata');
   fs.writeFileSync(hataDosyasi(), `${JSON.stringify({ ileti: 'x'.repeat(100) })}\n`.repeat(5000));
   assert.equal(sonHatalar(10).length, 10);
+});
+
+test('başka siteden gelen durum değiştiren istek reddedilir; aynı köken, Origin\'siz istek ve Apple dönüşü geçer', async () => {
+  const post = (yol, origin, govde = {}) => fetch(taban + yol, { method: 'POST', redirect: 'manual',
+    headers: { 'content-type': 'application/json', ...(origin ? { origin } : {}) }, body: JSON.stringify(govde) });
+  const kotu = await post('/api/cikis', 'https://kotu.example');
+  assert.equal(kotu.status, 403);
+  assert.equal((await kotu.json()).kod, 'KOKEN');
+  assert.equal((await post('/api/cikis', 'null')).status, 403, 'Origin: null de yabancı sayılır');
+  assert.equal((await post('/api/cikis', taban)).status, 200);
+  assert.equal((await post('/api/cikis')).status, 200, 'Origin göndermeyen istemci (eski tarayıcı, uygulama içi)');
+  assert.equal((await fetch(`${taban}/api/kurallar`, { headers: { origin: 'https://kotu.example' } })).status, 200, 'GET serbest');
+  const apple = await fetch(`${taban}/api/oauth/apple/donus`, { method: 'POST', redirect: 'manual',
+    headers: { 'content-type': 'application/x-www-form-urlencoded', origin: 'https://appleid.apple.com' }, body: 'state=x&code=y' });
+  assert.equal(apple.status, 303, 'Apple form_post dönüşü köken denetimine takılmaz');
+});
+
+test('güvenlik başlıkları ve oturum çerezi', async () => {
+  const r = await fetch(`${taban}/`);
+  const csp = r.headers.get('content-security-policy');
+  assert.match(csp, /frame-ancestors 'none'/);
+  assert.match(csp, /script-src 'self'/);
+  assert.equal(r.headers.get('x-content-type-options'), 'nosniff');
+  assert.equal(r.headers.get('referrer-policy'), 'no-referrer', 'doğrulama/sıfırlama jetonu adres çubuğundayken dışarı sızmasın');
+  const k = await fetch(`${taban}/api/kayit`, { method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: 'cerez@test.local', sifre: 'parola123', dogumYili: 1990, kosullarOnay: true, kvkkOnay: true, ad: 'Çerezci' }) });
+  assert.equal(k.status, 201);
+  const cerez = k.headers.get('set-cookie');
+  assert.match(cerez, /st_oturum=/);
+  assert.match(cerez, /HttpOnly/i);
+  assert.match(cerez, /SameSite=Lax/i);
+});
+
+test('sağlık ucu önbelleğe alınmaz ve veritabanını yoklar', async () => {
+  const r = await fetch(`${taban}/api/saglik`);
+  assert.equal(r.status, 200);
+  assert.equal(r.headers.get('cache-control'), 'no-store');
+  assert.equal((await r.json()).durum, 'iyi');
 });

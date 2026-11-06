@@ -36,7 +36,8 @@ export const sayi = (n) => sayiBicim.format(n ?? 0);
 export const TL_KAT = 300;
 const tamTL = new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 0 });
 export const tlDegeri = (n) => Math.round((Number(n) || 0) * TL_KAT);
-export const akce = (n) => `₺${tamTL.format(tlDegeri(n))}`;
+// Eksi tutar "−₺1.500" biçiminde ("₺-1.500" değil)
+export const akce = (n) => { const t = tlDegeri(n); return `${t < 0 ? '−' : ''}₺${tamTL.format(Math.abs(t))}`; };
 // Para girdisi: değer ve sınırlar TL; ondalik oyun biriminin basamağı (borsa birim fiyatı 2). Adım serbest: girilen TL
 // gönderilirken en yakın oyun birimine yuvarlanır
 export function paraGirdisi({ name, deger, min, max, ondalik = 0, ek = '' }) {

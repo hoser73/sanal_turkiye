@@ -42,7 +42,7 @@ ${not ? `<p style="margin:18px 0 0;font-size:12px;color:#66706f">${kacis(not)}</
 </table></td></tr></table></body></html>`;
 }
 
-async function tesimEt(id) {
+async function teslimEt(id) {
   const m = db.prepare(`SELECT * FROM giden_postalar WHERE id = ?`).get(id);
   const t = smtp();
   if (!m || !t) return false;
@@ -71,7 +71,7 @@ async function gonder(alici, konu, metin, secenek = null) {
     else if (!process.env.SESSIZ) console.log(`✉️  [geliştirme posta kutusu] ${alici} — ${konu}`);
     return { id, gonderildi: false };
   }
-  return { id, gonderildi: await tesimEt(id) };
+  return { id, gonderildi: await teslimEt(id) };
 }
 
 // Kuyruk: vakti gelen başarısız iletileri yeniden dener (bakım ara katmanından ve zamanlayıcıdan çağrılır)
@@ -82,10 +82,16 @@ async function postaBakim() {
   let n = 0;
   try {
     for (const m of db.prepare(`SELECT id FROM giden_postalar WHERE durum = 'BEKLIYOR' AND sonraki IS NOT NULL AND sonraki <= ? LIMIT 20`).all(Date.now())) {
-      if (await tesimEt(m.id)) n++;
+      if (await teslimEt(m.id)) n++;
     }
   } finally { calisiyor = false; }
   return n;
+}
+
+// Saklama süresi: iletilerde e-posta adresi ve (süresi dolmuş) bağlantılar var; gönderilmiş, vazgeçilmiş ve geliştirme
+// iletileri 30 gün sonra silinir. Kuyrukta bekleyenlere dokunulmaz.
+function eskiPostalariTemizle(gun = 30) {
+  return db.prepare(`DELETE FROM giden_postalar WHERE durum <> 'BEKLIYOR' AND created_at < datetime('now', ?)`).run(`-${gun} days`).changes;
 }
 
 function gelistirmeKutusu(limit = 30) {
@@ -93,4 +99,4 @@ function gelistirmeKutusu(limit = 30) {
 }
 const kuyrukDurumu = () => Object.fromEntries(db.prepare(`SELECT durum, COUNT(*) c FROM giden_postalar GROUP BY durum`).all().map((r) => [r.durum, r.c]));
 
-module.exports = { gonder, postaBakim, gelistirmeKutusu, kuyrukDurumu, htmlSablon };
+module.exports = { gonder, postaBakim, eskiPostalariTemizle, gelistirmeKutusu, kuyrukDurumu, htmlSablon };

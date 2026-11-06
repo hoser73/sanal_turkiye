@@ -457,7 +457,7 @@ function ustCiz() {
   $('#girisDugme').hidden = !!b;
   $('#kullanici').hidden = !b;
   if (b) {
-    $('#bakiyeDeger').textContent = akce(b.bakiye).slice(1);   // sembol ayrı (₺)
+    $('#bakiyeDeger').textContent = akce(b.bakiye).replace('₺', '');   // sembol ayrı (₺)
     $('#kullaniciAd').innerHTML = `${avatarSVG(b.hesap?.avatar, 26)}<span>${esc(b.kullanici.ad)}</span>`;
     const kalan = b.gorevler.filter((g) => !g.tamam).length + (b.seviye?.odulBekleyen ? 1 : 0) + (b.gunlukOdul ? 1 : 0);
     $('#gorevRozet').hidden = !kalan;
@@ -559,7 +559,7 @@ const stokta = (kod) => (durum.ben?.envanter || []).find((i) => i.item_id === ko
 
 const girisIste = (metin) => `
   <div class="bos-durum"><div class="buyuk-ikon">🗝️</div><h3>${metin}</h3>
-  <p>Ücretsiz hesap aç, ${akce(500)} hoş geldin hibesiyle başla.</p>
+  <p>Ücretsiz hesap aç, ${akce(durum.kurallar?.hesap?.baslangicBakiye ?? 0)} hoş geldin hibesiyle (oyun parası) başla.</p>
   <button class="dugme birincil" data-eylem="giris-ac">Ücretsiz başla</button></div>`;
 
 // ---------- Parsel kartı ----------
@@ -610,7 +610,7 @@ function parselPaneli() {
   }
   if (!k) {
     return `<div class="bos-durum"><div class="buyuk-ikon">🗺️</div><h3>Bir parsel seç</h3>
-      <p>Haritada bir parsele dokun. Yeşil parseller tarım; ilk tarlan için iyi bir başlangıç.</p>
+      <p>Haritada bir parsele dokun. Tarım parselleri ilk tarlan için iyi bir başlangıç.</p>
       ${girisli() ? '' : '<p class="kucuk">Gezinmek için hesap gerekmez.</p>'}</div>`;
   }
   const imar = k.imar;
@@ -643,7 +643,7 @@ function parselPaneli() {
   } else if (!k.sahip && k.birincilBedel != null) {
     parcalar.push(`<div class="kutu vurgulu">
       <div class="satir"><div><b>Boş parsel</b><div class="kucuk">Birincil tahsis bedeli</div></div><div class="fiyat">${akce(k.birincilBedel)}</div></div>
-      <p class="kucuk">Platformun sabit kuralla belirlediği tahsis bedeli: alan × imar birim bedeli × mahalle çekiciliği. Satış fiyatı ya da değer tahmini değildir.</p>
+      <p class="kucuk">Platformun sabit kuralla belirlediği tahsis bedeli: alan × imar m² fiyatı × konum çarpanı × mahalle endeksi. Satış fiyatı ya da değer tahmini değildir.</p>
       ${girisli()
         ? `<button class="dugme birincil genis" data-eylem="edin" ${durum.ben.bakiye < k.birincilBedel ? 'disabled' : ''}>Parseli edin</button>
            ${durum.ben.bakiye < k.birincilBedel ? '<p class="sebep">Bakiye yetersiz</p>' : ''}`
@@ -698,7 +698,7 @@ function parselPaneli() {
           ? `<div class="kucuk">İnşaatta · <span data-bitis="${y.bitis}">${sure(y.bitis - sunucuSimdi())}</span></div>`
           : `<div class="kucuk">Sağlık %${y.saglik}${y.etkisiz ? ' · <b class="kirmizi-metin">bakımsız: etkisi durdu</b>' : ''}</div>
              <div class="cubuk ince ${saglikRenk(y.saglik)}"><span style="width:${y.saglik}%"></span></div>
-             ${hayvanSatiri(y, { ben, yem: stokta('YEM'), asi: stokta('ASI'), simdi: sunucuSimdi })}`}</div></li>`).join('')}</ul>
+             ${hayvanSatiri(y, { ben, yem: stokta('YEM'), asi: stokta('ASI'), simdi: sunucuSimdi, yemFiyati: durum.kurallar.yemFiyati })}`}</div></li>`).join('')}</ul>
       ${ben && k.bakim.toplam > 0 ? `<div class="satir" style="margin-top:8px"><span class="kucuk">Yapılar günde ${k.bakim.yipranma} puan yıpranır; %${k.bakim.esik} altında etkileri durur.</span>
         <button class="dugme ince" data-eylem="bakim" ${durum.ben.bakiye < k.bakim.toplam ? 'disabled' : ''}>🔧 Bakım yap (${akce(k.bakim.toplam)})</button></div>` : ''}`);
   }
@@ -892,7 +892,7 @@ async function arazilerimPaneli() {
   const parcalar = [`<h2 class="kart-baslik">Arazilerim</h2>${ust}
     <p class="alt-yazi">${b.portfoy.length} / ${b.limitler.maxParsel} parsel · mahalle başına en fazla ${b.limitler.maxParselMahalle} · ${new Set(b.portfoy.map((p) => p.il)).size} ilde</p>`];
   if (!b.portfoy.length) {
-    parcalar.push('<div class="kutu"><p style="margin:0">Henüz parselin yok. Türkiye\'nin herhangi bir yerine yakınlaş, yeşil (tarım) bir hücreye dokun ve edin. Köyünü, mahalleni arayabilirsin.</p></div>');
+    parcalar.push('<div class="kutu"><p style="margin:0">Henüz parselin yok. Türkiye\'nin herhangi bir yerine yakınlaş, haritada boş bir tarlaya dokun ve edin. Köyünü, mahalleni arayabilirsin.</p></div>');
   } else {
     const kz = durum.portfoyKz;
     const kzParsel = new Map((kz?.parseller || []).map((x) => [x.id, x]));
@@ -919,7 +919,7 @@ async function arazilerimPaneli() {
   if (durum.portfoyKz?.satislar.length) {
     parcalar.push(`<h3 class="bolum">Satışlarım</h3><table class="tablo">${durum.portfoyKz.satislar.map((s) => `<tr>
       <td>${esc(s.id)}<div class="kucuk">${kisaTarih(s.tarih)} · ${esc(s.alici)} · ${akce(s.fiyat)} (masraf ${akce(s.masraf)})</div><div class="kucuk">Maliyet ${akce(s.alis + s.yatirim)}</div></td>
-      <td class="${s.kar >= 0 ? 'arti' : 'eksi'}">${s.kar >= 0 ? '+' : '−'}${sayi(Math.abs(s.kar))}${s.karYuzde != null ? `<div class="kucuk">%${sayi(s.karYuzde)}</div>` : ''}</td></tr>`).join('')}</table>`);
+      <td class="${s.kar >= 0 ? 'arti' : 'eksi'}">${s.kar >= 0 ? '+' : '−'}${akce(Math.abs(s.kar))}${s.karYuzde != null ? `<div class="kucuk">%${sayi(s.karYuzde)}</div>` : ''}</td></tr>`).join('')}</table>`);
   }
   const ks = await api('/api/koleksiyon').catch(() => null);
   if (ks) parcalar.push(yoreSetleriHTML(ks));
@@ -1410,10 +1410,6 @@ $('#panelIcerik').addEventListener('change', (e) => {
 $('#panelIcerik').addEventListener('input', (e) => {
   const f = e.target.closest('.ilan-form');
   if (f) netOnizleme(f, durum.kurallar);
-  if (e.target.name === 'manifesto') {
-    const sayac = e.target.closest('form').querySelector('[data-sayac="manifesto"]');
-    if (sayac) sayac.textContent = `${e.target.value.length}/600`;
-  }
 });
 
 $('#panelIcerik').addEventListener('submit', (e) => {
@@ -1543,7 +1539,8 @@ function bildirimSimgesi(n) {
 async function bildirimAc() {
   const kutu = $('#bildirimKutu');
   if (!kutu.hidden) { kutu.hidden = true; return; }
-  const liste = await api('/api/bildirimler');
+  let liste;
+  try { liste = await api('/api/bildirimler'); } catch (e) { tost(e.message, 'hata'); return; }
   // Aynı metinli bildirimler en yenisinin yerinde tek satırda "×N" toplanır
   const metinle = new Map();
   for (const n of liste) {
@@ -1564,7 +1561,7 @@ async function bildirimAc() {
     }).join('')}</ul>`
     : '<div class="bildirim-bos"><span>🔔</span><b>Her şey yolunda</b><p>Yeni bir şey olduğunda burada göreceksin.</p></div>'}`;
   kutu.hidden = false;
-  if (liste.some((n) => !n.okundu)) { await api('/api/bildirimler/okundu', {}); benYenile({ sessiz: true }); }
+  if (liste.some((n) => !n.okundu)) { await api('/api/bildirimler/okundu', {}).catch(() => {}); benYenile({ sessiz: true }); }
 }
 document.addEventListener('click', (e) => { const k = $('#bildirimKutu'); if (!k.hidden && !e.target.closest('.bildirim-sar')) k.hidden = true; });
 $('#bildirimDugme').addEventListener('click', (e) => { e.stopPropagation(); bildirimAc(); });
@@ -1640,7 +1637,10 @@ async function cikisSonrasi() {
   await haritaYenile();
   panelCiz();
 }
-$('#cikisDugme').addEventListener('click', async () => { await api('/api/cikis', {}); await cikisSonrasi(); });
+$('#cikisDugme').addEventListener('click', async () => {
+  try { await api('/api/cikis', {}); } catch (e) { tost(e.message, 'hata'); return; }
+  await cikisSonrasi();
+});
 hesapKur({ yenile: () => benYenile({ sessiz: true }), cikti: cikisSonrasi, iller: () => durum.bolgeler.filter((b) => b.type === 'IL') });
 
 // ================= Canlılık =================

@@ -31,7 +31,7 @@ Kabaca hesap: 100.000 oyuncu × saniyede 0,1–0,2 istek ≈ 10.000–20.000 ist
    dengeleyici (Caddy/nginx ya da bulut dengeleyici). Oturumlar veritabanında olduğu için yapışkan oturum gerekmez.
 3. **Ortak canlı kanal.** Redis pub/sub (ya da NATS): bir süreçteki olay ve bildirim tüm süreçlerdeki bağlantılara
    ulaşır. Olaylar bölge bazında kanallara ayrılır (oyuncu yalnızca baktığı ilin/karonun olaylarını alır).
-4. **Bakım işleri tek bir işçide.** Süresi dolan inşaat, seçim, borsa, hava, NPC döngüsü gibi işler (bugün
+4. **Bakım işleri tek bir işçide.** Süresi dolan inşaat, ilan, ihale, borsa, kira, hava, NPC döngüsü gibi işler (bugün
    `server/index.js` `BAKIM_ISLERI`) ayrı bir süreçte çalışır; uygulama sunucuları yalnızca isteklere bakar.
 5. **CDN.** `public/` (JS, CSS, görseller, emoji) ve harita karoları CDN'den; dosya adlarına sürüm eklenip uzun
    süreli önbellek verilir. Uygulama sunucusuna yalnızca `/api` ve `/canli` gelir.
@@ -61,5 +61,5 @@ Tahmini başlangıç: 3–4 uygulama makinesi (8 çekirdek), 1 PostgreSQL birinc
 - İşçi turu (`gelisim.isciTuru`), NPC döngüsü (`nufus.js`) ve hava işlemesi (`dunya.havaBakim`) büyük tablolarda
   olay döngüsünü uzun süre tutabilir; parçalara bölünmeli (yukarıdaki 4. adımla birlikte ayrı işçiye).
 - Bakiye ve envanter her seferinde defterin tamamından toplanıyor; özet tablolar (hesap bakiyesi, envanter) eklenmeli.
-- İstemci açılışta tüm modülleri birden yüklüyor; sekme modülleri (pazar, seçim, belediye…) ihtiyaç anında
+- İstemci açılışta tüm modülleri birden yüklüyor; sekme modülleri (pazar, borsa, çarşı…) ihtiyaç anında
   yüklenmeli, dosyalar paketlenmeli (esbuild) ve sürümlü önbellek verilmeli.

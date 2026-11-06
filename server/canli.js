@@ -9,7 +9,9 @@ const MAKS_KANAL = 6;
 // Bağlantı sınırı: IP başına ve toplam (boşta binlerce bağlantı her olayı pahalılaştırmasın)
 const MAKS_IP_BAGLANTI = Number(process.env.WS_IP_SINIRI || 8), MAKS_BAGLANTI = Number(process.env.WS_TOPLAM_SINIRI || 20000);
 const ipSayilari = new Map();
-const istemciIp = (req) => (process.env.NODE_ENV === 'production' ? String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() : '') || req.socket.remoteAddress || '?';
+// Üretimde önde tek ters vekil (Caddy) vardır: Express'in 'trust proxy' 1 ayarı gibi X-Forwarded-For'un SON değeri (vekilin
+// gördüğü adres) alınır; ilk değerleri istemci kendisi yazabilir ve IP sınırını atlatırdı
+const istemciIp = (req) => (process.env.NODE_ENV === 'production' ? String(req.headers['x-forwarded-for'] || '').split(',').at(-1).trim() : '') || req.socket.remoteAddress || '?';
 const istemciler = new Set();
 const kullaniciSoketleri = new Map();   // userId → Set<ws>: bildirim yalnızca o oyuncunun bağlantılarına gider (herkes taranmaz)
 function kullaniciBagla(ws, kullanici) {

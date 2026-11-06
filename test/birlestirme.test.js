@@ -120,6 +120,39 @@ test('üçüncü parça: parçanın hücresinden de birleştirilir; harita parç
   assert.match(e.veri.hata, /mahallede en fazla/);
 });
 
+test('birleşik parsel: arsa bedeli hücre hücre, alıcıya hücre sayısıyla sayılır, Hazine her parçanın tutma süresine bakar', async () => {
+  const oyun = require('../server/oyun'), piyasa = require('../server/piyasa');
+  const { IMAR } = require('../server/config/rules');
+  // Yamaçtaki ucuz hücre düz hücreye katılınca asıl parselin konum değerini almaz
+  db.prepare('UPDATE parcels SET konum_kati = 0.2 WHERE id = ?').run(R);
+  const p = oyun.parselGetir(P), h = (id) => db.prepare('SELECT area_m2, konum_kati FROM parcels WHERE id = ?').get(id);
+  const [q, r] = [h(Q), h(R)];
+  const beklenen = Math.round(((p.area_m2 - q.area_m2 - r.area_m2) * p.konum_kati + q.area_m2 * q.konum_kati + r.area_m2 * 0.2) * IMAR.TARIM.m2Fiyat);
+  assert.equal(oyun.birincilBedel(p), beklenen);
+  assert.ok(beklenen < Math.round(p.area_m2 * IMAR.TARIM.m2Fiyat * p.konum_kati));
+
+  // Hazine: asıl parsel eski, son katılan parça yeni → bekler; parça hediye arsaysa 30 gün kuralı sürer
+  db.prepare(`UPDATE structures SET completes_at = ? WHERE parcel_id = ? AND status = 'BUILDING'`).run(Date.now() - 1, P);
+  oyun.bekleyenleriIsle();   // çit tamamlansın
+  db.prepare(`UPDATE parcel_ownership SET start_at = datetime('now', '-30 days') WHERE parcel_id IN (?, ?) AND user_id = ?`).run(P, Q, uidA);
+  assert.match(piyasa.hazineTeklifi(uidA, oyun.parselGetir(P)).sebep, /her parçası/);
+  db.prepare(`UPDATE parcel_ownership SET start_at = datetime('now', '-30 days') WHERE parcel_id = ? AND user_id = ?`).run(R, uidA);
+  assert.equal(piyasa.hazineTeklifi(uidA, oyun.parselGetir(P)).uygun, true);
+  db.prepare(`UPDATE parcel_ownership SET reason = 'BASLANGIC', start_at = datetime('now') WHERE parcel_id = ? AND user_id = ?`).run(R, uidA);
+  assert.match(piyasa.hazineTeklifi(uidA, oyun.parselGetir(P)).sebep, /hediye/);
+
+  // Pazar: 3 parçalı parsel alıcının mahalle sınırına 3 sayılır (B: U ve T, + 3 > 4)
+  const uidB = db.prepare(`SELECT id FROM users WHERE email = 'deniz@test.local'`).get().id;
+  L.odul(uidB, 50000, 'test');
+  assert.equal((await B(`/api/parsel/${T}/edin`, {})).durum, 200);
+  const ilan = await A(`/api/parsel/${P}/ilan`, { fiyat: 100000, gun: 1 });
+  assert.equal(ilan.durum, 200, JSON.stringify(ilan.veri));
+  const al = await B(`/api/ilan/${ilan.veri.ilanId}/hemen-al`, {});
+  assert.equal(al.durum, 403);
+  assert.match(al.veri.hata, /mahallede en fazla 4 parsel.*3 parçalı/);
+  assert.equal((await A(`/api/ilan/${ilan.veri.ilanId}/iptal`, {})).durum, 200);
+});
+
 test('parsel devlete dönünce birleşim çözülür: parçalar kendi alanlarıyla sahipsiz', () => {
   const oyun = require('../server/oyun');
   db.transaction(() => oyun.parseliBosalt(P))();

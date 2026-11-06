@@ -319,7 +319,7 @@ const CARSI = {
   // Pakette gelen sarf malzemeleri (envanterde görünür, yalnızca oyunda kullanılır)
   sarf: { YEM_KARIDES: { ad: 'Karides yem', ikon: '🦐' }, YEM_MISIR: { ad: 'Mısır yem', ikon: '🌽' } },
   etki: { kalipKisalma: 0.3, gubreBonus: 0.2, asiSureMs: 7 * 24 * 3600 * 1000, asiEk: 1, kamisSarma: 1.2, misinaDayanim: 0.12 },
-  // Banka: yalnızca vadeli hesap (kredi v0.41'de kaldırıldı: değer aktarma açıkları üretiyordu). Akçe nakde çevrilemez;
+  // Banka: yalnızca vadeli hesap (kredi v0.41'de kaldırıldı: değer aktarma açıkları üretiyordu). Oyun parası nakde çevrilemez;
   // gerçek bankacılık hizmeti değildir. Faiz oyun içi ödüldür (basılır), üst sınırlıdır.
   banka: { vadeliGun: 7, vadeliFaiz: 0.025, vadeliMin: 50, vadeliMaks: 10000 },
   logoMaksBayt: 150_000,
@@ -561,7 +561,7 @@ const HESAP = {
   maxParsel: 8,         // §10.3 tekel/arsa kapama: hesap başı limit
   maxParselMahalle: 4,
   minYas: 13,           // 13 yaş altı kayıt olamaz
-  yetiskinYas: 18,      // 13–17: genç hesap (sohbet varsayılan kapalı, süre hatırlatıcı açık, aday olamaz)
+  yetiskinYas: 18,      // 13–17: genç hesap (sohbet varsayılan kapalı, süre hatırlatıcı açık)
   gencSureHatirlatici: 60,   // dakika
   dogrulamaSaat: 48,    // e-posta doğrulama bağlantısının ömrü
   sifirlamaDakika: 60,  // parola sıfırlama bağlantısının ömrü
@@ -572,7 +572,7 @@ const HESAP = {
 // KVKK ve sözleşme metinleri: sürüm değişince oyuncudan yeniden onay istenir
 const YASAL = {
   KOSULLAR:  { surum: '2026-11-taslak-4', ad: 'Kullanım Koşulları', yol: '/yasal/kullanim-kosullari.html', zorunlu: true },
-  KVKK:      { surum: '2026-11-taslak-3', ad: 'KVKK Aydınlatma Metni', yol: '/yasal/kvkk.html', zorunlu: true },
+  KVKK:      { surum: '2026-11-taslak-4', ad: 'KVKK Aydınlatma Metni', yol: '/yasal/kvkk.html', zorunlu: true },
   PAZARLAMA: { surum: '2026-10-taslak', ad: 'Ticari elektronik ileti izni', yol: '/yasal/kvkk.html#iletiler', zorunlu: false },
 };
 const ROLLER = { OYUNCU: 'Oyuncu', MODERATOR: 'Moderatör', DENETCI: 'Denetçi', ADMIN: 'Yönetici' };
@@ -646,7 +646,7 @@ const PIYASA = {
   hazine: {
     oran: 0.85,                     // tahmini değerin bu kadarı
     minTutmaMs: dk(3 * 24 * 60),    // parsel en az bu kadar süredir sahibinde olmalı
-    hediyeTutmaMs: dk(30 * 24 * 60), // başlangıç hediyesi arsa: hesap açıp hediyeyi paraya çevirmek olmasın
+    hediyeTutmaMs: dk(30 * 24 * 60), // başlangıç hediyesi ve ihaleyle alınan arsa: hediyeyi ya da ihale indirimini paraya çevirmek olmasın
     gunlukSatis: 1,                 // oyuncu başına günde en çok bu kadar Hazine satışı
     ilanGun: 7,                     // Hazine aldığı parseli bugünkü değeriyle pazara koyar
     ad: 'Sanal Türkiye Hazinesi',
@@ -655,7 +655,7 @@ const PIYASA = {
 
 // İlk 10 dakika görevleri (§12.2)
 const GOREVLER = [
-  { kod: 'ILK_PARSEL', ad: 'İlk parselini edin',        odul: 30, ipucu: 'Haritada yeşil (tarım) boş bir parsele tıkla ve "Edin" de.' },
+  { kod: 'ILK_PARSEL', ad: 'İlk parselini edin',        odul: 30, ipucu: 'Haritada boş bir tarım parseline tıkla ve "Edin" de.' },
   { kod: 'ILK_EKIM',   ad: 'Tarlana tohum ek',          odul: 20, ipucu: 'Tarım parselinin kartında bir ürün seç ve ek.' },
   { kod: 'ILK_SULAMA', ad: 'Ekinini sula',              odul: 10, ipucu: 'Ekili tarlada "Sula" düğmesi.' },
   { kod: 'ILK_HASAT',  ad: 'İlk hasadını topla',        odul: 40, ipucu: 'Ekin olgunlaşınca "Hasat et".' },

@@ -23,10 +23,16 @@ function vapid() {
 let gonderici = (abonelik, yuk) => { vapid(); return webpush.sendNotification(abonelik, yuk, { TTL: 3600 }); };
 const gondericiAyarla = (fn) => { gonderici = fn; };
 
+// Sunucu bildirimi abonelik adresine POST eder: adres yalnızca tarayıcı üreticilerinin push servisleri olabilir (yoksa
+// oyuncu herhangi bir adresi, ör. iç ağdaki bir hizmeti, sunucuya çağırtabilirdi)
+const PUSH_SERVISLERI = /(^|\.)(fcm\.googleapis\.com|android\.googleapis\.com|push\.services\.mozilla\.com|push\.apple\.com|notify\.windows\.com)$/;
+function pushAdresiMi(endpoint) {
+  try { const u = new URL(endpoint); return u.protocol === 'https:' && !u.port && PUSH_SERVISLERI.test(u.hostname); } catch { return false; }
+}
 function abone(userId, govde = {}) {
   const ab = govde.abonelik || govde;
   const endpoint = ab?.endpoint, p256dh = ab?.keys?.p256dh, auth = ab?.keys?.auth;
-  if (typeof endpoint !== 'string' || !/^https:\/\//.test(endpoint) || endpoint.length > 1000) throw new OyunHatasi(400, 'Geçersiz abonelik');
+  if (typeof endpoint !== 'string' || endpoint.length > 1000 || !pushAdresiMi(endpoint)) throw new OyunHatasi(400, 'Geçersiz abonelik');
   if (typeof p256dh !== 'string' || typeof auth !== 'string' || p256dh.length > 200 || auth.length > 100) throw new OyunHatasi(400, 'Geçersiz abonelik anahtarı');
   db.prepare(`INSERT INTO push_abonelikleri (user_id, endpoint, p256dh, auth) VALUES (?, ?, ?, ?)
               ON CONFLICT(endpoint) DO UPDATE SET user_id = excluded.user_id, p256dh = excluded.p256dh, auth = excluded.auth`).run(userId, endpoint, p256dh, auth);

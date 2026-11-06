@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Sanal Türkiye</title>
-  <meta name="description" content="Haritada bir yer seç, o yeri geliştir, komşularınla etkileşime gir, bölgeni yönet.">
+  <meta name="description" content="Gerçek Türkiye haritasında arsanı seç, çiftliğini kur ve geliştir; değerlendiğinde sat. Ücretsiz, tarayıcıda ve telefonda oynanır.">
   <meta name="theme-color" content="#7c4c22">
   <link rel="manifest" href="/manifest.json">
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
@@ -52,7 +52,7 @@
       </div>
       <button type="button" class="dugme ince" id="girisDugme">Giriş yap</button>
       <div class="kullanici" id="kullanici" hidden>
-        <a class="dugme ince yetkili-dugme" id="yonetimLink" href="/yonetim.html" hidden title="Moderasyon ve denetim paneli">🛡️</a>
+        <a class="dugme ince yetkili-dugme" id="yonetimLink" href="/yonetim.html" hidden title="Moderasyon ve denetim paneli" aria-label="Moderasyon ve denetim paneli">🛡️</a>
         <button type="button" class="hesap-dugme" id="hesapDugme" title="Hesabım ve gizlilik"><span id="kullaniciAd"></span><span class="uyari-nokta" id="hesapUyari" hidden></span></button>
         <button type="button" class="bag" id="cikisDugme">Çıkış</button>
       </div>
@@ -66,7 +66,7 @@
       <button type="button" data-kip="2d" aria-pressed="true">2B</button>
       <button type="button" data-kip="3d" aria-pressed="false">3B</button>
       <button type="button" id="isikDugme" class="isik-dugme" title="Işık: gerçek saat" aria-label="Harita ışığı: gerçek saat">🌗</button>
-      <button type="button" id="oltaDugme" class="isik-dugme" title="Balık tut: göl, nehir ya da kıyıya dokun" aria-label="Balık tut" aria-pressed="false">🎣</button>
+      <button type="button" id="oltaDugme" class="isik-dugme" title="Balık tut" aria-label="Balık tut">🎣</button>
       <button type="button" id="turDugme" class="isik-dugme" title="Sinematik Türkiye turu" aria-label="Sinematik Türkiye turu">🎬</button>
       <button type="button" id="ayarDugme" class="isik-dugme" title="Görünüm ve grafik" aria-label="Görünüm ve grafik ayarları" aria-expanded="false" aria-controls="gorunumMenu">⚙️</button>
     </div>
@@ -151,7 +151,7 @@
       <div class="tn-manzara" aria-hidden="true"></div>
       <div class="tn-acilis">
         <h1 class="tn-oyun-logo" id="tnBaslik"><span class="ust">Sanal</span><span class="alt" data-t="Türkiye">Türkiye</span></h1>
-        <p class="tn-slogan">Gerçek Türkiye haritasında <span class="tn-donen" id="tnDonen">çiftliğini kur.</span></p>
+        <p class="tn-slogan">Gerçek Türkiye haritasında <span class="tn-donen" id="tnDonen">arsanı seç.</span></p>
         <button type="button" class="tn-oyna" data-tn="oyna"><span class="tn-oyna-ok" aria-hidden="true"></span>OYNA</button>
         <div class="tn-acilis-baglar"><button type="button" data-tn="giris">Giriş yap</button><button type="button" data-tn="kayit-eposta">Kayıt ol</button></div>
         <p class="tn-ucretsiz">Ücretsiz · Tarayıcıda ve telefonda oynanır</p>
@@ -168,10 +168,10 @@
     <section class="tn-bolum" id="tn-nasil">
       <p class="tn-bolum-etiket">4 adımda</p><h2>Nasıl oynanır?</h2>
       <ol class="tn-adimlar">
-        <li class="tn-gorun"><span class="tn-adim-ikon">🗺️</span><b>Tarlanı seç</b><p>Köyünü ya da mahalleni bul; gerçek arazi kullanımından türetilmiş yeşil bir tarım parseline dokun.</p></li>
-        <li class="tn-gorun"><span class="tn-adim-ikon">🌱</span><b>Ek ve sula</b><p>Buğdaydan Rize çayına; mevsim ve gerçek hava büyümeyi etkiler. Yağmur tarlanı bedavaya sular.</p></li>
-        <li class="tn-gorun"><span class="tn-adim-ikon">🧺</span><b>Hasat et, sat</b><p>Ürününü markete, pazara ya da borsaya sat; değirmende una, mandırada peynire çevir.</p></li>
-        <li class="tn-gorun"><span class="tn-adim-ikon">📈</span><b>Al, geliştir, sat</b><p>Arsanı geliştir, mahalle endeksini izle; değerlendiğinde sat, alım satımdan kâr et.</p></li>
+        <li class="tn-gorun"><span class="tn-adim-ikon">🗺️</span><b>Arsanı seç</b><p>Deniz kıyısından dağ köyüne, haritada boş bir arsaya dokun. Değerini gerçek konumu belirler: sahil ve şehir merkezi pahalı, yamaç ve uzak köy ucuz.</p></li>
+        <li class="tn-gorun"><span class="tn-adim-ikon">🏗️</span><b>Geliştir</b><p>Tarlanı ek, ev, sera, pansiyon kur; yan yana arsalarını birleştir. Her yatırım arsanın değerine eklenir.</p></li>
+        <li class="tn-gorun"><span class="tn-adim-ikon">🧺</span><b>Kazan</b><p>Hasadını tüccara ya da borsaya sat, evini kiraya ver, siparişleri teslim et. Mevsim ve gerçek hava ekinini etkiler.</p></li>
+        <li class="tn-gorun"><span class="tn-adim-ikon">📈</span><b>Kârla sat</b><p>Mahalle endeksini izle; arsan değerlendiğinde pazarda başka bir oyuncuya ya da Hazine'ye sat, kârını al.</p></li>
       </ol>
     </section>
 
@@ -183,7 +183,7 @@
       </article>
       <article class="tn-vitrin ters tn-gorun">
         <figure><img src="/img/tanitim/bogaz.jpg" alt="Oyunda İstanbul Boğazı'nın 3B harita görünümü" loading="lazy" width="1200" height="750"></figure>
-        <div><span class="tn-rozet">Gerçek harita</span><h3>Boğaz'dan Hakkâri'ye her köşe</h3><p>OpenStreetMap verisiyle 973 ilçenin tamamı açık. Arazinin imarı gerçek kullanımdan gelir: tarla, orman, konut, sanayi.</p></div>
+        <div><span class="tn-rozet">Gerçek harita</span><h3>Boğaz'dan Hakkâri'ye her köşe, gerçek değeriyle</h3><p>973 ilçenin tamamı açık. Arsanın fiyatı gerçek konumundan gelir: denize ve şehir merkezine yakınlık, düz ya da dağlık arazi, ilin ve ilçenin fiyat seviyesi. İmarı gerçek arazi kullanımından: tarla, orman, konut, sanayi.</p></div>
       </article>
       <article class="tn-vitrin tn-gorun">
         <figure><img src="/img/tanitim/balik.jpg" alt="3B balık tutma: gün batımında göl, iskele ve oltada alabalık" loading="lazy" width="1200" height="750"></figure>
@@ -225,7 +225,7 @@
       <p class="tn-bolum-etiket">Merak edilenler</p><h2>Sıkça sorulan sorular</h2>
       <details><summary>Oyun ücretsiz mi?</summary><p>Evet. Kayıt ücretsizdir ve ₺3.000.000 (oyun parası) hoş geldin hibesiyle başlarsın. Oyunu oynamak için para ödemen gerekmez.</p></details>
       <details><summary>Oyundaki TL gerçek para mı? Parselim gerçek tapu mu?</summary><p>Hayır. Oyundaki TL yalnızca oyun içi puandır; gerçek parayla alınamaz, nakde çevrilemez. Parseller gerçek haritaya oturtulmuş oyun içi kullanım haklarıdır; gerçek tapu, değer artışı ya da geri alım vaadi yoktur.</p></details>
-      <details><summary>Kimler oynayabilir?</summary><p>13 yaşından itibaren herkes. 18 yaş altı hesaplarda sohbet kapalı başlar, oyun süresi hatırlatıcısı açıktır ve kredi kullanılamaz.</p></details>
+      <details><summary>Kimler oynayabilir?</summary><p>13 yaşından itibaren herkes. 18 yaş altı hesaplarda sohbet kapalı başlar ve oyun süresi hatırlatıcısı kapatılamaz.</p></details>
       <details><summary>Telefonda oynanır mı?</summary><p>Evet. Tarayıcıdan açılır; ana ekrana ekleyip uygulama gibi kullanabilir, bildirim alabilirsin.</p></details>
       <details><summary>Hava gerçekten gerçek mi?</summary><p>Evet. Her ilin havası Open-Meteo'dan yarım saatte bir alınır; yağmur tarlanı sular, don ve dolu ekinine zarar verebilir. Önceden uyarılırsın.</p></details>
       <details><summary>Verilerim güvende mi?</summary><p>Parolan özetlenerek, telefon numaran şifreli saklanır; iki adımlı doğrulama ve passkey ile girebilirsin. Verilerini indirebilir, hesabını silebilirsin. Ayrıntılar <a href="/yasal/kvkk.html" target="_blank" rel="noopener">KVKK aydınlatma metninde</a>.</p></details>

@@ -53,11 +53,12 @@ function eskileriTemizle(t = simdi()) {
   db.prepare(`DELETE FROM telefon_kodlari WHERE expires_at < ?`).run(t - 2 * 864e5);   // sayım için 1 gün tutulur
 }
 
-// Girişte ortak: askı/silinme denetimi, 2FA açıksa yarım oturum
-function girisYap(req, res, u, yol) {
+// Girişte ortak: askı/silinme denetimi, 2FA açıksa yarım oturum. Passkey ancak cihazda kullanıcı doğrulaması (PIN,
+// parmak izi, yüz) yapıldıysa ikinci adım sayılır; yalnızca anahtara sahip olmak TOTP'yi atlatmaz.
+function girisYap(req, res, u, yol, { kullaniciDogrulandi = false } = {}) {
   if (!u || u.silindi_at || u.is_npc) throw new OyunHatasi(401, 'Hesap bulunamadı');
   if (u.status !== 'ACTIVE') throw new OyunHatasi(403, 'Hesap askıya alınmış', 'ASKIDA');
-  if (u.totp_aktif && yol !== 'PASSKEY') { auth.oturumAc(req, res, u.id, { ikinciAdim: false }); return { ikinciAdim: true }; }
+  if (u.totp_aktif && !(yol === 'PASSKEY' && kullaniciDogrulandi)) { auth.oturumAc(req, res, u.id, { ikinciAdim: false }); return { ikinciAdim: true }; }
   auth.oturumAc(req, res, u.id);
   L.denetim({ aktor: u.id, eylem: 'USER_LOGIN', herkese: false, sonra: { yol } });
   return { ikinciAdim: false };
@@ -321,8 +322,8 @@ async function girisDogrula(req, res) {
   } catch { throw new OyunHatasi(401, 'Anahtar doğrulanamadı'); }
   if (!v.verified) throw new OyunHatasi(401, 'Anahtar doğrulanamadı');
   db.prepare(`UPDATE passkeyler SET sayac = ?, son_kullanim = ? WHERE id = ?`).run(v.authenticationInfo.newCounter, simdi(), k.id);
-  girisYap(req, res, kullanici(k.user_id), 'PASSKEY');
-  return { tamam: true };
+  const r = girisYap(req, res, kullanici(k.user_id), 'PASSKEY', { kullaniciDogrulandi: !!v.authenticationInfo.userVerified });
+  return { tamam: true, ikinciAdim: r.ikinciAdim };
 }
 function passkeyListe(req) {
   return db.prepare(`SELECT id, ad, created_at, son_kullanim FROM passkeyler WHERE user_id = ? ORDER BY created_at`).all(req.kullanici.id)

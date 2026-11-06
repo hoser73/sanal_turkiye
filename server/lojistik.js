@@ -59,16 +59,16 @@ const gonder = db.transaction((userId, govde = {}) => {
   if (!db.prepare(`SELECT 1 FROM parcels p JOIN regions r ON r.id = p.il_id WHERE p.owner_user_id = ? AND r.plaka = ? LIMIT 1`).get(userId, kaynak)) {
     throw new OyunHatasi(403, 'Sevkiyat yalnızca parselin olan bir ilden yapılabilir');
   }
-  const mod = String(govde.mod || 'KARA');
-  const t0 = teklif({ urun: String(govde.urun || ''), miktar: govde.miktar, kaynak, hedef: String(govde.hedef || ''), mod });
+  const mod = String(govde.mod || 'KARA'), urun = String(govde.urun || '');
+  const t0 = teklif({ urun, miktar: govde.miktar, kaynak, hedef: String(govde.hedef || ''), mod });
   require('./ekonomi').envanterBozulmasi(userId);
   const tx = L.yeniTx();
-  L.envanterDegis(userId, govde.urun, -t0.m, `Sevkiyat: ${t0.a.name} → ${t0.b.name}`, tx);
+  L.envanterDegis(userId, urun, -t0.m, `Sevkiyat: ${t0.a.name} → ${t0.b.name}`, tx);
   L.harca(userId, t0.maliyet, `Nakliye (${LOJISTIK.modlar[mod].ad}) ${t0.a.name} → ${t0.b.name}`, tx);
   const t = simdi();
   const id = db.prepare(`INSERT INTO sevkiyatlar (user_id, urun, miktar, kaynak_plaka, hedef_plaka, mod, km, maliyet, cikis, varis) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run(userId, govde.urun, t0.m, t0.a.plaka, t0.b.plaka, mod, t0.km, t0.maliyet, t, t + t0.sureMs).lastInsertRowid;
-  L.denetim({ aktor: userId, eylem: 'SHIPMENT_SENT', varlik: `SEVK:${id}`, sonra: { urun: govde.urun, miktar: t0.m, rota: `${t0.a.plaka}-${t0.b.plaka}`, mod }, bolge: t0.a.id, herkese: true });
+    .run(userId, urun, t0.m, t0.a.plaka, t0.b.plaka, mod, t0.km, t0.maliyet, t, t + t0.sureMs).lastInsertRowid;
+  L.denetim({ aktor: userId, eylem: 'SHIPMENT_SENT', varlik: `SEVK:${id}`, sonra: { urun, miktar: t0.m, rota: `${t0.a.plaka}-${t0.b.plaka}`, mod }, bolge: t0.a.id, herkese: true });
   return { tamam: true, id, varis: t + t0.sureMs, maliyet: t0.maliyet, km: t0.km, tahminiGelir: t0.tahminiGelir };
 });
 

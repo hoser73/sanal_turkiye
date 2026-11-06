@@ -42,7 +42,8 @@ button.d:disabled { opacity: .5; cursor: not-allowed; }
 .tost { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--murekkep); color: #fff; padding: 10px 16px; border-radius: 10px; z-index: 9; }
 .tost.hata { background: var(--tehlike); }
 .mono { font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
-@media (max-width: 700px) { th:nth-child(n+5), td:nth-child(n+5) { display: none; } }
+/* Dar ekranda ikincil sütunlar gizlenir; son sütun (karar düğmeleri) her zaman görünür */
+@media (max-width: 700px) { th:nth-child(n+5):not(:last-child), td:nth-child(n+5):not(:last-child) { display: none; } }
 
 /* Sponsorlar */
 .sponsor-onizleme { display: flex; gap: 12px; align-items: center; padding: 10px 14px; border: 2px solid; border-radius: 12px; margin-bottom: 12px; }

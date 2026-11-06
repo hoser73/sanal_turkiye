@@ -43,7 +43,7 @@ function odulYazisi(o) {
   const p = [];
   if (o.kozmetik) p.push({ ikon: KOZMETIK[o.kozmetik].tur === 'cati' ? '🏠' : KOZMETIK[o.kozmetik].tur === 'bayrak' ? '🚩' : '🎖️', metin: KOZMETIK[o.kozmetik].ad, ozel: true });
   if (o.esya) p.push({ ikon: URUNLER[o.esya[0]]?.ikon || '📦', metin: `${o.esya[1]} ${URUNLER[o.esya[0]]?.ad || o.esya[0]}` });
-  if (o.akce) p.push({ ikon: '₺', metin: `${tl(o.akce)}` });
+  if (o.akce) p.push({ ikon: '💰', metin: `${tl(o.akce)}` });
   return p;
 }
 

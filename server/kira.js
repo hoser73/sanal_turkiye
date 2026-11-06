@@ -44,8 +44,8 @@ const kiraTeklifi = db.transaction((userId, parcelId, govde = {}) => {
   if (db.prepare(`SELECT 1 FROM listings WHERE parcel_id = ? AND status = 'ACTIVE'`).get(p.id)) throw new OyunHatasi(409, 'Satış ilanındaki parsel kiraya verilemez');
   if (ekinVar(p.id)) throw new OyunHatasi(409, 'Tarlada ekin var; hasat etmeden kiraya veremezsin', 'EKIN_VAR');
   const gunluk = Number(govde.gunluk), gun = Number(govde.gun);
-  if (!Number.isInteger(gunluk) || gunluk < KIRA.minGunluk || gunluk > KIRA.maxGunluk) throw new OyunHatasi(400, `Günlük bedel ${KIRA.minGunluk}–${KIRA.maxGunluk}`);
-  if (!Number.isInteger(gun) || gun < 1 || gun > KIRA.maxGun) throw new OyunHatasi(400, `Süre 1–${KIRA.maxGun} gün`);
+  if (!Number.isInteger(gunluk) || gunluk < KIRA.minGunluk || gunluk > KIRA.maxGunluk) throw new OyunHatasi(400, `Günlük bedel ${tl(KIRA.minGunluk)} ile ${tl(KIRA.maxGunluk)} arasında olmalı`);
+  if (!Number.isInteger(gun) || gun < 1 || gun > KIRA.maxGun) throw new OyunHatasi(400, `Süre 1–${KIRA.maxGun} gün olmalı`);
   const id = db.prepare(`INSERT INTO kiralar (parcel_id, sahip_id, gunluk, gun, created_at) VALUES (?, ?, ?, ?, ?)`).run(p.id, userId, gunluk, gun, simdi()).lastInsertRowid;
   L.denetim({ aktor: userId, eylem: 'LEASE_OFFERED', varlik: p.id, sonra: { gunluk, gun }, bolge: p.region_id, herkese: true });
   return { tamam: true, id };
@@ -101,7 +101,7 @@ const ortakDavet = db.transaction((userId, parcelId, govde = {}) => {
   if (!ortak) throw new OyunHatasi(404, 'Bu adla oyuncu bulunamadı');
   if (ortak.id === userId) throw new OyunHatasi(400, 'Kendinle ortak olamazsın');
   const pay = Math.round(Number(govde.pay) * 100) / 100;
-  if (!(pay >= ORTAKLIK.minPay && pay <= ORTAKLIK.maxToplamPay)) throw new OyunHatasi(400, `Pay %${ORTAKLIK.minPay * 100}–%${ORTAKLIK.maxToplamPay * 100}`);
+  if (!(pay >= ORTAKLIK.minPay && pay <= ORTAKLIK.maxToplamPay)) throw new OyunHatasi(400, `Pay %${Math.round(ORTAKLIK.minPay * 100)} ile %${Math.round(ORTAKLIK.maxToplamPay * 100)} arasında olmalı`);
   const mevcut = db.prepare(`SELECT * FROM ortaklar WHERE parcel_id = ? AND durum IN ('DAVET', 'AKTIF')`).all(p.id);
   if (mevcut.length >= ORTAKLIK.maxOrtak) throw new OyunHatasi(409, `En fazla ${ORTAKLIK.maxOrtak} ortak`);
   if (mevcut.reduce((a, o) => a + o.pay, 0) + pay > ORTAKLIK.maxToplamPay + 1e-9) throw new OyunHatasi(409, `Ortakların toplam payı %${ORTAKLIK.maxToplamPay * 100}'yi geçemez`);

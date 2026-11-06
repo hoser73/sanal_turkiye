@@ -1,7 +1,7 @@
 // Tapu kartı: tam sayfa çiftliğin anlık görüntüsüyle oyun içi tapu belgesi biçiminde 1080×1350 kart üretir (gerçek tapu
 // değildir). Kart oyunun içinde, kapatılabilen bir pencerede gösterilir; paylaşım destekleniyorsa "Paylaş", masaüstünde
 // "İndir". (Eskiden doğrudan resim dosyasına gidiliyordu: telefon uygulamasında geri dönülecek yer kalmıyordu.)
-import { tost, esc, TL_KAT } from './yardimci.js';
+import { tost, esc, akce } from './yardimci.js';
 
 const yukle = (src) => new Promise((coz, red) => { const i = new Image(); i.onload = () => coz(i); i.onerror = red; i.src = src; });
 const AY = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
@@ -20,7 +20,7 @@ function satirlar(kart) {
     ['Yüzölçümü', `${sayiYaz(kart.alan)} m²`],
     ['Niteliği', kart.imar?.ad || '—'],
     ['Malik', kart.sahip ? kart.sahip.ad : 'Sahipsiz'],
-    kart.deger && ['Tahmini değer', `₺${sayiYaz(Math.round(kart.deger.toplam * TL_KAT))}`],
+    kart.deger && ['Tahmini değer', akce(kart.deger.toplam)],
     edinme && ['Edinme tarihi', tarihYaz(edinme)],
   ].filter(Boolean);
 }

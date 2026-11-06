@@ -8,7 +8,7 @@ import { esc, tost, akce } from './yardimci.js';
 
 // Başlangıç adımları: görev kodu tamamlanmamışsa sıradaki adım odur (başlık şeritte görünen kısa eylemdir)
 const ADIMLAR = [
-  { kod: 'ILK_PARSEL', ikon: '🗺️', baslik: 'Bir tarla edin', metin: 'Haritada yeşil (tarım) bir parsele dokun, kartındaki <b>Parseli edin</b> düğmesine bas. Yakındaki boş bir tarlayı biz de gösterebiliriz.',
+  { kod: 'ILK_PARSEL', ikon: '🗺️', baslik: 'Bir tarla edin', metin: 'Haritada boş bir tarlaya dokun, kartındaki <b>Parseli edin</b> düğmesine bas. Yakındaki boş bir tarlayı biz de gösterebiliriz.',
     dugme: 'Tarla göster', hedef: '[data-eylem="edin"]', is: 'tarlaGoster' },
   { kod: 'ILK_EKIM', ikon: '🌱', baslik: 'İlk tohumu ek', metin: 'Tarlan hazır. Kartındaki ürünlerden birini seç ve ek; buğday ucuzdur, iyi bir başlangıç.',
     dugme: 'Göster', hedef: '[data-eylem="ek"]', is: 'tarlamaGit' },

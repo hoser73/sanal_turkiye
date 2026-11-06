@@ -1,6 +1,6 @@
 // Yaşayan nüfus (§7.7): gerçek oyuncusu olan ama nüfusu az mahallelerde boşluğu dolduran, açıkça "demo sakin" etiketli
 // simüle vatandaşlar. Ayrı bir hile katmanı yoktur: oyuncularla AYNI işlevleri (parsel edinme, ekim, hasat, satış, borsa,
-// bakım, seçim, meclis) aynı kurallar, aynı defter ve aynı sınırlarla çağırırlar. Kişilikleri kararlarını belirler.
+// bakım, ilan) aynı kurallar, aynı defter ve aynı sınırlarla çağırırlar. Kişilikleri kararlarını belirler.
 // Mahallede gerçek oyuncu çoğaldığında parsellerini satışa çıkarıp taşınırlar; satılmayan parseller devlete döner.
 const db = require('./db');
 const L = require('./lib/ledger');
@@ -11,6 +11,7 @@ const simdi = () => Date.now();
 const rastgele = (a, b) => a + Math.random() * (b - a);
 const sec = (dizi) => dizi[Math.floor(Math.random() * dizi.length)];
 const sessiz = (fn) => { try { return fn(); } catch { return null; } };   // kural reddi (bakiye, süre…) normaldir: sakin başka şey dener
+const YERLESME_PAYI = 0.75;   // demo sakin arsaya başlangıç bakiyesinin en çok bu kadarını verir
 
 // ---------- Kişilikler
 const KISILIKLER = {
@@ -56,22 +57,23 @@ async function yerlestir(mahalleId) {
     const id = await parselHazirla(hucreId);   // deneme ilçesinde tarlanın kimliği
     const p = sessiz(() => oyun.parselGetir(id));
     if (!p || p.region_id !== mahalleId || p.owner_user_id) continue;
+    // Bütçesini aşan arsaya yerleşmez (şehirde konut ve ticaret arsası başlangıç bakiyesinden pahalı olabilir); ekip
+    // kurmaya para kalsın diye arsaya bakiyenin en çok YERLESME_PAYI'ı gider
+    if (sessiz(() => oyun.tahsisFiyati(p)) > NUFUS.baslangicBakiye * YERLESME_PAYI) continue;
     const mevcut = new Set(mahalleDemolari(mahalleId).map((d) => d.display_name));
     let ad = `${k.unvan} ${sec(ADLAR)}`;
     for (let i = 0; i < 5 && mevcut.has(ad); i++) ad = `${k.unvan} ${sec(ADLAR)}`;
     const t = simdi();
-    const uid = db.transaction(() => {
+    // Hesap, bakiye ve tahsis tek işlemde: edinilemezse (limit, ihale, yarış) hesap da açılmaz, bakiye basılmaz
+    const uid = sessiz(() => db.transaction(() => {
       const yeni = db.prepare(`INSERT INTO users (display_name, is_npc, npc_kisilik, npc_mahalle, npc_durum, npc_sonraki, meslek, ayarlar)
                                VALUES (?, 1, ?, ?, 'AKTIF', ?, ?, '{"sohbet":true}')`).run(ad, kod, mahalleId, t + rastgele(5_000, 60_000), k.meslek).lastInsertRowid;
       L.odul(yeni, NUFUS.baslangicBakiye, 'Demo sakin başlangıç bakiyesi');
+      oyun.parselEdin(yeni, id);
       L.denetim({ aktor: yeni, eylem: 'DEMO_RESIDENT_ARRIVED', varlik: `MAHALLE:${mahalleId}`, bolge: mahalleId, herkese: true, sonra: { ad, unvan: k.unvan } });
       return yeni;
-    })();
-    if (!sessiz(() => oyun.parselEdin(uid, id))) {
-      // Edinilemediyse (bakiye/limit/yarış) sakin yerleşmez
-      db.prepare(`UPDATE users SET npc_durum = 'TASINDI' WHERE id = ?`).run(uid);
-      continue;
-    }
+    })());
+    if (!uid) continue;
     return { id: uid, ad, parsel: id };
   }
   return null;

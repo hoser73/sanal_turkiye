@@ -85,6 +85,16 @@ app.use(istekGunlugu);
 const jsonKucuk = express.json({ limit: '50kb' }), jsonLogo = express.json({ limit: '260kb' });
 app.use((req, res, next) => (/^\/api\/yonetim\/isletme\//.test(req.path) ? jsonLogo : jsonKucuk)(req, res, next));
 app.use(cookieParser());
+// Siteler arası istek sahteciliğine (CSRF) karşı ikinci kat: oturum çerezi SameSite=Lax; ayrıca durum değiştiren API
+// isteğinde tarayıcının gönderdiği Origin isteğin kendi adresi olmalı. Apple girişinin dönüşü (form_post) Apple'dan gelir.
+const GUVENLI_YONTEM = new Set(['GET', 'HEAD', 'OPTIONS']);
+app.use('/api/', (req, _res, next) => {
+  const origin = req.get('origin');
+  if (!origin || GUVENLI_YONTEM.has(req.method) || req.path === '/oauth/apple/donus') return next();
+  let ayni = false;
+  try { ayni = new URL(origin).host === req.get('host'); } catch { /* "null" ya da bozuk köken */ }
+  next(ayni ? undefined : new OyunHatasi(403, 'İstek başka bir siteden geldiği için reddedildi', 'KOKEN'));
+});
 // İmar karoları harita gezinirken çok sayıda istenir; ayrı ve daha geniş bir sınır
 app.use('/api/karo/', hizSiniri({ windowMs: 60_000, limit: 2400 }));
 // API_HIZ_SINIRI: IP başına dakikalık genel sınır (varsayılan 600); yük testi / ters vekil arkasında ayarlanır
@@ -126,7 +136,11 @@ if (BAKIM_ARALIGI) setInterval(bakim, BAKIM_ARALIGI).unref();   // kimse istek a
 
 // Sync ve async işleyicilerin hatalarını tek yerde toplayan sarmalayıcı
 const h = (fn) => (req, res, next) => {
-  Promise.resolve().then(() => fn(req, res)).then((r) => { if (r !== undefined && !res.headersSent) res.json(r); }).catch(next);
+  Promise.resolve().then(() => fn(req, res)).then((r) => {
+    if (res.headersSent) return;
+    if (r !== undefined) res.json(r);
+    else res.status(204).end();   // işleyici yanıt vermediyse istek asılı kalmasın
+  }).catch(next);
 };
 const uid = (req) => req.kullanici.id;
 const parselId = (req) => String(req.params.id || '');
@@ -172,7 +186,7 @@ lojistik.rotalar(app, { h, auth });
 if (process.env.NODE_ENV !== 'production') app.get('/api/gelistirici/posta', h(() => posta.gelistirmeKutusu()));
 
 // ---- Statik oyun verisi
-app.get('/api/kurallar', h(ortakYanit(10 * 60_000, () => ({ surum: require('../package.json').version, haritaKaynak: HARITA_KAYNAK, yoresel: require('./config/rules').YORESEL, hayvanlar: require('./config/rules').HAYVANLAR, susler: require('./config/rules').SUSLER, receteler: RECETELER, meslekler: MESLEKLER, mevsimler: MEVSIMLER, lig: LIG, bozulma: BOZULMA, bakim: BAKIM, borsa: { ucretOrani: BORSA.ucretOrani, sureler: BORSA.sureler, minTutar: BORSA.minTutar }, birim: BIRIM, imar: IMAR, imarKaynakNotu: IMAR_KAYNAK_NOTU, yapilar: YAPILAR, urunler: URUNLER, hesap: HESAP,
+app.get('/api/kurallar', h(ortakYanit(10 * 60_000, () => ({ surum: require('../package.json').version, haritaKaynak: HARITA_KAYNAK, yoresel: require('./config/rules').YORESEL, hayvanlar: require('./config/rules').HAYVANLAR, yemFiyati: require('./config/rules').YEM_FIYATI, susler: require('./config/rules').SUSLER, receteler: RECETELER, meslekler: MESLEKLER, mevsimler: MEVSIMLER, lig: LIG, bozulma: BOZULMA, bakim: BAKIM, borsa: { ucretOrani: BORSA.ucretOrani, sureler: BORSA.sureler, minTutar: BORSA.minTutar }, birim: BIRIM, imar: IMAR, imarKaynakNotu: IMAR_KAYNAK_NOTU, yapilar: YAPILAR, urunler: URUNLER, hesap: HESAP,
   pazar: { ucretOrani: PAZAR.ucretOrani, minUcret: PAZAR.minUcret, maxFiyat: PAZAR.maxFiyat, ilanSureleri: PAZAR.ilanSureleri,
     aliciKosullari: Object.fromEntries(Object.entries(PAZAR.aliciKosullari).map(([k, v]) => [k, v.ad])) } }))));
 
@@ -299,8 +313,14 @@ app.post('/api/istemci-hata', hizSiniri({ windowMs: 60_000, limit: 20 }), h((req
 app.get('/api/yonetim/posta', auth.rolGerekli('MODERATOR', 'DENETCI', 'ADMIN'), h(() => posta.kuyrukDurumu()));
 app.get('/api/yonetim/hatalar', auth.rolGerekli('MODERATOR', 'DENETCI', 'ADMIN'), h(() => sonHatalar(80)));
 app.get('/api/mahalle/:id/nufus', h((req) => nufus.mahalleNufusu(req.params.id)));
-app.get('/api/saglik', h(() => ({ durum: 'iyi', surum: require('../package.json').version, calisma: Math.round(process.uptime()), bellekMb: Math.round(process.memoryUsage().rss / 1e6),
-  canliBaglanti: canli.baglantiSayisi() })));
+// Sağlık ucu (Docker HEALTHCHECK, çalışma süresi izleyicisi): veritabanı okunamıyorsa 503
+app.get('/api/saglik', h((_req, res) => {
+  let vt = true;
+  try { require('./db').prepare('SELECT 1').get(); } catch { vt = false; }
+  res.set('cache-control', 'no-store').status(vt ? 200 : 503);
+  return { durum: vt ? 'iyi' : 'veritabanı yok', surum: require('../package.json').version, calisma: Math.round(process.uptime()), bellekMb: Math.round(process.memoryUsage().rss / 1e6),
+    canliBaglanti: canli.baglantiSayisi() };
+}));
 
 app.use('/api', (_req, _res, next) => next(new OyunHatasi(404, 'Uç bulunamadı')));
 
@@ -326,6 +346,8 @@ app.get(/^\/vendor\/three-ek\/(.+\.js)$/, (req, res, next) => {
   res.type('application/javascript').set('Cache-Control', 'public, max-age=604800').send(kod);
 });
 app.use(sikistirilmisStatik(path.join(__dirname, '..', 'public')));
+// Geliştirici sayfaları (posta kutusu) üretimde sunulmaz
+if (process.env.NODE_ENV === 'production') app.use('/gelistirici', (_req, res) => res.status(404).end());
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // ---- Hata yöneticisi (yığın izi sızdırmaz)
@@ -340,12 +362,14 @@ app.use((err, _req, res, _next) => {
   res.status(500).json({ hata: 'Sunucu hatası', istekKimligi: _req.istekId });
 });
 
-auth.eskiOturumlariTemizle();
-setInterval(auth.eskiOturumlariTemizle, 6 * 3600 * 1000).unref();
+// Süresi dolan oturum/bağlantı kayıtları ve eski giden e-postalar (içlerinde kişisel veri var) 6 saatte bir silinir
+const temizlik = () => { auth.eskiOturumlariTemizle(); posta.eskiPostalariTemizle(); };
+temizlik();
+setInterval(temizlik, 6 * 3600 * 1000).unref();
 
-// Demo komşular ağdan imar verisi ister; sunucuyu bekletmeden arka planda yerleşir
 // v0.50 para dengesi: kayıtlı arsa tutarları yeni ölçeğe bir kez çevrilir (bütün modüller ve tabloları yüklendikten sonra)
 if (require('./para-gecisi').gec()) gunluk.info('para dengesi geçişi (v0.50) uygulandı');
+// Demo komşular ağdan imar verisi ister; sunucuyu bekletmeden arka planda yerleşir
 app.hazir = npcSeedEt({ sessiz: !!process.env.SESSIZ }).catch((e) => console.warn('Demo komşular:', e.message));
 
 const PORT = Number(process.env.PORT || 3400);
@@ -358,6 +382,9 @@ if (require.main === module) {
     for (const h of denetim.hatalar) gunluk.error('yapılandırma hatası', { hataIletisi: h });
     process.stderr.write(`\nSunucu başlatılmadı: ${denetim.hatalar.length} yapılandırma hatası (bkz. .env.ornek, docs/yayina-alma.md)\n`);
     process.exit(1);
+  }
+  if (denetim.uretim && require('./yapilandirma').demoHesabiKapat(require('./db'))) {
+    gunluk.warn('yapılandırma uyarısı', { uyari: 'Geliştirme demo hesabı (demo@sanalturkiye.test) üretim veritabanında bulundu ve kapatıldı' });
   }
   const sunucu = app.listen(PORT, () => gunluk.info(`Sanal Türkiye → http://localhost:${PORT}`, { port: PORT, surum: require('../package.json').version }));
   process.on('unhandledRejection', (e) => gunluk.error('yakalanmamış söz reddi', { hata: e }));

@@ -8,7 +8,7 @@ const I = require('./izgara');
 const { KULLANICI_AJANI } = require('./karolar');
 
 const SAHTE = process.env.KARO_KAYNAGI === 'sahte';
-const KAYNAK = process.env.YUKSELTI_KAYNAGI || 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png';
+const KAYNAK = process.env.YUKSELTI_KAYNAGI || process.env.YUKSELTI_KARO || 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png';
 const VERI_DIZINI = process.env.VERI_DIZINI || path.join(__dirname, '..', '..', 'data');
 const DIZIN = path.join(VERI_DIZINI, 'yukselti');
 const Z = 11;            // ≈ 60 m piksel (Türkiye enlemlerinde): eğim ve çevre yükseltisi için yeterli

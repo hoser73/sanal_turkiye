@@ -53,7 +53,7 @@ export function balikOyunu(kap, { api, sonuc, ses }) {
       takimOnbellek = takim;
     } catch (e) { $('.balik-yukleniyor').textContent = e.message; return; }
     if (kapandi) return;
-    if (!ortam.su) { $('.balik-yukleniyor').textContent = 'Burada su yok. Haritada bir göle, nehre ya da kıyıya dokun.'; return; }
+    if (!ortam.su) { $('.balik-yukleniyor').textContent = 'Bu bölgede balık tutulacak su bulunamadı. Haritayı bir göl, nehir ya da kıyı yakınına kaydırıp yeniden dene.'; return; }
     const isikGunduz = tercih('st-isik', 'gercek') === 'gunduz';
     const g = isikGunduz ? { yukseklik: 42, azimut: 200 } : gunesKonumu(k.lon, k.lat);
     try {
@@ -120,7 +120,7 @@ export function balikOyunu(kap, { api, sonuc, ses }) {
     yazi.textContent = 'Olta atılıyor…'; ses('atis');
     const bas = performance.now();
     let r;
-    try { r = await api('/api/balik/at', { ...konum, ...secim }); } catch (e) { yazi.textContent = e.message; kurulumGoster(); yazi.textContent = e.message; return; }
+    try { r = await api('/api/balik/at', { ...konum, ...secim }); } catch (e) { kurulumGoster(); yazi.textContent = e.message; return; }
     if (kapandi) return;
     atis = r; hakYaz(r.kalan);
     if (r.yemStok && ortam.stok && r.yem !== 'SAHTE') ortam.stok[r.yem] = Math.max(0, (ortam.stok[r.yem] || 1) - 1);

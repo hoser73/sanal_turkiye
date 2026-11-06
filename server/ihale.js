@@ -72,7 +72,7 @@ async function haftayiKur(h = haftaNo()) {
         const id = await parselHazirla(hucre).catch(() => null);
         if (!id) continue;
         const p = oyun.parselGetir(id);
-        if (p.owner_user_id || p.zoning_type !== 'TARIM' || p.area_m2 > 25_000 || ihaledeMi(id)) continue;
+        if (p.owner_user_id || p.zoning_type !== 'TARIM' || p.area_m2 > 25_000 || p.konum_kati == null || ihaledeMi(id)) continue;   // konum değeri yoksa taban yanlış çıkar
         secilen.push({ id, taban: Math.max(1, Math.round(oyun.tahsisFiyati(p) * I.tabanOrani)) });
         break;
       }
@@ -116,11 +116,11 @@ const teklifVer = db.transaction((userId, ihaleId, govde = {}) => {
   return { tamam: true, tutar };
 });
 
-// Hesap silinirken: oyuncunun açık ihalelerdeki aktif teklifleri iade edilip kapanır (emanette akçe kalmasın)
-const tekliflerIade = db.transaction((userId) => {
+// Hesap silinirken (ya da para geçişinde): oyuncunun açık ihalelerdeki aktif teklifleri iade edilip kapanır (emanette akçe kalmasın)
+const tekliflerIade = db.transaction((userId, sebep = 'İhale teklifi iadesi (hesap silindi)') => {
   const liste = db.prepare(`SELECT t.* FROM ihale_teklifleri t JOIN ihaleler i ON i.id = t.ihale_id
                             WHERE t.user_id = ? AND t.durum = 'AKTIF' AND i.durum = 'ACIK'`).all(userId);
-  for (const tk of liste) teklifIade(tk, tk.ihale_id, 'İhale teklifi iadesi (hesap silindi)');
+  for (const tk of liste) teklifIade(tk, tk.ihale_id, sebep);
   return liste.length;
 });
 

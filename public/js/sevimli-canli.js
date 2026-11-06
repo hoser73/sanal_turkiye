@@ -84,12 +84,15 @@ export function canliKur(sahne, { sesCal = null, ust = sahne } = {}) {
   }
 
   // ---------- Dokunma tepkisi
-  // hedef: tepki verecek nesne (userData.tepki = { tur, renk, adet })
-  function tepki(hedef, nokta) {
+  // hedef: tepki verecek nesne (userData.tepki = { tur, renk, adet }); ozel: { yazi, ses } (ör. kira toplanınca "+₺")
+  function tepki(hedef, nokta, ozel = null) {
     const t = hedef.userData.tepki || {};
     if (!ziplayanlar.some((z) => z.o === hedef)) ziplayanlar.push({ o: hedef, t: 0, taban: hedef.scale.clone(), y0: hedef.position.y, tur: t.tur });
     const p = nokta.clone();
-    if (t.tur === 'ekin') {
+    if (ozel?.yazi) {
+      sesCal?.(ozel.ses || 'tik');
+      yaziEfekti(ozel.yazi, p, '#ffe08a', '#8a5a12');
+    } else if (t.tur === 'ekin') {
       sesCal?.('hasat');
       yaziEfekti(`+${t.adet || 2}`, p, '#ffffff');
       for (let i = 0; i < 5; i++) urunEfekti(p, t.renk || '#e63946');
@@ -100,8 +103,9 @@ export function canliKur(sahne, { sesCal = null, ust = sahne } = {}) {
       sesCal?.('tik');
       yaziEfekti('Merhaba!', p, '#ffffff', '#2f6b2f');
     } else {
-      sesCal?.('para');
-      yaziEfekti('+₺', p, '#ffe08a', '#8a5a12');
+      // Yapıya, toprağa ya da çayıra dokunmak para kazandırmaz: "+₺" yerine yalnızca yıldız
+      sesCal?.('tik');
+      yaziEfekti('★', p, '#ffe08a', '#8a5a12');
     }
     for (let i = 0; i < 9; i++) parilti(p);
   }

@@ -54,7 +54,7 @@ export function ciftlikIciKur({ durum, eylemDagit, sunucuSimdi, ayrintiAc, dunya
   let meydanKonum = null, meydanOncekiUzaklik = null;
 
   function kur() {
-    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer = new THREE.WebGLRenderer({ antialias: !MOBIL });   // telefonda yumuşatmayı son işlemenin çok örneklemeli hedefi yapar
     renderer.setPixelRatio(Math.min(MOBIL ? 1.5 : 2, devicePixelRatio));   // telefonda 3× piksel yoğunluğu çizilmez
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.NoToneMapping;
@@ -152,17 +152,18 @@ export function ciftlikIciKur({ durum, eylemDagit, sunucuSimdi, ayrintiAc, dunya
     ayGorsel.position.set(-Math.sin(gunesAz) * Math.cos(yk) * 520, Math.sin(yk) * 520, Math.cos(gunesAz) * Math.cos(yk) * 520);
   }
   // Köy fenerleri: patika kavşaklarında; akşam ve gece yanar (ışık kaynağı yok, parlayan cam + hale: telefonda ucuz)
+  let haleMalz = null;   // hale dokusu bir kez çizilir (sahne her eylemde yeniden kurulur; doku her seferinde GPU'da birikmesin)
   function fenerler(r, yaricap) {
     const g = new THREE.Group();
     const direk = new THREE.MeshLambertMaterial({ color: '#3d342c' });
     const cam = new THREE.MeshLambertMaterial({ color: gece ? '#ffe08a' : '#f4ecd8', emissive: gece ? '#ffc04d' : '#000000', emissiveIntensity: gece ? 1.6 : 0 });
-    let hale = null;
-    if (gece) {
+    if (gece && !haleMalz) {
       const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d');
       const gr = x.createRadialGradient(32, 32, 2, 32, 32, 32); gr.addColorStop(0, 'rgba(255,196,96,.75)'); gr.addColorStop(0.45, 'rgba(255,170,70,.28)'); gr.addColorStop(1, 'rgba(255,150,50,0)');
       x.fillStyle = gr; x.fillRect(0, 0, 64, 64);
-      hale = new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+      haleMalz = new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
     }
+    const hale = gece ? haleMalz : null;
     for (const [sx, sz] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) {
       const f = new THREE.Group();
       const d = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, 4.2, 8), direk); d.position.y = 2.1;
@@ -177,7 +178,7 @@ export function ciftlikIciKur({ durum, eylemDagit, sunucuSimdi, ayrintiAc, dunya
     return g;
   }
   function karKur() {
-    if (kar) { sahne.remove(kar); kar.geometry.dispose(); kar = null; }
+    if (kar) { sahne.remove(kar); kar.geometry.dispose(); kar.material.dispose(); kar = null; }
     if (!kis) return;
     const n = 1400, p = new Float32Array(n * 3);
     for (let i = 0; i < n; i++) { p[i * 3] = (Math.random() - 0.5) * 160; p[i * 3 + 1] = Math.random() * 60; p[i * 3 + 2] = (Math.random() - 0.5) * 160; }
@@ -253,10 +254,10 @@ export function ciftlikIciKur({ durum, eylemDagit, sunucuSimdi, ayrintiAc, dunya
     const kk = komsuKartlari.get(id), p = (durum.ben?.portfoy || []).find((x) => x.id === id);
     const ap = kk?.adaParsel || p?.adaParsel;
     const alt = `${ap ? `Ada ${ap.ada} · Parsel ${ap.parsel} · ` : ''}${sayi(p?.area_m2 || kk?.alan || 0)} m² · çiftliğinin parçası`;
-    const e = p?.ekin;
-    const durumMetni = !e ? 'Boş: ekim bekliyor' : e.olgun ? `${e.ikon} ${esc(e.ad)} hasada hazır!` : `${e.ikon} ${esc(e.ad)} · %${Math.round((e.ilerleme || 0) * 100)} büyüdü${susuzMu(p) ? ' · sulanmayı bekliyor' : ''}`;
+    const e = p?.ekin, olgun = !!p && olgunMu(p);
+    const durumMetni = !e ? 'Boş: ekim bekliyor' : olgun ? `${e.ikon} ${esc(e.ad)} hasada hazır!` : `${e.ikon} ${esc(e.ad)} · %${Math.round((e.ilerleme || 0) * 100)} büyüdü${susuzMu(p) ? ' · sulanmayı bekliyor' : ''}`;
     const dugmeler = [];
-    if (e?.olgun) dugmeler.push(`<button type="button" class="ci-b altin" data-ci="arazi-is" data-is="hasat" data-parsel="${esc(id)}">🧺 Hasat et</button>`);
+    if (olgun) dugmeler.push(`<button type="button" class="ci-b altin" data-ci="arazi-is" data-is="hasat" data-parsel="${esc(id)}">🧺 Hasat et</button>`);
     if (p && susuzMu(p)) dugmeler.push(`<button type="button" class="ci-b" data-ci="arazi-is" data-is="sula" data-parsel="${esc(id)}">💧 Sula</button>`);
     if (p && bosMu(p)) dugmeler.push(`<button type="button" class="ci-b altin" data-ci="ek-hedef" data-parsel="${esc(id)}">🌱 Ek</button>`);
     // Birleştirme: yan yanaysa bu tarla açık parsele katılabilir (tek tapu, toplam alan)
@@ -265,7 +266,7 @@ export function ciftlikIciKur({ durum, eylemDagit, sunucuSimdi, ayrintiAc, dunya
       <small>Bu tarlayı ${esc(durum.kart.adaParsel ? `Ada ${durum.kart.adaParsel.ada} / Parsel ${durum.kart.adaParsel.parsel}` : 'açık parselin')} ile birleştir: ${sayi(durum.kart.alan + aday.alan)} m² tek parsel, daha geniş yapılaşma hakkı. Harç ${akce(b.harc)}; geri alınmaz.</small>
       ${aday.uygun ? `<button type="button" class="ci-b" data-ci="birlestir" data-parsel="${esc(id)}" data-alan="${durum.kart.alan + aday.alan}">🧩 Birleştir · ${akce(b.harc)}</button>` : `<small class="ci-sebep">${esc(aday.sebep)}</small>`}</div>`;
     sayfaAc(`${ust2('🌾', 'Tarlan', alt)}
-      <p class="ci-not ${e?.olgun ? 'yesil' : ''}">${durumMetni}</p>
+      <p class="ci-not ${olgun ? 'yesil' : ''}">${durumMetni}</p>
       ${dugmeler.length ? `<div class="ci-dugmeler">${dugmeler.join('')}</div>` : ''}
       ${birles}`);
   }
@@ -297,8 +298,9 @@ export function ciftlikIciKur({ durum, eylemDagit, sunucuSimdi, ayrintiAc, dunya
   async function komsuKartlariniYukle() {
     const k = durum.kart;
     if (k.tarla) return;
-    const benimler = komsuHepsi(k).filter((n) => n.ben && !n.uye && !komsuKartlari.has(n.id));
-    await Promise.all(benimler.map((n) => api(`/api/parsel/${encodeURIComponent(n.id)}`).then((kk) => komsuKartlari.set(n.id, kk)).catch(() => {})));
+    // Birleşik komşu parselin her hücresi aynı kimlikle gelir: kart bir kez istenir
+    const benimler = [...new Set(komsuHepsi(k).filter((n) => n.ben && !n.uye && !komsuKartlari.has(n.id)).map((n) => n.id))];
+    await Promise.all(benimler.map((id) => api(`/api/parsel/${encodeURIComponent(id)}`).then((kk) => komsuKartlari.set(id, kk)).catch(() => {})));
     if (benimler.length && acik) sahneKurgula();
   }
 
@@ -451,13 +453,15 @@ export function ciftlikIciKur({ durum, eylemDagit, sunucuSimdi, ayrintiAc, dunya
         if (n?.ben && komsuKartlari.has(n.id)) {
           const kk = komsuKartlari.get(n.id);
           // Gerçek tarla birden çok hücreyi kaplar: her hücresi çiftliğin devamı olarak (aynı ekinle, yapısız tarla) çizilir;
-          // hücreler arası boşluksuz yastık tarlanın bütün olduğunu gösterir. Izgara parsel kendi modeliyle çizilir.
-          const veri = n.tarla ? { id: `${n.id}:${dx},${dy}`, imar: 'TARIM', yp: '', ek: kartVerisi(kk).ek, kz: '', ss: '' } : kartVerisi(kk);
+          // hücreler arası boşluksuz yastık tarlanın bütün olduğunu gösterir. Birleşik parselin parçası (`birlesik`, asıl
+          // hücresi değil) da öyle: yapılar yalnızca asıl hücrede durur. Izgara parsel kendi modeliyle çizilir.
+          const parca = n.tarla || n.birlesik;
+          const veri = parca ? { id: `${n.id}:${dx},${dy}`, imar: n.tarla ? 'TARIM' : kk.imar.tip, yp: '', ek: kartVerisi(kk).ek, kz: '', ss: '' } : kartVerisi(kk);
           const m = sevimliParselModeli(veri, { gece }); m.position.set(dx * S, 0.3, dy * S);
-          if (n.tarla) m.scale.set(1 / 0.88, 1, 1 / 0.84);   // tarla hücreleri kenar boşluğu bırakmadan birbirine değsin
+          if (parca) m.scale.set(1 / 0.88, 1, 1 / 0.84);   // parça hücreleri kenar boşluğu bırakmadan birbirine değsin
           m.traverse((o) => { if (o.userData.tepki || o.userData.tepkiHedef) { delete o.userData.tepki; delete o.userData.tepkiHedef; } });
           m.userData.tepki = { tur: 'komsu-ben', id: n.id };
-          const ic2 = n.tarla ? levha(S + 0.2, S + 0.2, kis ? '#f6f9fa' : RENK.cimen, { kalinlik: 0.25, kose: 0.3 }) : levha(S - 0.7, S - 0.7, kis ? '#f6f9fa' : RENK.cimen, { kalinlik: 0.25, kose: 2.2 });
+          const ic2 = parca || (kk.parca || 1) > 1 ? levha(S + 0.2, S + 0.2, kis ? '#f6f9fa' : RENK.cimen, { kalinlik: 0.25, kose: 0.3 }) : levha(S - 0.7, S - 0.7, kis ? '#f6f9fa' : RENK.cimen, { kalinlik: 0.25, kose: 2.2 });
           ic2.position.set(dx * S, 0, dy * S); ic2.userData.tepki = { tur: 'komsu-ben', id: n.id };
           grup.add(ic2, m);
           continue;
@@ -523,7 +527,7 @@ export function ciftlikIciKur({ durum, eylemDagit, sunucuSimdi, ayrintiAc, dunya
   function hudCiz() {
     const k = durum.kart, b = durum.ben;
     const arsaSayisi = (b?.portfoy || []).length;
-    baslik.innerHTML = `<b>${ziyaret ? `${esc(k.sahip?.ad ? tamlayan(k.sahip.ad) : 'Komşunun')} çiftliği` : esc(k.mahalle)}${!ziyaret && arsaSayisi > 1 ? ` <span class="ci-arsa-sayi">▾ ${arsaSayisi} arazi</span>` : ''}</b><small>${esc(k.ilce)} · ${sayi(k.alan)} m² · ${esc(k.imar.ad)}</small>`;
+    baslik.innerHTML = `<b>${ziyaret ? `${esc(k.sahip?.ad ? tamlayan(k.sahip.ad) : 'Komşunun')} çiftliği` : esc(k.mahalle)}${!ziyaret && arsaSayisi > 1 ? ` <span class="ci-arsa-sayi" title="${arsaSayisi} arazi">▾ ${arsaSayisi}<span class="ci-arsa-kelime"> arazi</span></span>` : ''}</b><small>${esc(k.ilce)} · ${sayi(k.alan)} m² · ${esc(k.imar.ad)}</small>`;
     if (ziyaret) {
       sayaclar.innerHTML = `<span class="ci-sayac altin">${akce(b?.bakiye ?? 0)}</span>`;
       envanter.hidden = true;
@@ -626,7 +630,7 @@ export function ciftlikIciKur({ durum, eylemDagit, sunucuSimdi, ayrintiAc, dunya
     ses('ek');
     await yenileDis?.();
     komsuKartlariniYukle();
-    tostDis?.(tamam ? `🌱 ${tamam} araziye ${esc(durum.kurallar.urunler[urun]?.ad || urun)} ekildi` : hata || 'Ekilemedi', tamam ? '' : 'hata');
+    tostDis?.(tamam ? `🌱 ${tamam} araziye ${durum.kurallar.urunler[urun]?.ad || urun} ekildi` : hata || 'Ekilemedi', tamam ? '' : 'hata');
   }
 
   // İnşaat atölyesi: yapılar türlerine göre bölümlerde; "Ev ve keyif" en üstte (ekip biçmek istemeyen oyuncu için)
@@ -891,7 +895,7 @@ export function ciftlikIciKur({ durum, eylemDagit, sunucuSimdi, ayrintiAc, dunya
       if (c === 'ek-hedef') return ekSayfasi([e.target.closest('[data-parsel]').dataset.parsel]);
       if (c === 'birlestir') {
         const b = e.target.closest('button');
-        if (!confirm(`İki tarla tek parsel olacak (${sayi(Number(b.dataset.alan))} m²). Birleşim geri alınmaz. Onaylıyor musun?`)) return;
+        if (!confirm(`İki tarla tek parsel olacak (${sayi(Number(b.dataset.alan))} m²). Harç ${akce(durum.kart?.birlestirme?.harc ?? 0)}. Birleşim geri alınmaz. Onaylıyor musun?`)) return;
         b.disabled = true;
         try {
           const r = await api(`/api/parsel/${encodeURIComponent(durum.kart.id)}/birlestir`, { uye: b.dataset.parsel });
@@ -903,7 +907,6 @@ export function ciftlikIciKur({ durum, eylemDagit, sunucuSimdi, ayrintiAc, dunya
         } catch (err) { tostDis?.(err.message, 'hata'); b.disabled = false; }
         return;
       }
-      if (c === 'yeniden-ek') return;
       if (c === 'gunluk') return gunlukSayfasi();
       if (c === 'meydan') return meydanSayfasi();
       if (c === 'sandik') return sandikSayfasi();
@@ -967,10 +970,11 @@ export function ciftlikIciKur({ durum, eylemDagit, sunucuSimdi, ayrintiAc, dunya
       }
       if (nokta) {
         const yeniHedef = hedefNoktasi(b.dataset.hedef) || hedef;
-        canli.tepki(yeniHedef, nokta);
+        canli.tepki(yeniHedef, nokta, b.dataset.eylem === 'kira-topla' ? { yazi: '+₺', ses: 'para' } : undefined);
       }
     });
     addEventListener('keydown', (e) => { if (acik && e.key === 'Escape') (sayfa.hidden ? kapat() : sayfaKapat()); });
+    baslik.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); baslik.click(); } });   // role=button
     addEventListener('popstate', () => { if (acik && !history.state?.ciftlik) kapat({ gecmis: false }); });   // telefonda geri tuşu
   }
 

@@ -137,7 +137,7 @@ function oturumSonu(c, prof) {
 
 function yatirim(c) {
   const id = c.id, sv = ciftlik.oyuncuSeviyesi(id);
-  // Yapı: ilk uygun yapı (tarla başına tekil); bakiyenin 100 akçe üstünde kalacak kadar
+  // Yapı: ilk uygun yapı (tarla başına tekil); bakiyenin 100 birim (₺30 bin) üstünde kalacak kadar
   for (const p of parseller(id)) {
     if (p.zoning_type !== 'TARIM') continue;
     const var_ = new Set(yapilar(p.id).map((s) => s.type));
@@ -155,7 +155,7 @@ function yatirim(c) {
   for (const b of dene('meydan', () => meydan.liste(id))?.binalar || []) {
     if (b.durum === 'YOK' && !b.eksik.length && L.bakiye(id) - b.akce > 200) dene('meydanİnşa', () => meydan.insaEt(id, b.kod));
   }
-  // Tarlalar dolunca yapı yükseltme (500 akçe yedek kalır)
+  // Tarlalar dolunca yapı yükseltme (500 birim yedek kalır)
   if (parseller(id).length >= HESAP.maxParsel) {
     for (const p of parseller(id)) for (const s of yapilar(p.id)) {
       const b = gelisim.yukseltmeBedeli(s);
@@ -212,7 +212,7 @@ function kalem(sebep) {
     for (let i = 0; i < prof.adet; i++) {
       const c = { taban, profil: pad, ilkler: {}, gun: 0, gunluk: [] };
       await kaydol(c, `${pad}${i}`);
-      sihirbaz.bitir(c.id);   // tur yerine görev ödülleri (toplam akçe yakın)
+      sihirbaz.bitir(c.id);   // tur yerine görev ödülleri (toplam tutar yakın)
       botlar.push(c);
     }
   }
@@ -279,6 +279,7 @@ function kalem(sebep) {
     satirlar.push('  ilk kurulum günü: ' + Object.entries(ilk).map(([k, v]) => `${k} ${(v.reduce((a, b) => a + b, 0) / v.length).toFixed(1)} (${v.length}/${grup.length})`).join(' · '));
   }
   console.log(`# Ekonomi simülasyonu — ${GUN} gün, ${SEYREK ? 'seyrek sunucu' : 'kalabalık sunucu (tüccar ortak limiti dolu)'}`);
+  console.log(`(tutarlar oyun birimidir; oyuncuya ×${require('../server/config/rules').BIRIM.kat} TL görünür)`);
   console.log(satirlar.join('\n'));
   const h = Object.entries(hata).sort((a, b) => b[1] - a[1]).slice(0, 15);
   if (h.length) console.log('\n## Bot engelleri (en sık)\n' + h.map(([k, v]) => `${v}× ${k}`).join('\n'));

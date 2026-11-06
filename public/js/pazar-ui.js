@@ -233,9 +233,10 @@ export async function pazarPaneli({ ben, alt, filtre, bolgeler, kurallar, envant
 // ---------- Endeksler: Türkiye arsa endeksi, yükselen ve değerli mahalleler, portföy özeti ----------
 async function endeksPaneli(ben) {
   const [o, pf, alarmlar] = await Promise.all([api('/api/piyasa'), ben ? api('/api/portfoy').catch(() => null) : null, ben ? api('/api/alarm').catch(() => []) : []]);
-  const mahalleSatiri = (m) => `<li><button type="button" class="liste-oge" data-eylem="mahalle-ac" data-id="${m.id}">
+  // Mahalle satırı yalnızca bilgi verir (eski "mahalle-ac" eylemi seçimle birlikte kaldırıldı; tıklanınca bir şey yapmıyordu)
+  const mahalleSatiri = (m) => `<li class="liste-oge">
       <span class="govde"><b>${esc(m.ad)}</b><span class="kucuk">${esc(m.ilce)}${m.il ? `, ${esc(m.il)}` : ''} · ${m.parsel} sahipli parsel</span></span>
-      <span class="sag"><b>${sayi(m.endeks)}</b>${degisimCipi(m.degisim7, ' 7g')}</span></button></li>`;
+      <span class="sag"><b>${sayi(m.endeks)}</b>${degisimCipi(m.degisim7, ' 7g')}</span></li>`;
   const parca = [`<div class="kutu endeks-kutu">
       <div class="satir"><div><div class="kucuk">Türkiye arsa endeksi</div><b class="endeks-buyuk">${o.tr.endeks != null ? sayi(Math.round(o.tr.endeks * 10) / 10) : '—'}</b></div>
         <div class="sag">${degisimCipi(o.tr.degisim7, ' bu hafta')}<div class="kucuk">${o.tr.parsel} sahipli parsel</div></div></div>
@@ -312,7 +313,7 @@ async function benimPazarim(sunucuSimdi) {
 
   parca.push(`<h3 class="bolum">İşlemlerim</h3>${islemlerim.length ? `<table class="tablo">${islemlerim.map((t) => `
     <tr><td>${t.yon === 'ALIS' ? `🟢 Alış · ${esc(t.satici)}` : `🔵 Satış · ${esc(t.alici)}`}<div class="kucuk mono">${esc(t.parcel_id)} · ${zamanMs(t.created_at)}</div></td>
-    <td class="${t.yon === 'ALIS' ? 'eksi' : 'arti'}">${t.yon === 'ALIS' ? '−' : '+'}${sayi(t.yon === 'ALIS' ? t.price : t.price - t.fee)}</td></tr>`).join('')}</table>`
+    <td class="${t.yon === 'ALIS' ? 'eksi' : 'arti'}">${t.yon === 'ALIS' ? '−' : '+'}${akce(t.yon === 'ALIS' ? t.price : t.price - t.fee)}</td></tr>`).join('')}</table>`
     : '<p class="kucuk">Henüz gerçekleşen işlemin yok.</p>'}`);
   return parca.join('');
 }
@@ -349,7 +350,7 @@ async function borsaPaneli(ben, sunucuSimdi) {
   const stok = ben?.envanter.find((i) => i.item_id === u.kod)?.miktar || 0;
   const satir = (x, tur) => `<tr class="${tur}"><td>${akce(x.fiyat)}</td><td>${sayi(x.miktar)}</td><td class="kucuk">${x.emir} emir</td></tr>`;
   const enIyiAlis = u.alis[0]?.fiyat, enIyiSatis = u.satis[0]?.fiyat;
-  return `<p class="kucuk">Diğer oyuncularla ürün al-sat. Alış emri parayı, satış emri ürünü kilitler; eşleşme bekleyen emrin fiyatından olur ve kendi emrinle eşleşmez. Satıcıdan %${b.ucretOrani * 100} işlem ücreti kesilir.</p>
+  return `<p class="kucuk">Diğer oyuncularla ürün al-sat. Alış emri parayı, satış emri ürünü kilitler; eşleşme bekleyen emrin fiyatından olur ve kendi emrinle eşleşmez. Satıcıdan %${sayi(b.ucretOrani * 100)} işlem ücreti kesilir.</p>
     <div class="segment kucuk-segment">${b.urunler.map((x) => `<button type="button" data-eylem="borsa-urun" data-urun="${x.kod}" aria-selected="${x.kod === u.kod}">${x.ikon} ${esc(x.ad)}</button>`).join('')}</div>
     <dl class="metrikler">
       <div><dt>En iyi alış</dt><dd>${enIyiAlis != null ? akce(enIyiAlis) : '—'}</dd><small>alıcıların verdiği</small></div>

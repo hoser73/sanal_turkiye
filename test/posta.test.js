@@ -1,5 +1,5 @@
 // Gerçek SMTP yolu: yerel SMTP sunucusuna doğrulama e-postası (düz metin + HTML), hata durumunda kuyruk ve yeniden deneme,
-// üretim yapılandırma denetimi.
+// eski iletilerin silinmesi, üretim yapılandırma denetimi ve demo hesabının üretimde kapatılması.
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
@@ -81,4 +81,30 @@ test('üretim denetimi: eksik/güvensiz ayarlar hata, isteğe bağlılar uyarı'
   assert.deepEqual(iyi.hatalar, []);
   assert.ok(iyi.uyarilar.length > 0);
   assert.deepEqual(uretimDenetimi({ NODE_ENV: 'development' }).hatalar, []);
+  // Test kısayolları ve bozuk sayılar açılışı durdurur; kaldırılan siyaset ayarları uyarılır
+  const temel = { NODE_ENV: 'production', TABAN_URL: 'https://sanalturkiye.example', SIFRELEME_ANAHTARI: 'a'.repeat(64), SMTP_URL: 'smtps://u:p@smtp.example:465' };
+  const kisayol = uretimDenetimi({ ...temel, KARO_KAYNAGI: 'sahte', HAVA_KAYNAGI: 'sahte', KIMLIK_HIZ_CARPANI: 'abc', API_HIZ_SINIRI: '0', OYUN_HIZI: 'hızlı' });
+  for (const ad of ['KARO_KAYNAGI', 'HAVA_KAYNAGI', 'KIMLIK_HIZ_CARPANI', 'API_HIZ_SINIRI', 'OYUN_HIZI']) assert.ok(kisayol.hatalar.some((h) => h.includes(ad)), ad);
+  const eski = uretimDenetimi({ ...temel, SIYASET: 'acik', SECIM_HIZI: '5', ONBELLEK: 'kapali' });
+  assert.deepEqual(eski.hatalar, []);
+  assert.ok(eski.uyarilar.some((u) => u.includes('SIYASET') && u.includes('SECIM_HIZI')));
+  assert.ok(eski.uyarilar.some((u) => u.includes('ONBELLEK')));
+});
+
+test('demo hesabı üretim açılışında kapatılır; eski giden e-postalar silinir', () => {
+  const { demoHesabiKapat } = require('../server/yapilandirma');
+  const demo = db.prepare(`SELECT id FROM users WHERE email = 'demo@sanalturkiye.test'`).get();
+  assert.ok(demo, 'geliştirme kipinde demo hesabı açılır');
+  assert.equal(demoHesabiKapat(db), true);
+  const u = db.prepare(`SELECT password_hash, status FROM users WHERE id = ?`).get(demo.id);
+  assert.equal(u.password_hash, null);
+  assert.equal(u.status, 'SUSPENDED');
+  assert.equal(demoHesabiKapat(db), false, 'ikinci kez dokunmaz');
+  const ekle = (durum, gun) => db.prepare(`INSERT INTO giden_postalar (alici, konu, govde, durum, created_at) VALUES ('eski@test.local', 'x', 'y', ?, datetime('now', ?))`).run(durum, `-${gun} days`).lastInsertRowid;
+  const eskiGiden = ekle('GONDERILDI', 40), bekleyen = ekle('BEKLIYOR', 40), yeni = ekle('GONDERILDI', 2);
+  assert.ok(posta.eskiPostalariTemizle() >= 1);
+  const var_ = (id) => !!db.prepare(`SELECT 1 FROM giden_postalar WHERE id = ?`).get(id);
+  assert.equal(var_(eskiGiden), false);
+  assert.equal(var_(bekleyen), true, 'kuyrukta bekleyen silinmez');
+  assert.equal(var_(yeni), true);
 });

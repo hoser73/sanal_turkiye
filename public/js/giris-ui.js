@@ -1,6 +1,6 @@
 // Açılış ekranı ve hesap akışları (tam sayfa): karşılama → Google / Apple / passkey / e-posta ile devam;
-// kayıt 4 adım: (1) hesap (e-posta + parola ya da şifresiz passkey), (2) profil (oyuncu adı, avatar, doğum yılı, onaylar),
-// (3) telefon doğrulama (isteğe bağlı), (4) memleket. Giriş: passkey, Google/Apple, e-posta + parola, iki adımlı kod,
+// kayıt: (1) hesap (e-posta + parola ya da şifresiz passkey), (2) profil (oyuncu adı, avatar, doğum yılı, onaylar), ardından
+// ilk giriş sihirbazı; telefon doğrulama ve memleket isteğe bağlıdır. Giriş: passkey, Google/Apple, e-posta + parola, iki adımlı kod,
 // parola sıfırlama. Kurallar sunucuda; burası yalnızca akışı ve görünümü yönetir.
 import { esc } from './yardimci.js';
 import { avatarSVG, avatarCoz, avatarKod, TENLER, SACLAR, BASLIKLAR, GIYSILER } from './avatar.js';
@@ -184,7 +184,8 @@ export function girisKur({ api, tost, girisSonrasi, iller, rehberBaslat, sihirba
     try {
       const s = await api('/api/passkey/giris/secenekler', {});
       const yanit = await passkeyImzala(s.secenekler);
-      await api('/api/passkey/giris/dogrula', { sorguId: s.sorguId, yanit });
+      const r = await api('/api/passkey/giris/dogrula', { sorguId: s.sorguId, yanit });
+      if (r.ikinciAdim) return git('ikiAdim');   // cihaz kullanıcıyı doğrulamadıysa iki adımlı kod istenir
       kapat(); await girisSonrasi('🔑 Passkey ile giriş yapıldı. Tekrar hoş geldin!');
     } catch (e) { if (!iptalMi(e)) { hata = e.message; ciz(); } } finally { if (d?.isConnected) d.disabled = false; }
   }

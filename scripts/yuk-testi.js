@@ -16,7 +16,7 @@ const KARISIM = [
   [10, () => '/api/istatistik/iller'],
   [10, () => '/api/ilanlar'],
   [8, () => '/api/borsa'],
-  [8, () => '/api/lig'],
+  [8, () => '/api/hasat-yarisi'],
   [7, () => '/api/hava'],
   [6, () => `/api/konum?lon=${(26 + Math.random() * 18).toFixed(3)}&lat=${(36.5 + Math.random() * 5).toFixed(3)}`],
   [6, () => '/api/ara?q=kon'],

@@ -180,7 +180,9 @@ export function binaKur(ctx) {
   let bacalar = [];
 
   function temizle() { kaldir(sahne, binalar); binalar = []; parselTemizle(); }
-  function parselTemizle() { if (parselGrup) { kaldir(sahne, parselGrup); parselGrup = null; } for (const d of dumanlar) sahne.remove(d); dumanlar.length = 0; bacalar = []; ortak.isaretler?.([]); }
+  // Baca dumanı: ortak geometri; malzeme her parçada ayrı (saydamlığı ayrı solar), parsel yeniden kurulurken atılır
+  const dumanGeo = new THREE.IcosahedronGeometry(1.3, 0);
+  function parselTemizle() { if (parselGrup) { kaldir(sahne, parselGrup); parselGrup = null; } for (const d of dumanlar) { sahne.remove(d); d.material.dispose(); } dumanlar.length = 0; bacalar = []; ortak.isaretler?.([]); }
 
   function kur(alan) {
     kaldir(sahne, binalar); binalar = [];
@@ -382,8 +384,8 @@ export function binaKur(ctx) {
       }
       // sahipli: hafif yükseltilmiş tarla yatağı; büyük tarla arazi eğimine yatırılır (yoksa bir ucu yamaca gömülür)
       g.position.set(x, (egim ? egim.y : ctx.yukseklik(x, zz)) + (sahip ? (egim ? 0.1 : 0.25) : 0.05), zz);
-      // Kendi parselimde baloncuk: hasat hazır, sulama bekliyor, hayvan ürünü hazır
-      if (sahip === 1) {
+      // Kendi parselimde baloncuk: hasat hazır, sulama bekliyor, hayvan ürünü hazır (birleşik parselde yalnızca asıl hücrede)
+      if (sahip === 1 && !uye) {
         const tur = ekinDurum === 2 ? 'hasat' : hh ? 'hayvan' : su ? 'su' : null;
         if (tur) isaretListesi.push({ x, y: g.position.y, z: zz, tur });
       }
@@ -402,7 +404,7 @@ export function binaKur(ctx) {
     const dumanMalzeme = () => new THREE.MeshLambertMaterial({ color: '#efedea', transparent: true, opacity: 0.6, depthWrite: false });
     for (const b of bacalar) {
       for (let i = 0; i < 7; i++) {
-        const d = new THREE.Mesh(new THREE.IcosahedronGeometry(1.3, 0), dumanMalzeme());
+        const d = new THREE.Mesh(dumanGeo, dumanMalzeme());
         d.userData = { faz: i / 7, b };
         sahne.add(d);
         dumanlar.push(d);

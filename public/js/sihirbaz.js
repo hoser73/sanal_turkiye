@@ -26,6 +26,7 @@ const CIFTLIK_RESMI = `<svg viewBox="0 0 260 130" role="img">
 
 const ETIKET_SINIF = { village: 'köy', hamlet: 'mezra', suburb: 'mahalle', neighbourhood: 'mahalle', quarter: 'mahalle', town: 'kasaba', city: 'şehir' };
 const trSirala = (a, b) => a.localeCompare(b, 'tr');
+const HEDIYE_UST = 10000;   // kurallar gelmediyse: başlangıç hediyesinin üst sınırı (oyun birimi; HESAP.baslangicHediyeUst)
 const kucuk = (s) => s.toLocaleLowerCase('tr');
 
 export function sihirbazKur({ durum, tost, ses, benYenile, haritaYenile, ciftligeGir, sunucuSimdi }) {
@@ -49,6 +50,7 @@ export function sihirbazKur({ durum, tost, ses, benYenile, haritaYenile, ciftlig
     if (!tur) document.body.classList.remove('sihirbazda');
   }
   const ic = () => kap.querySelector('.shz-ic');
+  const hediyeUst = () => akce(durum.kurallar?.hesap?.baslangicHediyeUst ?? HEDIYE_UST);
   // Adım noktaları (1 karşılama, 2 yer, 3 arsa, 4 tapu)
   const noktalar = (n) => `<div class="shz-noktalar" aria-label="Adım ${n} / 4">${[1, 2, 3, 4].map((i) => `<i class="${i < n ? 'bitti' : i === n ? 'simdi' : ''}"></i>`).join('')}</div>`;
 
@@ -59,7 +61,7 @@ export function sihirbazKur({ durum, tost, ses, benYenile, haritaYenile, ciftlig
       <h1>Hoş geldin${ad ? `, ${esc(ad)}` : ''}!</h1>
       <p class="shz-giris">Bu oyunda Türkiye'nin gerçek haritasında <b>kendi toprağın</b> olacak. Üç kısa adımda çiftliğin hazır.</p>
       <ol class="shz-plan">
-        <li><span>🗺️</span><div><b>Arsanı seç</b><small>Bir köy seç, oradaki boş tarlalardan birini al. İlk arsan hediye!</small></div></li>
+        <li><span>🗺️</span><div><b>Arsanı seç</b><small>Bir köy seç, oradaki boş tarlalardan birini al. İlk arsan hediye (en çok ${hediyeUst()}).</small></div></li>
         <li><span>🌱</span><div><b>Ek, sula, hasat et</b><small>İlk ekinin bir dakikada olgunlaşacak.</small></div></li>
         <li><span>💰</span><div><b>Sat ve büyüt</b><small>Ürününü pazarda sat, kazancınla çiftliğini geliştir.</small></div></li>
       </ol>
@@ -159,7 +161,7 @@ export function sihirbazKur({ durum, tost, ses, benYenile, haritaYenile, ciftlig
     ic().innerHTML = `${noktalar(3)}
       <button type="button" class="shz-geri" data-shz="yer" aria-label="Geri">←</button>
       <h2>Arsanı seç</h2>
-      <p class="shz-not"><b>${esc(r.yer)}</b> çevresinde ${r.adaylar.length} boş tarla buldum. Birini seç; <b>ilk arsan hediye</b>.</p>
+      <p class="shz-not"><b>${esc(r.yer)}</b> çevresinde ${r.adaylar.length} boş tarla buldum. Birini seç${r.adaylar.some((a) => a.hediye) ? `; <b>ilk arsan hediye</b>${r.adaylar.some((a) => a.hediye && a.bedel > a.hediye) ? ` (en çok ${hediyeUst()}; daha pahalı tarlada kalanı sen ödersin)` : ''}` : ''}.</p>
       <div class="shz-adaylar">${r.adaylar.map((a, i) => `
         <button type="button" class="shz-aday" data-shz-aday="${esc(a.id)}">
           ${sekilSvg(a.geometri, i)}
@@ -167,7 +169,7 @@ export function sihirbazKur({ durum, tost, ses, benYenile, haritaYenile, ciftlig
             <b class="shz-adano">Ada ${a.adaParsel?.ada ?? '–'} · Parsel ${a.adaParsel?.parsel ?? '–'}</b>
             <span>${esc(a.mahalle)}, ${esc(a.ilce)}</span>
             <small>🌾 Tarım arazisi · ${donum(a.alan)}</small>
-            ${a.hediye ? `<em>🎁 Hediye · değeri ${akce(a.hediye)}${a.bedel > a.hediye ? ` · kalan ${akce(a.bedel - a.hediye)} senden` : ''}</em>` : a.bedel ? `<em>Tahsis bedeli ${akce(a.bedel)}</em>` : ''}
+            ${a.hediye ? `<em>${a.bedel > a.hediye ? `🎁 ${akce(a.hediye)} hediye · kalan ${akce(a.bedel - a.hediye)} senden` : `🎁 Hediye · değeri ${akce(a.hediye)}`}</em>` : a.bedel ? `<em>Tahsis bedeli ${akce(a.bedel)}</em>` : ''}
           </div><i class="shz-tik" aria-hidden="true">✓</i></button>`).join('')}</div>
       <div class="shz-alt"><button type="button" class="shz-b ana" data-shz="al" disabled>Bu arsa benim olsun</button></div>`;
   }
@@ -182,7 +184,7 @@ export function sihirbazKur({ durum, tost, ses, benYenile, haritaYenile, ciftlig
       await benYenile({ sessiz: true });
       haritaYenile?.();
       api('/api/sihirbaz/odul', { adim: 'ARSA' }).catch(() => {});
-      tapu(r.parsel, a);
+      tapu(r.parsel, a, r.hediye > 0);
     } catch (e) {
       tost(e.message, 'hata');
       b.disabled = false; b.textContent = 'Bu arsa benim olsun';
@@ -191,7 +193,7 @@ export function sihirbazKur({ durum, tost, ses, benYenile, haritaYenile, ciftlig
   }
 
   // Oyun içi tapu belgesi (gerçek tapu değildir)
-  function tapu(parsel, a) {
+  function tapu(parsel, a, hediye = true) {
     const tarih = new Date().toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' });
     ic().innerHTML = `${noktalar(4)}
       <h2>Tebrikler, artık toprak sahibisin!</h2>
@@ -206,7 +208,7 @@ export function sihirbazKur({ durum, tost, ses, benYenile, haritaYenile, ciftlig
           <dt>Malik</dt><dd>${esc(durum.ben?.kullanici?.ad || '')}</dd>
           <dt>Tarih</dt><dd>${tarih}</dd>
         </dl>
-        <div class="shz-muhur" aria-hidden="true">HEDİYE</div>
+        <div class="shz-muhur" aria-hidden="true">${hediye ? 'HEDİYE' : 'TAHSİS'}</div>
       </div>
       <p class="shz-not">Şimdi çiftliğine gidelim. Orada ilk tohumunu birlikte ekeceğiz.</p>
       <div class="shz-alt"><button type="button" class="shz-b ana" data-shz="ciftlik" data-parsel="${esc(parsel)}">Çiftliğime git 🏡</button></div>`;

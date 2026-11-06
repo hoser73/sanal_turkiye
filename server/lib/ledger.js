@@ -36,7 +36,8 @@ function hesapBakiye(account) {
   return yuvarla(stmt.hesapBakiye.get(account).b);
 }
 
-// Hesaptan hesaba aktarım. Kaynak/hedef: "U:<id>" oyuncu, "ESCROW:..." emanet (kilitli teklif), "SYS:..." sistem.
+// Hesaptan hesaba aktarım. Kaynak/hedef: "U:<id>" oyuncu, "SYS:..." sistem (basım/yakım, eksiye düşebilir); diğerleri
+// emanet ve kasalardır ("ESCROW:", "IHALE:", "BANKA:", "KOOP:", "ISLETME:"): içindekinden fazlası çıkamaz.
 function aktar({ kaynak, hedef, tutar, sebep, tx = yeniTx() }) {
   tutar = yuvarla(tutar);
   if (!(tutar > 0)) throw new OyunHatasi(400, 'Geçersiz tutar');
@@ -45,7 +46,7 @@ function aktar({ kaynak, hedef, tutar, sebep, tx = yeniTx() }) {
   if (kaynakUser && bakiye(kaynakUser) < tutar) {
     throw new OyunHatasi(402, `Yetersiz bakiye: ${tl(tutar)} gerekli`, 'YETERSIZ_BAKIYE');
   }
-  if (kaynak.startsWith('ESCROW:') && hesapBakiye(kaynak) < tutar) {
+  if (!kaynakUser && !kaynak.startsWith('SYS:') && hesapBakiye(kaynak) < tutar) {
     throw new Error(`Emanet hesabı tutarsız: ${kaynak}`);   // olmamalı; işlemi geri alır
   }
   stmt.ekle.run(kaynak, kaynakUser, tutar, 0, tx, sebep);

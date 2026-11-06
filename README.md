@@ -33,6 +33,27 @@ Ortam değişkenleri (v0.6 eklemeleri): `TABAN_URL` (e-posta bağlantıları; ü
 
 > Not: v0.1–0.2'nin Meram ızgarası ulusal ızgarayla uyumsuz olduğundan eski `data/sanalturkiye.db` dosyası kullanılmaz (silinmedi).
 
+## v0.51 — yayın öncesi denetim
+
+Beş alanda (ekonomi ve arsa, platform ve güvenlik, oyun modülleri, panel ve sayfalar, çiftlik/harita/3B) satır satır denetim;
+bulunanlar düzeltildi, yeni testler eklendi (230/230). Öne çıkanlar:
+
+- **Açıklar:** birleşik parselde her hücre kendi konum değeriyle fiyatlanır (yamaç hücreyi düz hücreye katıp değer şişirme
+  kapandı); konum değeri hesaplanamamış arsa tahsis edilmez ya da ihaleye çıkmaz; satın alınan birleşik parsel hücre sayısıyla
+  parsel sınırına sayılır; Hazine teklifinde her parçanın tutma süresine bakılır; **ihaleyle alınan arsa Hazine'ye 30 gün sonra
+  satılır** (ucuz ihale + hemen Hazine kârı kapandı); defter bütün emanet hesaplarında içindekinden fazla para vermez.
+- **Güvenlik:** başka siteden gelen yazma istekleri reddedilir (Origin denetimi); web push yalnızca tarayıcı push
+  servislerine; WebSocket IP sınırı sahte `X-Forwarded-For`'a kanmaz; passkey ile girişte cihaz kullanıcıyı doğrulamadıysa
+  iki adımlı kod istenir; üretimde test kısayolları ve sahte kaynaklar açılışı durdurur, herkese açık demo hesabı kapatılır,
+  geliştirici sayfaları sunulmaz; sağlık ucu veritabanını da yoklar; KVKK dışa aktarımı ve hesap silme eksik tabloları kapsar.
+- **Denge:** yapı yükseltme bedeli v0.50 ölçeğine göre düzeltildi (`GELISIM.yukseltKat` 0,15; yükseltme ≈ 45 günde döner);
+  demo sakinler arsayı alamazsa hesap açılmaz; sipariş panosu uzun aradan sonra süresi dolmuş siparişlerle dolmaz.
+- **Arayüz:** her tutar TL (negatifler "−₺"), ölü düğme ve siyaset kalıntıları temizlendi, telefonda taşmalar giderildi, çiftlik
+  sahnesinde bellek sızıntıları kapandı, açılış sayfası oyunun özüne göre yeniden yazıldı (arsanı seç → geliştir → kazan →
+  kârla sat).
+- **Yayın:** `docs/yayina-alma.md` güncel (bütün ortam değişkenleri, veri dizini, güncelleme ve geri yükleme, yayından önce
+  insanın yapması gerekenler); `.env.ornek` depoda; Docker/Caddy/systemd güncellendi; PostgreSQL şeması yeniden üretildi.
+
 ## v0.50 — çiftlik fiyatları gerçeğe yakın
 
 v0.49'da bütün ekonomi tek katsayıyla büyüdüğü için tohum ₺400 bin, bir hasat ₺1,4 milyon görünüyordu. Gerçekte arazi ve bina,
@@ -157,7 +178,7 @@ Tür oyunları (kasaba/çiftlik kurma, harita üzerinde arazi oyunları) ve kend
 
 ## v0.41 — sadeleştirme: siyaset ayarla, kredi yok, tek haftalık yarış
 
-- **Siyaset ayarla açılır** (`OZELLIK.siyaset`, ortam değişkeni `SIYASET=acik`): muhtarlık ve belediye seçimleri, meclis projeleri, referandum ve görevden alma yeterince gerçek oyuncu olunca anlam kazanır. Kapalıyken (varsayılan) seçim/proje/referandum döngüleri ve demo sakinlerin siyaseti durur, uçlar 404 döner, Köy sekmesinde Yönetim yok, haritada seçim ve belediye işaretleri yok, haber akışında siyasi olay görünmez, "Mahalle seçiminde oy kullan" başlangıç görevi listelenmez. Daha önce tamamlanmış belediye hizmetleri (sulama kanalı, yol bakımı…) etkisini sürdürür. Testler siyaseti açık çalıştırır; kapalı hâli `test/siyaset.test.js` sınar.
+- **Siyaset ayarla açılır** *(v0.47'de bütünüyle kaldırıldı; aşağısı tarihçedir)* (`OZELLIK.siyaset`, ortam değişkeni `SIYASET=acik`): muhtarlık ve belediye seçimleri, meclis projeleri, referandum ve görevden alma yeterince gerçek oyuncu olunca anlam kazanır. Kapalıyken (varsayılan) seçim/proje/referandum döngüleri ve demo sakinlerin siyaseti durur, uçlar 404 döner, Köy sekmesinde Yönetim yok, haritada seçim ve belediye işaretleri yok, haber akışında siyasi olay görünmez, "Mahalle seçiminde oy kullan" başlangıç görevi listelenmez. Daha önce tamamlanmış belediye hizmetleri (sulama kanalı, yol bakımı…) etkisini sürdürür. Testler siyaseti açık çalıştırır; kapalı hâli `test/siyaset.test.js` sınar.
 - **Banka kredisi kaldırıldı:** değer aktarma açıkları üretiyordu ve oyuna katkısı azdı. Banka yalnızca vadeli hesap; gecikmiş kredi engelleri ve kredi bakımı da gitti.
 - **İl ligi hasat yarışına katıldı:** ayrı 28 günlük il ligi yerine tek haftalık yarış. Oyuncunun işleri hem kooperatifine hem iline (memleketi; seçmediyse ilk tarlasının ili) puan yazar; kooperatifi olmayan da yarışır. İl puanı = toplam ÷ √oyuncu; ilk üç ilde en az 30 puan katanlara 40/25/15 akçe. Haberler → 🏁 Hasat yarışı.
 
@@ -482,7 +503,7 @@ Dokular ve modeller kendi çizimimizdir (tuvalde üretilir); hiçbir oyunun gör
 | Alan | Ne var | Nerede |
 |---|---|---|
 | Yaşayan nüfus | Gerçek oyuncu olan mahallelerde 4'e kadar **demo sakin** (çiftçi, bahçıvan, emekli öğretmen, tüccar, girişimci, nine). Aynı kurallarla oynarlar: parsel edinir, eker, sular, hasat eder, yapı kurar, pazarda ve borsada satar, komşuyu ziyaret eder. Her yerde **DEMO** rozetiyle işaretlidir; kendini insan gibi tanıtmaz. Mahalle sohbetinde komşuya yanıt verir (Claude, saatte en çok 30 çağrı; anahtar yoksa şablon). Gerçek sakin sayısı 4'e ulaşınca ilanla parsellerini satıp **taşınırlar**; satılmayan parsel devlete döner, görevleri boşalır | `server/nufus.js`, `server/config/rules.js` → `NUFUS` |
-| Doldurma kipi | Gerçek sakin `SECIM_MIN_SECMEN` altındayken demo sakinler seçmen ve aday sayılır; böyle bir seçim `doldurma` olarak işaretlenir ve arayüzde açıkça yazılır. Her demo kendi cihaz izini kullanır (ortak cihaz şüphesi doğmaz). Demo muhtar duyuru yapar, demo başkan proje önerir, demo meclis üyesi oy verir | `server/secim.js`, `server/belediye.js` |
+| Doldurma kipi *(v0.47'de seçimlerle birlikte kaldırıldı)* | Gerçek sakin `SECIM_MIN_SECMEN` altındayken demo sakinler seçmen ve aday sayılır; böyle bir seçim `doldurma` olarak işaretlenir ve arayüzde açıkça yazılır. Her demo kendi cihaz izini kullanır (ortak cihaz şüphesi doğmaz). Demo muhtar duyuru yapar, demo başkan proje önerir, demo meclis üyesi oy verir | `server/secim.js`, `server/belediye.js` |
 | E-posta | nodemailer ile gerçek SMTP, düz metin + HTML şablon (kaçışlı), başarısız iletiler için kuyruk (1 dk / 5 dk / 30 dk / 2 sa, sonra HATA), `npm run posta-dene`, yönetim panelinde kuyruk durumu | `server/posta.js` |
 | Yayına alma | Üretim yapılandırma denetimi (https `TABAN_URL`, `SIFRELEME_ANAHTARI`, `SMTP_URL`, geliştirme kısayolları kapalı), SIGTERM ile düzgün kapanma, Dockerfile (root olmayan kullanıcı, sağlık denetimi), docker-compose + Caddy (otomatik HTTPS, WebSocket), systemd birimi, yedek cron | `Dockerfile`, `docker-compose.yml`, `deploy/*`, `docs/yayina-alma.md` |
 | PostgreSQL | Dışa aktarım gerçek PostgreSQL 18 + PostGIS 3.6 üzerinde (PGlite) test edilir: şema, yükleme, defter dengesi, değiştirilemez denetim kaydı, uzamsal sorgu. Para sütunları `NUMERIC(14,2)`, ikili veri `BYTEA`, yabancı anahtarlar ertelenebilir. Uygulamanın kendisi hâlâ SQLite'ta çalışır | `scripts/postgres-aktar.js`, `test/postgres.test.js` |

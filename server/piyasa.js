@@ -30,7 +30,7 @@ function yapiYatirimi(tip, seviye = 1) {
   const y = YAPILAR[tip];
   if (!y) return 0;
   let v = y.maliyet;
-  for (let sv = 2; sv <= seviye; sv++) v += Math.round(y.maliyet * sv * 1.5);
+  for (let sv = 2; sv <= seviye; sv++) v += Math.round(y.maliyet * sv * require('./gelisim').GELISIM.yukseltKat);   // yükseltme bedelleriyle aynı
   return v;
 }
 
@@ -59,7 +59,7 @@ function bolgeSinyalleri(t, regionId = null, { haric = null } = {}) {
   const harita = new Map();
   // Arsa toplamı mahallenin bütün sahipli arsalarıdır (satıcınınki dahil: küçük bir arsaya yığılan yapılar oranı
   // şişiremesin). Talep yalnızca e-postası doğrulanmış oyuncular ve demo sakinlerden; Hazine ve satıcı sayılmaz.
-  for (const x of hazirla(`SELECT p.region_id, p.ilce_id, p.il_id, p.area_m2, p.zoning_type, p.konum_kati, r.attractiveness, o.start_at, o.reason, o.user_id,
+  for (const x of hazirla(`SELECT p.id, p.uye_sayisi, p.region_id, p.ilce_id, p.il_id, p.area_m2, p.zoning_type, p.konum_kati, r.attractiveness, o.start_at, o.reason, o.user_id,
         (u.is_npc = 1 OR u.email_dogrulandi_at IS NOT NULL) AS gecerli
       FROM parcel_ownership o JOIN parcels p ON p.id = o.parcel_id JOIN regions r ON r.id = p.region_id JOIN users u ON u.id = o.user_id
       WHERE o.start_at <= ? AND (o.end_at IS NULL OR o.end_at > ?)${f}`).all(ts, ts, ...arg)) {
@@ -239,9 +239,14 @@ function portfoy(userId, t = Date.now()) {
     return { id: s.parcel_id, tarih: s.created_at, fiyat: s.price, masraf: s.fee, net, alis, yatirim, kira, kar,
       karYuzde: alis + yatirim > 0 ? yuvarla((kar / (alis + yatirim)) * 100, 1) : null, alici: s.alici };
   });
+  const gecis = require('./para-gecisi').zamani();
   for (const e of hazirla(`SELECT entity, after_json, created_at FROM audit_events WHERE actor_id = ? AND action = 'TREASURY_PURCHASE'
       ORDER BY id DESC LIMIT 30`).all(userId)) {
     const a = JSON.parse(e.after_json);
+    if (gecis && e.created_at < gecis) {   // v0.50 öncesi kayıt: satış kayıtları (trades) gibi yeni ölçeğe çevrilir
+      const { ARSA_OLCEK, YAPI_OLCEK } = require('./config/rules');
+      a.teklif = Math.round(a.teklif * ARSA_OLCEK); a.alis = Math.round(a.alis * ARSA_OLCEK); a.yatirim = Math.round(a.yatirim * YAPI_OLCEK);
+    }
     satislar.push({ id: e.entity, tarih: sqlMs(e.created_at), fiyat: a.teklif, masraf: 0, net: a.teklif, alis: a.alis, yatirim: a.yatirim, kira: a.kira,
       kar: a.teklif + a.kira - a.alis - a.yatirim, karYuzde: a.alis + a.yatirim > 0 ? yuvarla(((a.teklif + a.kira - a.alis - a.yatirim) / (a.alis + a.yatirim)) * 100, 1) : null,
       alici: P.hazine.ad, hazine: true });
@@ -270,10 +275,22 @@ function hazineTeklifi(userId, p, t = Date.now()) {
   const teklif = Math.max(1, Math.floor(deger.toplam * P.hazine.oran));
   const sonuc = { teklif, oran: P.hazine.oran, deger: deger.toplam, carpan: c.carpan, uygun: false, sebep: null, acilis: null };
   // Başlangıç hediyesi parsel, kimin elinde olursa olsun hediye edildiği andan 30 gün sonra Hazine'ye satılabilir
-  // (hediyeyi ikinci hesaba devredip oradan Hazine'ye satmak olmasın)
-  const hediye = hazirla(`SELECT MAX(start_at) AS s FROM parcel_ownership WHERE parcel_id = ? AND reason = 'BASLANGIC'`).get(p.id).s;
-  const hediyeAcilis = hediye ? sqlMs(hediye) + P.hazine.hediyeTutmaMs : 0;
-  const acilis = Math.max(sqlMs(o.start_at) + P.hazine.minTutmaMs, hediyeAcilis);
+  // (hediyeyi ikinci hesaba devredip oradan Hazine'ye satmak olmasın). Birleşik parselde her parça ayrıca sayılır:
+  // hediye ya da yeni alınmış hücreyi eski bir parsele katıp tutma süresini atlamak olmasın.
+  const hucreler = [p.id, ...(p.uye_sayisi ? hazirla(`SELECT id FROM parcels WHERE birlesik_id = ?`).all(p.id).map((u) => u.id) : [])];
+  // İhaleyle (tahsis bedelinin altında) alınan parsel de aynı uzun süreyi bekler: rakipsiz ihaleyi kazanıp hemen Hazine'ye
+  // satmak kesin kâr olmasın
+  let hediyeAcilis = 0, ihaleAcilis = 0, tutmaAcilis = sqlMs(o.start_at) + P.hazine.minTutmaMs;
+  for (const id of hucreler) {
+    const hediye = hazirla(`SELECT MAX(start_at) AS s FROM parcel_ownership WHERE parcel_id = ? AND reason = 'BASLANGIC'`).get(id).s;
+    if (hediye) hediyeAcilis = Math.max(hediyeAcilis, sqlMs(hediye) + P.hazine.hediyeTutmaMs);
+    const ihale = hazirla(`SELECT MAX(bitis) AS b FROM ihaleler WHERE parcel_id = ? AND durum = 'SATILDI'`).get(id).b;
+    if (ihale) ihaleAcilis = Math.max(ihaleAcilis, ihale + P.hazine.hediyeTutmaMs);
+    if (id === p.id) continue;
+    const parca = hazirla(`SELECT MAX(start_at) AS s FROM parcel_ownership WHERE parcel_id = ? AND user_id = ?`).get(id, userId).s;
+    if (parca) tutmaAcilis = Math.max(tutmaAcilis, sqlMs(parca) + P.hazine.minTutmaMs);
+  }
+  const acilis = Math.max(tutmaAcilis, hediyeAcilis, ihaleAcilis);
   const gunBasi = sqlZamani(gunSonu(gunAnahtari(t)) - GUN + 1);
   if (p.status !== 'ACTIVE') sonuc.sebep = 'Parsel dondurulmuş';
   else if (hazirla(`SELECT 1 FROM listings WHERE parcel_id = ? AND status = 'ACTIVE'`).get(p.id)) sonuc.sebep = 'Parsel ilanda; önce ilanı kaldır';
@@ -283,7 +300,8 @@ function hazineTeklifi(userId, p, t = Date.now()) {
   else if (hazirla(`SELECT 1 FROM uretimler WHERE parcel_id = ? AND durum = 'URETIMDE'`).get(p.id)) sonuc.sebep = 'Tesiste süren üretim var; önce süren üretimi topla';
   else if (hazirla(`SELECT 1 FROM hayvan_bakim b JOIN structures s ON s.id = b.structure_id WHERE s.parcel_id = ? AND b.durum = 'BESLENDI'`).get(p.id)) {
     sonuc.sebep = 'Hayvanların ürünü hazırlanıyor; önce topla';
-  } else if (t < acilis) { sonuc.sebep = acilis === hediyeAcilis ? 'Başlangıç hediyesi arsa, hediye edildikten 30 gün sonra Hazine\'ye satılabilir' : 'Parsel en az 3 gündür senin olmalı'; sonuc.acilis = acilis; }
+  } else if (t < acilis) { sonuc.sebep = acilis === hediyeAcilis ? 'Başlangıç hediyesi arsa, hediye edildikten 30 gün sonra Hazine\'ye satılabilir'
+    : acilis === ihaleAcilis ? 'İhaleyle alınan arsa, ihaleden 30 gün sonra Hazine\'ye satılabilir' : `${p.uye_sayisi ? 'Birleşik parselin her parçası' : 'Parsel'} en az 3 gündür senin olmalı`; sonuc.acilis = acilis; }
   else if (deger.toplam > PAZAR.maxFiyat) sonuc.sebep = 'Değeri pazar üst sınırını aşıyor; pazarda ilanla sat';
   else if (hazirla(`SELECT COUNT(*) AS c FROM audit_events WHERE actor_id = ? AND action = 'TREASURY_PURCHASE' AND created_at >= ?`).get(userId, gunBasi).c >= P.hazine.gunlukSatis) {
     sonuc.sebep = `Hazine'ye günde en çok ${P.hazine.gunlukSatis} parsel satabilirsin`;

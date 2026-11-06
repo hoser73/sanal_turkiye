@@ -72,6 +72,7 @@ function sikayetKarar(modId, sikayetId, { karar, not } = {}) {
   if (!s) throw new OyunHatasi(404, 'Şikâyet bulunamadı');
   if (s.durum !== 'ACIK') throw new OyunHatasi(409, 'Şikâyet zaten sonuçlandı');
   if (s.sikayetci_id === modId) throw new OyunHatasi(403, 'Kendi şikâyetini sonuçlandıramazsın');
+  if (s.hedef_tur === 'KULLANICI' && Number(s.hedef_id) === modId) throw new OyunHatasi(403, 'Hakkındaki şikâyeti başka bir yetkili sonuçlandırmalı');
   db.prepare(`UPDATE sikayetler SET durum = ?, karar = ?, karar_veren = ?, kapandi_at = ? WHERE id = ?`).run(karar, aciklama, modId, simdi(), s.id);
   L.denetim({ aktor: modId, eylem: 'REPORT_RESOLVED', varlik: `SIKAYET:${s.id}`, sonra: { karar }, herkese: false });
   bildir(s.sikayetci_id, `Şikâyetin incelendi: ${karar === 'REDDEDILDI' ? 'ihlal bulunmadı' : 'gerekli işlem yapıldı'}. Not: ${aciklama}`, null);

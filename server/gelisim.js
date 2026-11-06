@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS gunluk_gorev_odulleri (user_id INTEGER NOT NULL REFER
 `);
 
 const GELISIM = {
-  maxSeviye: 5, yukseltKat: 1.5,
+  maxSeviye: 5, yukseltKat: 0.15,   // yükseltme = maliyet × (seviye+1) × kat; maliyet ×10 olduğundan v0.50'de 1,5 → 0,15
   isciGunluk: 60, isciMaxGun: 7, isciAralikMs: 60_000,
   gunlukOdul: 60, gunlukTp: 15,
 };

@@ -1,4 +1,4 @@
-// Kural tabanlı içerik ön taraması (duyuru, sohbet, aday metni). Yapay zekâ katmanı varsa onun notu buna eklenir.
+// Kural tabanlı içerik ön taraması (sohbet mesajı, şikâyet edilen metin). Yapay zekâ katmanı varsa onun notu buna eklenir.
 // Amaç sansür değil, moderatörün önüne öncelik sırası koymak ve kişisel verinin yanlışlıkla ifşasını engellemektir.
 const KUFUR = ['amk', 'aq', 'orospu', 'piç', 'siktir', 'yarrak', 'göt', 'pezevenk', 'şerefsiz', 'gerizekalı', 'salak'];
 const normal = (m) => m.toLocaleLowerCase('tr-TR').replace(/[1!]/g, 'i').replace(/0/g, 'o').replace(/3/g, 'e').replace(/[@4]/g, 'a').replace(/\$/g, 's');

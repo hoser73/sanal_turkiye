@@ -40,10 +40,10 @@ export function komsularBolumu(k) {
       <div class="govde"><b>${esc(a.ad)}</b>${a.demo ? ' <span class="demo-rozet">demo</span>' : ''} <span class="kucuk">⭐ ${a.seviye}</span>
         <div class="kucuk">${a.parsel ? esc(a.parsel.mahalle) : 'henüz tarlası yok'}</div></div>
       <div class="komsu-dugmeler">
-        ${a.parsel ? `<button class="dugme ince" data-eylem="komsuya-git" data-parsel="${esc(a.parsel.id)}" title="Çiftliğine git">🏡</button>` : ''}
-        ${a.yardimParsel ? `<button class="dugme ince" data-eylem="komsuya-yardim" data-parsel="${esc(a.yardimParsel)}" title="Tarlasına yardım et">💧</button>` : ''}
-        ${L.gonderebilir ? `<button class="dugme ince ${a.hediyeGonderildi ? '' : 'altin'}" data-eylem="hediye-gonder" data-id="${a.id}" ${a.hediyeGonderildi ? 'disabled title="Bugün gönderildi"' : 'title="Hediye gönder"'}>🎁</button>
-        <button class="dugme ince" data-eylem="urun-gonder-ac" data-id="${a.id}" data-ad="${esc(a.ad)}" title="Ürün gönder">📦</button>` : ''}
+        ${a.parsel ? `<button class="dugme ince" data-eylem="komsuya-git" data-parsel="${esc(a.parsel.id)}" title="Çiftliğine git" aria-label="${esc(a.ad)}: çiftliğine git">🏡</button>` : ''}
+        ${a.yardimParsel ? `<button class="dugme ince" data-eylem="komsuya-yardim" data-parsel="${esc(a.yardimParsel)}" title="Tarlasına yardım et" aria-label="${esc(a.ad)}: tarlasına yardım et">💧</button>` : ''}
+        ${L.gonderebilir ? `<button class="dugme ince ${a.hediyeGonderildi ? '' : 'altin'}" data-eylem="hediye-gonder" data-id="${a.id}" ${a.hediyeGonderildi ? 'disabled title="Bugün gönderildi"' : 'title="Hediye gönder"'} aria-label="${esc(a.ad)}: hediye gönder">🎁</button>
+        <button class="dugme ince" data-eylem="urun-gonder-ac" data-id="${a.id}" data-ad="${esc(a.ad)}" title="Ürün gönder" aria-label="${esc(a.ad)}: ürün gönder">📦</button>` : ''}
       </div></li>`).join('')}</ul>`
     : `<div class="bos-durum"><div class="buyuk-ikon">🤝</div><p>Henüz komşun yok.</p><p class="kucuk">Haritada bir oyuncunun parseline dokun, kartındaki <b>Komşu ol</b> düğmesine bas. Demo sakinler isteğini hemen kabul eder.</p></div>`;
   return `${gelen}${hediye}<h3 class="bolum">🏘️ Komşularım <span class="kucuk">${k.arkadaslar.length}</span></h3>
@@ -139,9 +139,3 @@ export function etkinlikBolumu(d, { simdi }) {
         ${o.alindi ? '<span class="cip yesil">✓ alındı</span>' : `<button class="dugme ince ${o.alinabilir ? 'altin' : ''}" data-eylem="etkinlik-odul" data-gorev="-1" ${o.alinabilir ? '' : 'disabled'}>Ödülü al</button>`}</div></div>
     ${e.sus ? '<p class="kucuk">Etkinliğe özel süs, kendi parselinin kartındaki süs dükkânında; etkinlik bitince çiftliğinde kalır.</p>' : ''}`;
 }
-// Harita üstü etkinlik şeridi
-export function etkinlikSeridi(d) {
-  if (!d?.aktif) return '';
-  return `<button type="button" class="etkinlik-serit" data-eylem="etkinlik-ac" style="--etkinlik:${d.aktif.renk}">${d.aktif.ikon} <b>${esc(d.aktif.ad)}</b> <span>görevlere bak</span></button>`;
-}
-

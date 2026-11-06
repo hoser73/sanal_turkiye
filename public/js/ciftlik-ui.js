@@ -3,7 +3,7 @@
 import { esc, akce, sayi, sure, sayiBulunma } from './yardimci.js';
 
 // Barınak satırı (parsel kartındaki yapı listesinde)
-export function hayvanSatiri(y, { ben, yem = 0, asi = 0, simdi }) {
+export function hayvanSatiri(y, { ben, yem = 0, asi = 0, simdi, yemFiyati = 1.2 }) {
   const h = y.hayvan;
   if (!h) return '';
   const durum = h.durum === 'HAZIR' ? `<b class="yesil-metin">${h.urunIkon} ${h.miktar} ${esc(h.urunAd)} hazır</b>`
@@ -12,7 +12,7 @@ export function hayvanSatiri(y, { ben, yem = 0, asi = 0, simdi }) {
   // Bakımsız barınakta sunucu toplama ve yemlemeyi reddeder: düğme yerine bakım uyarısı
   const dugme = !ben ? '' : y.etkisiz ? '<span class="kucuk kirmizi-metin">önce bakım yap</span>' : h.durum === 'HAZIR'
     ? `<button class="dugme altin ince" data-eylem="hayvan-topla" data-id="${y.id}" data-ikon="${h.urunIkon}">${h.urunIkon} Topla</button>`
-    : h.durum === 'AC' ? `<button class="dugme ince" data-eylem="hayvan-besle" data-id="${y.id}" title="${yem >= h.yem ? 'Envanterdeki yem kullanılır' : 'Eksik yem satın alınır'}">🌽 Yemle${yem < h.yem ? ` (${akce((h.yem - Math.min(yem, h.yem)) * 1.2)})` : ''}</button>` : '';
+    : h.durum === 'AC' ? `<button class="dugme ince" data-eylem="hayvan-besle" data-id="${y.id}" title="${yem >= h.yem ? 'Envanterdeki yem kullanılır' : 'Eksik yem satın alınır'}">🌽 Yemle${yem < h.yem ? ` (${akce((h.yem - Math.min(yem, h.yem)) * yemFiyati)})` : ''}</button>` : '';
   // Zirai bayiden aşı: 7 gün her toplamada +1 ürün
   const asiBilgi = h.asiBitis ? `<span class="kucuk yesil-metin">💉 aşılı · <span data-bitis="${h.asiBitis}">${sure(h.asiBitis - simdi())}</span></span>`
     : ben && asi ? `<button class="dugme ince" data-eylem="carsi-kullan" data-urun="ASI" data-yapi="${y.id}" title="7 gün boyunca her toplamada +1 ürün">💉 Aşıla (${asi})</button>` : '';

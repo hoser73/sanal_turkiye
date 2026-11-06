@@ -7,6 +7,7 @@ data/
 # Ortam ve gizli bilgiler
 .env
 .env.*
+!.env.ornek
 *.pem
 *.key
 

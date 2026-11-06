@@ -2,8 +2,9 @@
 // maliyetleri YAPI_OLCEK kadar büyüdü (config/rules.js). Kayıtlı arsa tutarları aynı TL değerinde kalsın diye ARSA_OLCEK'le
 // çarpılır: sahiplik alış bedeli, ilan ve satış fiyatları, ihale taban/fiyatı, endeks hacmi. Cüzdan bakiyeleri, ürün ve
 // görev kayıtları olduğu gibi kalır (TL karşılıkları küçülür; çiftlik ekonomisi gerçeğe yaklaştı). Teklif emanetteki açık
-// teklifler önce olağan yoldan iade edilir. Geçiş zamanı saklanır: değiştirilemeyen denetim kaydındaki eski yapı
-// maliyetleri (portföy yatırımı) okunurken YAPI_OLCEK'le çarpılır (piyasa.yatirimVeGelir).
+// teklifler önce iade edilir (eski ölçekteki teklif yeni fiyatlı ilana karşı kalmasın). Geçiş zamanı saklanır:
+// değiştirilemeyen denetim kaydındaki eski yapı maliyetleri ve Hazine satışları (portföy) okunurken ölçeklenir (piyasa.js).
+// İşlem yazma kilidiyle (IMMEDIATE) açılır ve işaret içeride yeniden okunur: iki süreç aynı anda açılsa da bir kez çalışır.
 const db = require('./db');
 const { ARSA_OLCEK } = require('./config/rules');
 
@@ -12,22 +13,24 @@ const zamani = () => db.prepare(`SELECT deger FROM ayarlar WHERE anahtar = ?`).g
 
 function gec() {
   if (zamani()) return false;
-  const yeniKurulum = !db.prepare(`SELECT 1 FROM wallet_ledger LIMIT 1`).get();
-  db.transaction(() => {
-    if (!yeniKurulum) {
-      const pazar = require('./pazar');
-      for (const b of db.prepare(`SELECT buyer_id, listing_id FROM bids WHERE status = 'ACTIVE'`).all()) pazar.teklifGeriCek(b.buyer_id, b.listing_id);
-      for (const t of db.prepare(`SELECT DISTINCT user_id FROM ihale_teklifleri WHERE durum = 'AKTIF'`).all()) require('./ihale').tekliflerIade(t.user_id);
-      const k = ARSA_OLCEK;
-      db.prepare(`UPDATE parcel_ownership SET price = ROUND(price * ?, 2) WHERE price IS NOT NULL`).run(k);
-      db.prepare(`UPDATE listings SET asking_price = ROUND(asking_price * ?)`).run(k);
-      db.prepare(`UPDATE trades SET price = ROUND(price * ?, 2), fee = ROUND(fee * ?, 2), deger_ani = ROUND(deger_ani * ?, 2)`).run(k, k, k);
-      db.prepare(`UPDATE ihaleler SET taban = ROUND(taban * ?), fiyat = ROUND(fiyat * ?)`).run(k, k);
-      db.prepare(`UPDATE deger_endeksi SET hacim = ROUND(hacim * ?)`).run(k);
+  return db.transaction(() => {
+    if (zamani()) return false;
+    // Yeni kurulumda tablolar boştur: aşağıdakiler hiçbir satıra dokunmaz
+    const pazar = require('./pazar'), ihale = require('./ihale');
+    const sebep = 'para birimi yeni ölçeğe geçti';
+    for (const b of db.prepare(`SELECT * FROM bids WHERE status = 'ACTIVE'`).all()) {
+      if (pazar.teklifIade(b, 'CANCELLED', sebep)) pazar.bildir(b.buyer_id, `Para birimi geçişi: açık parsel teklifin iade edildi; ilan fiyatları yeni ölçekte, dilersen yeniden teklif ver.`, null);
     }
+    for (const t of db.prepare(`SELECT DISTINCT user_id FROM ihale_teklifleri WHERE durum = 'AKTIF'`).all()) ihale.tekliflerIade(t.user_id, `İhale teklifi iadesi (${sebep})`);
+    const k = ARSA_OLCEK;
+    db.prepare(`UPDATE parcel_ownership SET price = ROUND(price * ?, 2) WHERE price IS NOT NULL`).run(k);
+    db.prepare(`UPDATE listings SET asking_price = ROUND(asking_price * ?)`).run(k);
+    db.prepare(`UPDATE trades SET price = ROUND(price * ?, 2), fee = ROUND(fee * ?, 2), deger_ani = ROUND(deger_ani * ?, 2)`).run(k, k, k);
+    db.prepare(`UPDATE ihaleler SET taban = ROUND(taban * ?), fiyat = ROUND(fiyat * ?)`).run(k, k);
+    db.prepare(`UPDATE deger_endeksi SET hacim = ROUND(hacim * ?)`).run(k);
     db.prepare(`INSERT INTO ayarlar (anahtar, deger) VALUES (?, ?)`).run(ANAHTAR, new Date().toISOString().replace('T', ' ').slice(0, 19));
-  })();
-  return true;
+    return true;
+  }).immediate();
 }
 
 module.exports = { gec, zamani };

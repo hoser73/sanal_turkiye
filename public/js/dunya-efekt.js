@@ -44,6 +44,8 @@ export const ISARET = {
 export function efektKur(ctx) {
   const { sahne, map } = ctx;
   let isaretler = [], parcaciklar = [];
+  // Doku ortaktır (önbellekte kalır); düzlemin geometrisi ve malzemesi atılır
+  const at = (m) => { sahne.remove(m); m.geometry.dispose(); m.material.dispose(); };
   const yon = new THREE.Euler(0, 0, 0, 'YXZ');
 
   // Kameraya dön: düzlemin normali kameranın bulunduğu yöne (eğim ve yön açısına göre)
@@ -56,12 +58,12 @@ export function efektKur(ctx) {
   return {
     kur() {},
     temizle() {
-      for (const i of isaretler) sahne.remove(i.m);
+      for (const i of isaretler) at(i.m);
       isaretler = [];
     },
     // Baloncuklar: [{ x, y, z, tur }] (bina katmanı parselleri kurarken çağırır)
     isaretler(liste) {
-      for (const i of isaretler) sahne.remove(i.m);
+      for (const i of isaretler) at(i.m);
       isaretler = liste.map((i, k) => {
         const t = ISARET[i.tur];
         const m = duzlem(emojiDoku(t.emoji, t.kenar), 150 / 128);
@@ -105,7 +107,7 @@ export function efektKur(ctx) {
         p.m.scale.set(s, s, s);
         p.m.position.set(p.x, p.y, p.z);
         p.m.material.opacity = Math.max(0, 1 - p.yas / p.omur);
-        if (p.yas >= p.omur) { sahne.remove(p.m); p.m.material.dispose(); p.m.geometry.dispose(); parcaciklar.splice(k, 1); }
+        if (p.yas >= p.omur) { at(p.m); parcaciklar.splice(k, 1); }
       }
       // Parçacık varken akıcı çizim; baloncuklar zıplarken saat hızında
       return parcaciklar.length ? 'akici' : isaretler.length > 0 && ctx.hareket();

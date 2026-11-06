@@ -1,4 +1,4 @@
-// Yaşayan dünya: gerçek takvim mevsimi, gerçek hava (Open-Meteo, il merkezleri), il ligi ve sezonlar, memleket/hemşehri, rozetler.
+// Yaşayan dünya: gerçek takvim mevsimi, gerçek hava (Open-Meteo, il merkezleri), hava afetleri, memleket/hemşehri, rozetler.
 // Hava kaynağı HAVA_KAYNAGI ile seçilir: open-meteo (varsayılan) · sahte (test/çevrimdışı) · kapali.
 // Open-Meteo ücretsiz uç noktası ticari olmayan kullanım içindir (CC BY 4.0, atıf gerekir); ticari yayında abonelik gerekir.
 const db = require('./db');

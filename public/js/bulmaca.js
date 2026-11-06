@@ -60,7 +60,8 @@ export async function bulmacaAc({ yenile } = {}) {
 
   const ust = (alt = '') => `<div class="bm-ust"><span class="bm-logo">${svg(MOTIF.CINI)}</span><div><b>Motif bulmacası</b><small>${alt}</small></div>
     <button type="button" class="kapat" data-bm="kapat" aria-label="Kapat"></button></div>`;
-  const odulHtml = (o) => o.map((x) => `<span class="bm-odul"><i>${esc(x.ikon)}</i>${esc(x.metin)}</span>`).join('');
+  // Para ödülünün metni zaten "₺…" ile başlar: simge olarak ikinci bir ₺ değil kese
+  const odulHtml = (o) => o.map((x) => `<span class="bm-odul"><i>${x.ikon === '₺' ? '💰' : esc(x.ikon)}</i>${esc(x.metin)}</span>`).join('');
   const hedefHtml = (h) => h.map((x) => `<span class="bm-hedef-k">${hedefIkon(x.tur)}<b>${x.adet}</b><small>${ADLAR[x.tur]}</small></span>`).join('');
   const yildizlar = (n, buyuk) => `<span class="bm-yildizlar${buyuk ? ' buyuk' : ''}">${[1, 2, 3].map((i) => `<i class="${i <= n ? 'dolu' : ''}">★</i>`).join('')}</span>`;
 
@@ -115,7 +116,7 @@ export async function bulmacaAc({ yenile } = {}) {
     if (kazandi && r) {
       if (r.odul) { odulAlindi = true; ses('para'); }
       perde.innerHTML = `<div class="bm-sonuc-kutu"><div class="bm-sonuc-bas">Bölüm ${r.seviye} tamam!</div>${yildizlar(r.yildiz, true)}
-        ${r.odul ? `<div class="bm-sonuc-odul"><span class="bm-odul"><i>₺</i>${akce(r.odul.akce)}</span>${r.odul.esya ? `<span class="bm-odul"><i>${esc(r.odul.esya.ikon)}</i>${r.odul.esya.adet} ${esc(r.odul.esya.ad)}</span>` : ''}</div>`
+        ${r.odul ? `<div class="bm-sonuc-odul"><span class="bm-odul"><i>💰</i>${akce(r.odul.akce)}</span>${r.odul.esya ? `<span class="bm-odul"><i>${esc(r.odul.esya.ikon)}</i>${r.odul.esya.adet} ${esc(r.odul.esya.ad)}</span>` : ''}</div>`
           : `<p class="bm-kucuk">${r.gunlukDoldu ? 'Bugünkü ödüllü bölümler bitti; yarın yine ödül var.' : ''}</p>`}
         <button type="button" class="bm-b ana" data-bm="menu">Sonraki bölüm</button><button type="button" class="bm-b" data-bm="kapat">Çiftliğe dön</button></div>`;
     } else {

@@ -181,7 +181,7 @@ test('oturum yönetimi: liste, tekini kapat, diğerlerini kapat', async () => {
   assert.ok((await a('/api/ben')).veri.kullanici);
 });
 
-test('KVKK: veri dışa aktarma kimliği ve geçmişi verir, oy içeriği ve parola özeti içermez', async () => {
+test('KVKK: veri dışa aktarma kimliği, geçmişi ve oyuncu ilişkilerini verir; parola özeti ve 2FA sırrı içermez', async () => {
   const c = await dogrulanmisOyuncu('Aktarici', 'K1');
   await c('/api/hesap/onay', { belge: 'PAZARLAMA', onay: true });
   assert.equal((await c('/api/hesap/onay', { belge: 'KVKK', onay: false })).durum, 400, 'zorunlu onay geri çekilemez (yolu hesap silme)');
@@ -194,6 +194,7 @@ test('KVKK: veri dışa aktarma kimliği ve geçmişi verir, oy içeriği ve par
   assert.deepEqual(veri.onaylar.map((o) => o.belge), ['KOSULLAR', 'KVKK', 'PAZARLAMA', 'PAZARLAMA']);
   const metin = JSON.stringify(veri);
   assert.ok(!metin.includes('password_hash') && !metin.includes('$2a$') && !metin.includes('totp_sir'));
+  for (const k of ['arkadasliklar', 'hediyeler', 'ihaleTeklifleri', 'fiyatAlarmlari', 'siparisler', 'ziyaretler']) assert.ok(Array.isArray(veri[k]), k);
   const h = (await c('/api/hesap')).veri;
   assert.equal(h.onaylar.PAZARLAMA.onay, true);
 });
@@ -203,6 +204,8 @@ test('hesap silme: parola ve SİL onayı ister, parseller devlete döner, kimlik
   const hucre = tarimHucreleri([30.52, 39.78])[0];
   assert.equal((await c(`/api/parsel/${hucre}/edin`, {})).durum, 200);
   const id = (await c('/api/ben')).veri.kullanici.id;
+  db.prepare(`INSERT INTO hatirlatmalar (anahtar, user_id, at) VALUES (?, ?, ?)`).run(`silme-deneme-${id}`, id, Date.now());
+  db.prepare(`INSERT INTO yz_kullanim (user_id, islev, kaynak, created_at) VALUES (?, 'danisman', 'yerel', ?)`).run(id, Date.now());
   assert.equal((await c('/api/hesap/sil', { sifre: 'parola123', onayMetni: 'evet' })).durum, 400);
   assert.equal((await c('/api/hesap/sil', { sifre: 'yanlis', onayMetni: 'SİL' })).durum, 401);
   assert.equal((await c('/api/hesap/sil', { sifre: 'parola123', onayMetni: 'sil' })).durum, 200, 'Türkçe büyük harfe çevrilerek karşılaştırılır');
@@ -213,6 +216,8 @@ test('hesap silme: parola ve SİL onayı ister, parseller devlete döner, kimlik
   assert.match(u.display_name, /^Ayrılan oyuncu #/);
   assert.equal(db.prepare(`SELECT owner_user_id FROM parcels WHERE id = ?`).get(hucre).owner_user_id, null);
   assert.ok(db.prepare(`SELECT COUNT(*) c FROM wallet_ledger WHERE user_id = ?`).get(id).c > 0, 'ekonomi defteri anonim olarak kalır');
+  assert.equal(db.prepare(`SELECT COUNT(*) c FROM hatirlatmalar WHERE user_id = ?`).get(id).c, 0, 'kişisel tercih kayıtları silinir');
+  assert.equal(db.prepare(`SELECT COUNT(*) c FROM yz_kullanim WHERE user_id = ?`).get(id).c, 0, 'yapay zekâ kullanım sayacı anonimleşir');
   assert.equal((await c('/api/ben')).veri, null);
   assert.equal((await istemci()('/api/giris', { email: 'silinen@test.local', sifre: 'parola123' })).durum, 401);
   // Aynı e-postayla yeniden kayıt mümkündür; ama hoş geldin hibesi tekrar verilmez (akçe basma döngüsüne karşı)

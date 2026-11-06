@@ -93,12 +93,13 @@ export function salinimEkle(malzeme, zaman, guc = 0.03) {
   return malzeme;
 }
 
-// Örnek dizisini (instanced mesh) temizlemek için
+// Örnek dizisini (instanced mesh) temizlemek için. Ortak geometriler (nesnede ya da geometride `paylasimli`: sevimli kitin
+// küre/ot/yaprak geometrileri) atılmaz; her kurulumda GPU'ya yeniden yüklenmesin
 export function kaldir(sahne, ...nesneler) {
   for (const n of nesneler.flat()) {
     if (!n) continue;
     sahne.remove(n);
-    n.traverse?.((o) => { if ((o.isMesh || o.isLine) && !o.userData.paylasimli) o.geometry?.dispose(); if (o !== n && o.isInstancedMesh) o.dispose(); });
+    n.traverse?.((o) => { if ((o.isMesh || o.isLine) && !o.userData.paylasimli && !o.geometry?.userData?.paylasimli) o.geometry?.dispose(); if (o !== n && o.isInstancedMesh) o.dispose(); });
     if (n.isInstancedMesh) n.dispose();
   }
 }

@@ -4,7 +4,7 @@
 import { esc, sayi } from './yardimci.js';
 
 const hareketAz = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-const DONEN = ['çiftliğini kur.', 'tarlanı ek.', 'hasadını sat.', 'göle olta at.', 'bulmaca çöz.', 'köyünü büyüt.'];
+const DONEN = ['arsanı seç.', 'arsanı geliştir.', 'kârla sat.', 'çiftliğini kur.', 'hasadını sat.', 'göle olta at.'];
 const AKIS_METIN = {
   CROP_HARVESTED: (o) => ['🧺', `${o.urun ? `${o.urun.ikon} ${o.urun.ad}` : 'Ürün'} hasat edildi`],
   CROP_PLANTED: (o) => ['🌱', `${o.urun ? `${o.urun.ikon} ${o.urun.ad}` : 'Tohum'} ekildi`],
@@ -117,22 +117,11 @@ export function tanitimKur({ api, girisli, kayitAc, epostaKayit, girisAc, kapat,
   kahraman.addEventListener('pointermove', (e) => { if (e.pointerType !== 'mouse') return; fx = e.clientX / innerWidth - 0.5; fy = e.clientY / innerHeight - 0.5; planla(); });
   kok.addEventListener('scroll', () => { kaydir = Math.min(kok.scrollTop, innerHeight); planla(); kok.classList.toggle('kaydi', kok.scrollTop > 40); }, { passive: true });
 
-  // Bölümler kaydırınca belirsin; sayaçlar sayar
+  // Bölümler kaydırınca belirsin
   const gozcu = new IntersectionObserver((girdiler) => {
     for (const g of girdiler) if (g.isIntersecting) { g.target.classList.add('gorundu'); gozcu.unobserve(g.target); }
   }, { root: kok, threshold: 0.15 });
   kok.querySelectorAll('.tn-gorun').forEach((el) => (az ? el.classList.add('gorundu') : gozcu.observe(el)));
-  const sayacGozcu = new IntersectionObserver((girdiler) => {
-    for (const g of girdiler) {
-      if (!g.isIntersecting) continue;
-      sayacGozcu.unobserve(g.target);
-      const hedef = Number(g.target.dataset.sayac), bas = performance.now();
-      if (az || !hedef) continue;
-      const adim = (t) => { const p = Math.min(1, (t - bas) / 1400); g.target.textContent = sayi(Math.round(hedef * (1 - (1 - p) ** 3))); if (p < 1) requestAnimationFrame(adim); };
-      requestAnimationFrame(adim);
-    }
-  }, { root: kok });
-  kok.querySelectorAll('[data-sayac]').forEach((el) => sayacGozcu.observe(el));
 
   // Gezinme ve düğmeler (adres çubuğundaki #konum'u bozmadan kaydırır)
   kok.addEventListener('click', (e) => {

@@ -52,6 +52,12 @@ test('ihale: hafta kurulur, ihaledeki tarla edinilemez, teklif emanete geçer, g
   assert.equal(Math.round(onceB - L.bakiye(b.id)), asgari - ilkParsel);
   assert.equal(Math.round(L.hesapBakiye(`IHALE:${i.id}`)), 0, 'emanet boşaldı');
   assert.equal(db.prepare('SELECT durum, fiyat FROM ihaleler WHERE id = ?').get(i.id).durum, 'SATILDI');
+  // İhale indirimi hemen Hazine'ye satılıp kâra çevrilemez: 3 günlük olağan sürenin ötesinde 30 gün beklenir
+  db.prepare(`UPDATE parcel_ownership SET start_at = datetime('now', '-5 days') WHERE parcel_id = ? AND end_at IS NULL`).run(i.parsel);
+  const piyasa = require('../server/piyasa');
+  const h = piyasa.hazineTeklifi(b.id, require('../server/oyun').parselGetir(i.parsel));
+  assert.equal(h.uygun, false);
+  assert.match(h.sebep, /İhaleyle alınan arsa/);
 });
 
 test('ihale: kendi teklifini yükseltmek yalnızca son teklifi kilitler; geçilen teklif hemen iade edilir', async () => {

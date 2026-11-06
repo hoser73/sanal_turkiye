@@ -95,6 +95,8 @@ test('parsel: konum değeri kayda yazılır, kartta dökümüyle görünür, tab
   assert.equal(k.deger.tahsis, Math.round(k.alan * IMAR.TARIM.m2Fiyat * p.konum_kati));
   // Formül sürümü değişince arka plan doldurucu yeniden hesaplar
   db.prepare(`UPDATE parcels SET konum_kati = NULL, konum_surum = NULL WHERE id = ?`).run(id);
+  // Konum değeri yokken bedel geçici çekicilikle çıkar: o fiyattan tahsis yapılmaz
+  assert.throws(() => require('../server/oyun').parselEdin(1, id), (e) => e.kod === 'KONUM_YOK' && e.status === 503);
   assert.ok(await require('../server/harita/parsel').eksikKonumlariDoldur({ ara: 0 }) >= 1);
   assert.equal(db.prepare(`SELECT konum_kati FROM parcels WHERE id = ?`).get(id).konum_kati, p.konum_kati);
 });

@@ -3,7 +3,7 @@
 <title>KVKK Aydınlatma Metni · Sanal Türkiye</title><link rel="stylesheet" href="/css/sayfa.css"><link rel="icon" href="/icon.svg"></head>
 <body><header class="sayfa-ust"><a class="logo" href="/"><img src="/icon.svg" alt="" width="24" height="24"> Sanal Türkiye</a></header>
 <main class="metin">
-<p class="taslak"><b>TASLAK (sürüm 2026-11-taslak-3).</b> 6698 sayılı KVKK m.10 kapsamında hazırlanmış çalışma taslağıdır. Veri sorumlusunun unvanı, adresi, VERBİS kaydı, KEP adresi ve yurt dışı aktarım dayanakları yayından önce hukukçu tarafından tamamlanmalıdır.</p>
+<p class="taslak"><b>TASLAK (sürüm 2026-11-taslak-4).</b> 6698 sayılı KVKK m.10 kapsamında hazırlanmış çalışma taslağıdır. Veri sorumlusunun unvanı, adresi, VERBİS kaydı, KEP adresi ve yurt dışı aktarım dayanakları yayından önce hukukçu tarafından tamamlanmalıdır.</p>
 <h1>Kişisel Verilerin Korunması Aydınlatma Metni</h1>
 <h2>Veri sorumlusu</h2>
 <p>[Şirket unvanı, adresi ve iletişim bilgileri eklenecek.]</p>
@@ -11,8 +11,11 @@
 <table><thead><tr><th>Veri</th><th>Amaç</th><th>Hukuki sebep</th></tr></thead><tbody>
 <tr><td>E-posta, oyuncu adı, parola özeti (bcrypt)</td><td>Hesap oluşturma, giriş, doğrulama, parola sıfırlama</td><td>Sözleşmenin kurulması ve ifası (m.5/2-c)</td></tr>
 <tr><td>Doğum yılı</td><td>Yaş sınırı ve genç hesap korumaları</td><td>Hukuki yükümlülük ve sözleşmenin ifası</td></tr>
-<tr><td>Oturum bilgileri (tarayıcı türü, IP adresinin tek yönlü özeti, son görülme)</td><td>Hesap güvenliği, oturum yönetimi, çoklu hesap ve oy kaçakçılığının önlenmesi</td><td>Meşru menfaat (m.5/2-f)</td></tr>
+<tr><td>Oturum bilgileri (tarayıcı türü, IP adresinin tek yönlü özeti, son görülme)</td><td>Hesap güvenliği, oturum yönetimi, çoklu hesapla kötüye kullanımın (ör. kendi kendine ticaret) önlenmesi</td><td>Meşru menfaat (m.5/2-f)</td></tr>
 <tr><td>İki adımlı doğrulama sırrı (şifreli), kurtarma kodu özetleri</td><td>Hesap güvenliği</td><td>Sözleşmenin ifası</td></tr>
+<tr><td>Cep telefonu numarası (isteğe bağlı; şifreli ve tek yönlü özetiyle)</td><td>Telefon doğrulama, sahte ve çoklu hesapların önlenmesi</td><td>Meşru menfaat (m.5/2-f)</td></tr>
+<tr><td>Bağlı Google / Apple hesabının kimliği ve e-postası, passkey açık anahtarı</td><td>Bu yollarla şifresiz giriş</td><td>Sözleşmenin ifası</td></tr>
+<tr><td>Memleket (isteğe bağlı beyan), avatar, sohbet mesajları</td><td>Hemşehri sohbeti ve il yarışı, oyunda görünüm, herkese açık sohbet ve moderasyonu</td><td>Sözleşmenin ifası, meşru menfaat</td></tr>
 <tr><td>Oyun içi işlemler (cüzdan defteri, parsel, ilan, teklif, şikâyet)</td><td>Oyunun sunulması, ekonomi bütünlüğü, denetim ve uyuşmazlık çözümü</td><td>Sözleşmenin ifası, meşru menfaat</td></tr>
 <tr><td>Onay kayıtları</td><td>Hangi metni hangi sürümde onayladığının ispatı</td><td>Hukuki yükümlülük</td></tr>
 <tr><td id="iletiler">Ticari elektronik ileti izni (isteğe bağlı)</td><td>Etkinlik ve yenilik e-postaları</td><td>Açık rıza (dilediğin an geri çekebilirsin)</td></tr>
@@ -22,14 +25,15 @@
 <table><thead><tr><th>Sağlayıcı türü</th><th>Paylaşılan veri</th><th>Not</th></tr></thead><tbody>
 <tr><td>Barındırma (sunucu)</td><td>Tüm oyun ve hesap verisi</td><td>[Sağlayıcı ve veri merkezi ülkesi]</td></tr>
 <tr><td>E-posta gönderimi (SMTP)</td><td>E-posta adresi, oyuncu adı, doğrulama/sıfırlama bağlantısı</td><td>[Sağlayıcı]</td></tr>
+<tr><td>SMS gönderimi (Netgsm)</td><td>Telefon numarası ve doğrulama kodu</td><td>Yalnızca telefonunu doğrulayan oyuncular</td></tr>
 <tr><td>Yapay zekâ (Anthropic, isteğe bağlı)</td><td>Mahalle olay özetleri, parsel durumu, şikâyet edilen ya da işaretlenen mesaj metni, demo sakinlere yazılan sohbet mesajı</td><td>Etkinse; ABD. E-posta ve kimlik bilgisi gönderilmez.</td></tr>
 <tr><td>Web push (tarayıcı üreticisinin push servisi)</td><td>Şifreli bildirim metni ve cihaz abonelik adresi</td><td>Yalnızca bildirimleri açan oyuncular</td></tr>
 <tr><td>Hava verisi (Open-Meteo)</td><td>Yalnızca il merkezlerinin koordinatları</td><td>Kişisel veri gönderilmez</td></tr>
 <tr><td>Harita karoları (OpenFreeMap / kendi karo sunucumuz)</td><td>Tarayıcının IP adresi (karo istekleri)</td><td>Doğrudan tarayıcıdan</td></tr>
 </tbody></table>
 <h2>Saklama süresi</h2>
-<p>Hesap verileri hesap silinene kadar saklanır. Hesap silindiğinde e-posta, parola özeti, doğum yılı, 2FA bilgileri, oturumlar ve bildirimler silinir; ekonomi defteri ve denetim kaydı, işlem bütünlüğü ve yasal yükümlülükler için anonim kimlikle saklanır. Süresi dolan oturum ve e-posta bağlantıları düzenli olarak temizlenir.</p>
+<p>Hesap verileri hesap silinene kadar saklanır. Hesap silindiğinde e-posta, parola özeti, doğum yılı, telefon, 2FA bilgileri, bağlı giriş yolları, oturumlar ve bildirimler silinir; aynı e-posta ya da telefonla yeniden açılan hesabın hoş geldin hibesini ve başlangıç hediyelerini ikinci kez almaması için yalnızca bunların geri çevrilemez özeti tutulur; ekonomi defteri ve denetim kaydı, işlem bütünlüğü ve yasal yükümlülükler için anonim kimlikle saklanır. Süresi dolan oturum ve e-posta bağlantıları düzenli olarak temizlenir.</p>
 <h2>Hakların (KVKK m.11)</h2>
 <p>Verilerinin işlenip işlenmediğini öğrenme, bilgi talep etme, düzeltilmesini ya da silinmesini isteme, aktarıldığı üçüncü kişileri bilme ve itiraz etme haklarına sahipsin. Oyun içinden <b>Hesabım → Gizlilik ve veriler</b> bölümünde verilerini indirebilir, izinlerini değiştirebilir ve hesabını silebilirsin. Diğer talepler için: [iletişim adresi eklenecek].</p>
-<p class="kucuk">Son güncelleme: Ekim 2026 · <a href="/yasal/kullanim-kosullari.html">Kullanım Koşulları</a> · <a href="/yasal/cerez.html">Çerez Politikası</a></p>
+<p class="kucuk">Son güncelleme: Kasım 2026 · <a href="/yasal/kullanim-kosullari.html">Kullanım Koşulları</a> · <a href="/yasal/cerez.html">Çerez Politikası</a></p>
 </main></body></html>

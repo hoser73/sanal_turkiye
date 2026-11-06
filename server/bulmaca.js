@@ -77,7 +77,7 @@ const enAzHamle = (b) => Math.max(1, Math.ceil(b.hedefler.reduce((t, h) => t + h
 // Kalan hamle oranına göre 1–3 yıldız
 const yildizHesapla = (hamle, sinir) => { const kalan = (sinir - hamle) / sinir; return kalan >= 0.3 ? 3 : kalan >= 0.12 ? 2 : 1; };
 function odulYazisi(n) {
-  const o = B.odul(n), p = [{ ikon: '₺', metin: `${tl(o.akce)}` }];
+  const o = B.odul(n), p = [{ ikon: '💰', metin: `${tl(o.akce)}` }];
   if (o.esya) p.push({ ikon: URUNLER[o.esya[0]]?.ikon || '📦', metin: `${o.esya[1]} ${URUNLER[o.esya[0]]?.ad || o.esya[0]}` });
   return p;
 }

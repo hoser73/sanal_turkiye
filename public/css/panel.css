@@ -66,6 +66,9 @@
 .panel .istatistik > div, .panel .metrikler > div { background: var(--pk); border: 1px solid var(--pc); border-radius: 14px; padding: 10px 12px; box-shadow: 0 1px 2px rgba(20, 40, 20, .04); }
 .panel .istatistik dt, .panel .metrikler dt { font: 700 10.5px/1.2 Inter, sans-serif; letter-spacing: .06em; text-transform: uppercase; color: var(--ps); }
 .panel .istatistik dd, .panel .metrikler dd { margin: 4px 0 0; font: 800 18px/1.15 Inter, sans-serif; color: var(--pm); font-variant-numeric: tabular-nums; }
+/* TL tutarları uzun (₺3.000.000): telefon genişliğinde iki sütunlu kutucuktan ve banka özetinden taşmasın */
+.panel .istatistik > div, .panel .metrikler > div, .panel .banka-ozet > div { min-width: 0; }
+.panel .istatistik dd, .panel .metrikler dd, .panel .banka-ozet b { overflow-wrap: anywhere; }
 .panel .fiyat { font: 400 24px/1 'Lilita One', 'Baloo 2', sans-serif; color: var(--pa-k); white-space: nowrap; }
 
 /* Segment (alt sekmeler) */
@@ -186,7 +189,7 @@
 .panel .hayvan-satir { border-top: 1px dashed var(--pc2); }
 .panel .defter th { border-bottom: 1px solid var(--pc); }
 
-/* ---------- Bölüm alt sekmeleri (Pazar: pazar/çarşı · Köy: haberler/yönetim) ve kilitli bölümler ---------- */
+/* ---------- Bölüm alt sekmeleri (Pazar: pazar/çarşı) ve kilitli bölümler ---------- */
 .panel .alt-sekmeler { display: flex; gap: 6px; padding: 4px; margin: 0 0 12px; border-radius: 14px; background: var(--pc); }
 .panel .alt-sekmeler button { flex: 1; min-height: 38px; border: 0; border-radius: 11px; background: transparent; color: var(--ps); font: 800 14px 'Baloo 2', system-ui; cursor: pointer; }
 .panel .alt-sekmeler button[aria-selected="true"] { background: #fff; color: var(--pm); box-shadow: 0 1px 3px rgba(0,0,0,.12); }

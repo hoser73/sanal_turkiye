@@ -236,7 +236,7 @@ function siparisUret(userId, t) {
     deger += u.tabanFiyat * adet;
     adetToplam += adet;
   }
-  const odul = Math.max(5, Math.round(deger * SIPARIS.primOrani));   // sipariş ödülü tam akçe
+  const odul = Math.max(5, Math.round(deger * SIPARIS.primOrani));   // sipariş ödülü tam birim
   const tp = Math.round(5 + adetToplam * SIPARIS.tpCarpani * 0.5);
   const musteri = SIPARIS.musteriler[Math.floor(Math.random() * SIPARIS.musteriler.length)];
   db.prepare(`INSERT INTO siparisler (user_id, musteri, kalemler, odul, tp, olusturma, son) VALUES (?, ?, ?, ?, ?, ?, ?)`)
@@ -252,8 +252,10 @@ function siparisBakim(userId, t = simdi()) {
     db.prepare(`UPDATE users SET siparis_sonraki = ? WHERE id = ?`).run(t + SIPARIS.yenilemeMs, userId);
     return;
   }
-  let sonraki = u.siparis_sonraki;
   const maks = SIPARIS.acikMaks + require('./koy-meydani').ek(userId, 'PTT');   // postane +1 müşteri
+  // Uzun aradan sonra pano yalnızca boş yuvalar kadar geriye doldurulur: eski bir sıradan üretilen sipariş daha
+  // gösterilmeden süresi dolmuş olurdu (oyuncu dönünce panoda "artık açık değil" diyen siparişler görürdü)
+  let sonraki = Math.max(u.siparis_sonraki, t - Math.max(0, maks - acik - 1) * SIPARIS.yenilemeMs);
   while (acik < maks && sonraki <= t) { siparisUret(userId, sonraki); acik++; sonraki += SIPARIS.yenilemeMs; }
   if (acik >= maks && sonraki <= t) sonraki = t + SIPARIS.yenilemeMs;
   if (sonraki !== u.siparis_sonraki) db.prepare(`UPDATE users SET siparis_sonraki = ? WHERE id = ?`).run(sonraki, userId);

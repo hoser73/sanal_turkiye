@@ -16,9 +16,10 @@ const sqlZamani = (s) => new Date(s.replace(' ', 'T') + 'Z').getTime();
 const sqlMetni = (ms) => new Date(ms).toISOString().replace('T', ' ').slice(0, 19);   // datetime('now') biçimi
 const hazineMi = (userId) => userId != null && userId === require('./piyasa').hazineId(false);
 
-function tamSayi(v, ad, min, max) {
+// Para girdisi (oyun birimi, tam sayı); sınırlar oyuncuya TL olarak söylenir
+function paraGirdisi(v, ad, min, max) {
   const n = Number(v);
-  if (!Number.isInteger(n) || n < min || n > max) throw new OyunHatasi(400, `${ad} ${min}–${max} arasında tam sayı olmalı`);
+  if (!Number.isInteger(n) || n < min || n > max) throw new OyunHatasi(400, `${ad} ${tl(min)} ile ${tl(max)} arasında olmalı`);
   return n;
 }
 function kimlik(v, ad) {
@@ -120,8 +121,10 @@ function aliciUygunlukHatasi(userId, ilan, p) {
   const kosul = PAZAR.aliciKosullari[ilan.buyer_condition] || PAZAR.aliciKosullari.HERKES;
   if (kosul.yasMs && simdi() - sqlZamani(u.created_at) < kosul.yasMs) return `Satıcının alıcı koşulu: ${kosul.ad.toLocaleLowerCase('tr-TR')}`;
   const onde = (bolge) => require('./ihale').ondeOlunan(userId, { regionId: bolge });   // önde olunan açık ihaleler de sayılır
-  if (q.parselSayisi.get(userId).c + onde(null) >= HESAP.maxParsel) return `Hesap başına en fazla ${HESAP.maxParsel} parsel (önde olduğun ihaleler dahil)`;
-  if (q.mahalleParselSayisi.get(userId, p.region_id).c + onde(p.region_id) >= HESAP.maxParselMahalle) return `Bir mahallede en fazla ${HESAP.maxParselMahalle} parsel (önde olduğun ihaleler dahil)`;
+  // Birleşik parsel hücre sayısı kadar yer tutar: dört parçalı parsel alıp sınırı aşmak olmasın
+  const gelen = 1 + (p.uye_sayisi || 0), parcaNotu = gelen > 1 ? `; bu parsel ${gelen} parçalı` : '';
+  if (q.parselSayisi.get(userId).c + onde(null) + gelen > HESAP.maxParsel) return `Hesap başına en fazla ${HESAP.maxParsel} parsel (önde olduğun ihaleler dahil${parcaNotu})`;
+  if (q.mahalleParselSayisi.get(userId, p.region_id).c + onde(p.region_id) + gelen > HESAP.maxParselMahalle) return `Bir mahallede en fazla ${HESAP.maxParselMahalle} parsel (önde olduğun ihaleler dahil${parcaNotu})`;
   return null;
 }
 function aliciUygunMu(userId, ilan, p) {
@@ -209,7 +212,7 @@ function devret(ilan, aliciId, fiyat, teklif) {
 const ilanAc = db.transaction((userId, parcelId, govde) => {
   const p = oyun.parselGetir(parcelId);
   oyun.sahibiOlmali(p, userId);
-  const fiyat = tamSayi(govde?.fiyat, 'Fiyat', 1, PAZAR.maxFiyat);
+  const fiyat = paraGirdisi(govde?.fiyat, 'Fiyat', 1, PAZAR.maxFiyat);
   const gun = Number(govde?.gun ?? 3);
   if (!PAZAR.ilanSureleri.includes(gun)) throw new OyunHatasi(400, `İlan süresi ${PAZAR.ilanSureleri.join(', ')} gün olabilir`);
   const kosul = String(govde?.kosul || 'HERKES');
@@ -228,7 +231,7 @@ const ilanAc = db.transaction((userId, parcelId, govde) => {
 const fiyatDegistir = db.transaction((userId, ilanId, govde) => {
   const i = aktifIlanGetir(ilanId);
   if (i.seller_id !== userId) throw new OyunHatasi(403, 'Bu ilan senin değil');
-  const fiyat = tamSayi(govde?.fiyat, 'Fiyat', 1, PAZAR.maxFiyat);
+  const fiyat = paraGirdisi(govde?.fiyat, 'Fiyat', 1, PAZAR.maxFiyat);
   if (fiyat === i.asking_price) throw new OyunHatasi(409, 'Fiyat aynı');
   const r = db.prepare(`UPDATE listings SET asking_price = ?, version = version + 1 WHERE id = ? AND version = ? AND status = 'ACTIVE'`)
     .run(fiyat, i.id, i.version);
@@ -283,7 +286,7 @@ const teklifVer = db.transaction((userId, ilanId, govde) => {
   if (hazineMi(i.seller_id)) throw new OyunHatasi(409, "Hazine pazarlık yapmaz; ilan fiyatından almak için Hemen al'ı kullan", 'HAZINE_PAZARLIK_YOK');
   const p = oyun.parselGetir(i.parcel_id);
   aliciUygunMu(userId, i, p);
-  const tutar = tamSayi(govde?.tutar, 'Teklif', 1, PAZAR.maxFiyat);
+  const tutar = paraGirdisi(govde?.tutar, 'Teklif', 1, PAZAR.maxFiyat);
   if (tutar >= i.asking_price) throw new OyunHatasi(409, 'Teklif istenen fiyata eşit ya da yüksek; "Hemen al" kullan');
   const mevcut = q.benimAktifTeklifim.get(i.id, userId);
   if (mevcut && tutar <= mevcut.amount) throw new OyunHatasi(409, `Yeni teklif mevcut teklifinden (${tl(mevcut.amount)}) yüksek olmalı`);
@@ -488,5 +491,5 @@ function bildirimleriOku(userId) {
 module.exports = {
   pazarBakim, ilanAc, fiyatDegistir, ilanIptal, teklifVer, teklifGeriCek, teklifKabul, teklifRed, hemenAl,
   ilanlar, parselPazarBilgisi, benimPazarim, sonIslemler, pazarOzeti, bildirimler, bildirimleriOku,
-  ucretHesapla, bildir,
+  ucretHesapla, bildir, teklifIade,
 };

@@ -1,9 +1,9 @@
-# Caddy: Let's Encrypt ile otomatik HTTPS, sıkıştırma, WebSocket (/canli) dahil tüm istekleri uygulamaya iletir
+# Caddy: Let's Encrypt ile otomatik HTTPS, sıkıştırma, WebSocket (/canli) dahil tüm istekleri uygulamaya iletir.
+# Caddy istemcinin gönderdiği X-Forwarded-For'u yok sayıp gerçek adresi yazar; uygulama ('trust proxy' 1) bu adresi
+# hız sınırları ve canlı bağlantı sınırı için kullanır. Caddy'nin önüne başka bir vekil (CDN) koyarsanız trusted_proxies tanımlayın.
 {$ALAN_ADI} {
 	encode zstd gzip
-	reverse_proxy uygulama:3400 {
-		header_up X-Forwarded-Proto {scheme}
-	}
+	reverse_proxy uygulama:3400
 	log {
 		output stdout
 		format json

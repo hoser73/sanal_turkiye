@@ -1,22 +1,9 @@
-// Gerçek hava arayüzü: haritanın üstündeki hava şeridi (çiftliğinin ili), hava penceresi (iller, riskler, tehdit altındaki
-// tarlalar, örtü), parsel kartındaki tahmin satırı. Kurallar sunucuda; burası yalnızca gösterir.
+// Gerçek hava arayüzü: hava penceresi (iller, riskler, tehdit altındaki tarlalar, örtü) ve parsel kartındaki tahmin
+// satırı. Kurallar sunucuda; burası yalnızca gösterir.
 import { esc, akce, sure } from './yardimci.js';
 
 const riskYazisi = (r) => `${r.ikon} ${esc(r.ad)}${r.deger ? ` <span class="kucuk">(${esc(r.deger)})</span>` : ''}`;
 const yarinYazisi = (y) => (y ? `${y.ikon} ${Math.round(y.min)}° / ${Math.round(y.max)}°${y.yagis >= 0.5 ? ` · ${y.yagis} mm` : ''}` : '');
-
-// En çok tarlası olan (tehdit varsa önce o) ilin özeti
-export function havaSeridi(b) {
-  const il = b?.iller?.[0];
-  if (!il?.hava) return '';
-  const tehdit = b.iller.reduce((n, x) => n + x.tarlalar.filter((t) => t.tehdit.length).length, 0);
-  const risk = il.riskler.find((r) => r.ekin) || il.riskler[0];
-  const ek = tehdit ? `<span class="hava-serit-uyari">⚠️ ${tehdit} tarla risk altında</span>`
-    : risk ? `<span>${il.tahminSaat} sa: ${risk.ikon} ${esc(risk.ad.toLocaleLowerCase('tr-TR'))}</span>`
-    : il.yarin ? `<span>yarın ${yarinYazisi(il.yarin)}</span>` : '';
-  return `<button type="button" class="hava-serit ${tehdit ? 'tehdit' : ''}" data-eylem="hava-ac" title="Çiftliğinin gerçek havası ve uyarılar">
-    <span class="hava-serit-ikon">${il.hava.ikon}</span><b>${esc(il.il)} ${il.hava.sicaklik}°</b>${ek}</button>`;
-}
 
 // Hava penceresi: tarlası olan her il
 export function havaPenceresi(b) {

@@ -1,6 +1,6 @@
 // Coğrafi işaretli (yöresel) ürünler: her ürün yalnızca kendi ilinde parseli olan oyuncu tarafından üretilir (günde bir parti;
 // girdi yöre ürünü ya da akçe). Ürünler albüme konur (koleksiyon ödülü; coğrafi bölge tamamlanınca ek ödül) ya da borsada,
-// arkadaşa gönderilerek başka illerin oyuncularıyla takas edilir. Üretim il ligine puan yazar.
+// arkadaşa gönderilerek başka illerin oyuncularıyla takas edilir. Üretim hasat yarışına puan yazar (GI_PRODUCED).
 const db = require('./db');
 const L = require('./lib/ledger');
 const { YORESEL, YORESEL_KURAL, URUNLER } = require('./config/rules');

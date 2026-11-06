@@ -141,7 +141,10 @@ test('web push: abonelik kaydı, bildirimde gönderim, geçersiz abonelik silini
   const c = await oyuncu('pushcu');
   assert.ok((await c('/api/push/anahtar')).veri.publicKey.length > 60);
   assert.equal((await c('/api/push/abone', { abonelik: { endpoint: 'http://duz.example/x', keys: { p256dh: 'a', auth: 'b' } } })).durum, 400, 'yalnızca https');
-  const ab = { endpoint: 'https://push.example/abc', keys: { p256dh: 'BAAAA', auth: 'xyz' } };
+  for (const endpoint of ['https://push.example/abc', 'https://10.0.0.5/x', 'https://fcm.googleapis.com.kotu.example/x', 'https://fcm.googleapis.com:8443/x']) {
+    assert.equal((await c('/api/push/abone', { abonelik: { endpoint, keys: { p256dh: 'a', auth: 'b' } } })).durum, 400, `yalnızca tarayıcı push servisleri: ${endpoint}`);
+  }
+  const ab = { endpoint: 'https://fcm.googleapis.com/fcm/send/abc', keys: { p256dh: 'BAAAA', auth: 'xyz' } };
   assert.equal((await c('/api/push/abone', { abonelik: ab })).durum, 200);
   const gonderilen = [];
   push.gondericiAyarla(async (abonelik, yuk) => { gonderilen.push({ abonelik, yuk: JSON.parse(yuk) }); });

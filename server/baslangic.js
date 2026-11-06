@@ -47,7 +47,6 @@ function hediyeEt(userId, id) {
   })();
 }
 const hediyeTutari = (tahsis) => Math.min(tahsis, HESAP.baslangicHediyeUst);
-const akce = (v) => `${tl(Math.round(v).toLocaleString('tr-TR'))}`;
 function hakKontrol(userId) {
   const u = q.kullanici.get(userId);
   if (!u || u.is_npc) throw new OyunHatasi(403, 'Yalnızca oyuncular başlangıç tarlası alabilir');
@@ -74,7 +73,7 @@ async function adaylar(userId, { ilce, yer }) {
     const id = await parselHazirla(hucre);
     if (bulunan.some((a) => a.id === id) || buyukler.some((a) => a.id === id)) continue;
     const kart = oyun.parselKarti(id, userId, {}, { hafif: true });
-    if (kart.sahip || kart.imar.tip !== 'TARIM') continue;
+    if (kart.sahip || kart.imar.tip !== 'TARIM' || !kart.konumDegeri) continue;   // konum değeri hesaplanamayan tarla şimdilik tahsis edilemez
     const aday = { id, mahalle: kart.mahalle, ilce: kart.ilce, il: kart.il, alan: kart.alan, adaParsel: kart.adaParsel,
       konum: kart.konum, geometri: kart.geometri, tarla: !!kart.tarla, hediye: tekrar ? 0 : hediyeTutari(kart.birincilBedel ?? 0), bedel: kart.birincilBedel ?? null };
     if (aday.bedel - aday.hediye > L.bakiye(userId)) continue;   // hediyeyle bile alınamayacak kadar pahalı
@@ -105,7 +104,7 @@ async function baslangicTarlasi(userId, secilen = null) {
     try {
       return hediyeEt(userId, id);
     } catch (e) {
-      if (e.kod === 'TAHSISLI') continue;   // bu arada başkası aldıysa sıradaki aday
+      if (e.kod === 'TAHSISLI' || e.kod === 'KONUM_YOK') continue;   // bu arada başkası aldıysa ya da değeri hesaplanamadıysa sıradaki aday
       throw e;
     }
   }

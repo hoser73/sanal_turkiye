@@ -6,12 +6,13 @@ function bulunma(ad) {
   const sert = 'çfhkpsştÇFHKPSŞT'.includes(ad.at(-1));
   return `${ad}'${sert ? 't' : 'd'}${kalin ? 'a' : 'e'}`;
 }
-// Sayılara bulunma eki: 2'de, 3'te, 6'da, 40'ta (sayının okunuşunun son hecesine göre)
+// Sayılara bulunma eki: 2'de, 3'te, 6'da, 40'ta, 1000'de, 2000000'da (sayının okunuşunun son hecesine göre)
 const BIRLER = { 1: 'de', 2: 'de', 3: 'te', 4: 'te', 5: 'te', 6: 'da', 7: 'de', 8: 'de', 9: 'da' };
 const ONLAR = { 1: 'da', 2: 'de', 3: 'da', 4: 'ta', 5: 'de', 6: 'ta', 7: 'te', 8: 'de', 9: 'da' };
 function sayiBulunma(n) {
   n = Math.abs(Math.trunc(Number(n) || 0));
-  const ek = n === 0 ? 'da' : n % 10 ? BIRLER[n % 10] : n % 100 ? ONLAR[(n / 10) % 10] : 'de';   // 100 yüz, 1000 bin → de
+  // 100 yüz, 1000 bin → de; tam milyon/milyar (bin hanesi boş) → da
+  const ek = n === 0 ? 'da' : n % 10 ? BIRLER[n % 10] : n % 100 ? ONLAR[(n / 10) % 10] : n % 1e6 === 0 ? 'da' : 'de';
   return `${n}'${ek}`;
 }
 module.exports = { bulunma, sayiBulunma };

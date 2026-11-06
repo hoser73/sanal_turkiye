@@ -93,6 +93,9 @@ function cerezYaz(res, token, gun = OTURUM_GUN) {
 
 // ikinciAdim=false → yalnızca 2FA kodunu bekleyen kısa ömürlü yarım oturum
 function oturumAc(req, res, userId, { ikinciAdim = true } = {}) {
+  // Bu tarayıcının önceki oturumu (başka hesapla açık kalmış olabilir) yenisiyle değişir; arkada geçerli token kalmaz
+  const eski = req.cookies?.[CEREZ];
+  if (typeof eski === 'string' && eski.length <= 100) db.prepare(`DELETE FROM sessions WHERE token_hash = ?`).run(ozet(eski));
   const token = crypto.randomBytes(32).toString('base64url');
   const sure = ikinciAdim ? `+${OTURUM_GUN} days` : `+${HESAP.ikinciAdimDakika} minutes`;
   db.prepare(`INSERT INTO sessions (token_hash, user_id, expires_at, ikinci_adim, tarayici, ip_ozet, son_gorulme)

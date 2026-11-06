@@ -1,4 +1,6 @@
 # systemd birimi (Docker kullanmayan kurulum). /etc/systemd/system/sanalturkiye.service olarak kopyalayın.
+# Uygulama /opt/sanalturkiye, veri /var/lib/sanalturkiye (veritabanı, gunluk/, yedekler/, karolar/, yukselti/, ftw/).
+# Gizli ayarlar /etc/sanalturkiye.env dosyasında (chmod 600, sahibi root); .env.ornek'e bakın.
 [Unit]
 Description=Sanal Türkiye
 After=network-online.target
@@ -8,11 +10,15 @@ Wants=network-online.target
 Type=simple
 User=sanalturkiye
 WorkingDirectory=/opt/sanalturkiye
+Environment=NODE_ENV=production VERI_DIZINI=/var/lib/sanalturkiye
 EnvironmentFile=/etc/sanalturkiye.env
 ExecStart=/usr/bin/node server/index.js
 Restart=on-failure
 RestartSec=5
-# Sertleştirme
+# Düzenli kapanış: uygulama SIGTERM'de bağlantıları kapatıp veritabanını en çok 8 sn'de kapatır
+KillSignal=SIGTERM
+TimeoutStopSec=15
+# Sertleştirme (yazılabilir tek yer veri dizini)
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict

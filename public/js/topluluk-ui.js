@@ -80,7 +80,7 @@ export async function kooperatifBolumu({ ben, konum }) {
       <form class="form satir koop-aidat"><label>Ortak kasaya aidat (₺)${paraGirdisi({ name: 'tutar', min: 1, deger: 20 })}</label><button class="dugme ince">Yatır</button></form>
       ${k.ben.baskan ? `<button class="dugme ince birincil" data-eylem="koop-dagit" ${k.kasa >= 0.01 * k.uyeler.length ? '' : 'disabled'}>Kasayı üyelere eşit dağıt</button>` : ''}
       ${k.hareketler?.length ? `<h3 class="bolum">Kasa hareketleri</h3><table class="tablo">${k.hareketler.map((h) => `<tr><td>${esc(h.reason)}<div class="kucuk">${zamanOnce(h.created_at)}</div></td>
-        <td class="${h.credit ? 'arti' : 'eksi'}">${h.credit ? '+' : '−'}${sayi(h.credit || h.debit)}</td></tr>`).join('')}</table>` : ''}
+        <td class="${h.credit ? 'arti' : 'eksi'}">${h.credit ? '+' : '−'}${akce(h.credit || h.debit)}</td></tr>`).join('')}</table>` : ''}
       <p><button type="button" class="bag tehlike" data-eylem="koop-ayril">Kooperatiften ayrıl</button></p>`;
   }
   const iller = [...new Map(ben.portfoy.map((p) => [p.il, p])).values()];

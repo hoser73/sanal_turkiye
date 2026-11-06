@@ -13,8 +13,8 @@ COPY package.json ./
 COPY server ./server
 COPY public ./public
 COPY scripts ./scripts
-COPY db ./db
-# Veri (SQLite, karo önbelleği, yedekler, günlükler) kalıcı birimde; kök olmayan kullanıcıyla çalışır
+# Veri (SQLite, yedekler/, gunluk/, karolar/ ve yukselti/ önbellekleri, ftw/) kalıcı birimde; kök olmayan kullanıcıyla çalışır.
+# db/postgres (Postgres geçiş şeması) çalışma için gerekmez; gerektiğinde scripts/postgres-aktar.js --sema ile üretilir.
 RUN mkdir -p /veri && chown -R node:node /veri
 USER node
 VOLUME ["/veri"]

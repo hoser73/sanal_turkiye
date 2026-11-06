@@ -51,10 +51,12 @@ function onayVer(userId, { belge, onay } = {}) {
   return { tamam: true };
 }
 
+// Tablosu henüz kurulmamış modül (ör. tek başına çalışan betik) dışa aktarımı ya da silmeyi bozmasın
+const tabloYoksa = (e, yedek) => { if (/no such table/.test(e.message)) return yedek; throw e; };
+
 // KVKK m.11 / taşınabilirlik: oyuncunun kendisiyle ilgili tüm kayıtları makinece okunur biçimde.
-// Gizli oy ilkesi gereği oy İÇERİĞİ hiçbir yerde kişiyle ilişkili değildir; yalnızca katılım bilgisi verilir.
 function veriDisaAktar(userId) {
-  const tum = (sql, ...p) => db.prepare(sql).all(...p);
+  const tum = (sql, ...p) => { try { return db.prepare(sql).all(...p); } catch (e) { return tabloYoksa(e, []); } };
   const u = db.prepare(`SELECT id, email, display_name, dogum_yili, status, rol, created_at, email_dogrulandi_at, totp_aktif, ayarlar FROM users WHERE id = ?`).get(userId);
   return {
     aciklama: 'Sanal Türkiye kişisel veri dışa aktarımı (KVKK m.11).',
@@ -97,6 +99,20 @@ function veriDisaAktar(userId) {
     bankaVadeli: tum(`SELECT tutar, faiz, bas, vade, durum, kapandi_at FROM banka_vadeli WHERE user_id = ? ORDER BY id`, userId),
     balikAtislari: tum(`SELECT * FROM balik_atislari WHERE user_id = ? ORDER BY id`, userId),
     kozmetikler: tum(`SELECT kod, created_at FROM kozmetikler WHERE user_id = ?`, userId),
+    // Komşuluk ve ortak oyun (diğer oyuncular yalnızca oyun kimliğiyle; e-posta vb. verilmez)
+    arkadasliklar: tum(`SELECT CASE WHEN isteyen = ? THEN hedef ELSE isteyen END AS oyuncu, CASE WHEN isteyen = ? THEN 'GIDEN' ELSE 'GELEN' END AS yon, durum, at, kabul_at
+                        FROM arkadasliklar WHERE isteyen = ? OR hedef = ?`, userId, userId, userId, userId),
+    hediyeler: tum(`SELECT CASE WHEN gonderen = ? THEN 'GIDEN' ELSE 'GELEN' END AS yon, icerik, durum, gun, at FROM hediyeler WHERE gonderen = ? OR alici = ? ORDER BY id`, userId, userId, userId),
+    urunGonderimleri: tum(`SELECT CASE WHEN gonderen = ? THEN 'GIDEN' ELSE 'GELEN' END AS yon, urun, adet, gun, at FROM urun_gonderimleri WHERE gonderen = ? OR alici = ? ORDER BY id`, userId, userId, userId),
+    imece: tum(`SELECT hafta, durum, puan_a, puan_b, created_at, kabul_at FROM imece WHERE a_id = ? OR b_id = ? ORDER BY id`, userId, userId),
+    yardimIstekleri: tum(`SELECT urun, adet, gelen, durum, created_at, bitis FROM yardim_istekleri WHERE user_id = ? ORDER BY id`, userId),
+    yardimKatkilari: tum(`SELECT istek_id, adet, at FROM yardim_katkilari WHERE user_id = ?`, userId),
+    ziyaretler: tum(`SELECT parcel_id, created_at FROM visits WHERE visitor_id = ? ORDER BY id`, userId),
+    siparisler: tum(`SELECT musteri, kalemler, odul, durum, olusturma, bitis FROM siparisler WHERE user_id = ? ORDER BY id`, userId),
+    ihaleTeklifleri: tum(`SELECT ihale_id, tutar, durum, at FROM ihale_teklifleri WHERE user_id = ? ORDER BY id`, userId),
+    fiyatAlarmlari: tum(`SELECT bolge_id, yon, hedef, created_at, tetiklendi_at FROM fiyat_alarmlari WHERE user_id = ?`, userId),
+    parselSusleri: tum(`SELECT parcel_id, tur, at FROM parsel_susleri WHERE user_id = ?`, userId),
+    yapayZekaKullanimi: tum(`SELECT islev, kaynak, created_at FROM yz_kullanim WHERE user_id = ? ORDER BY id`, userId),
   };
 }
 
@@ -138,6 +154,14 @@ function hesapSil(req, res) {
     db.prepare(`DELETE FROM push_abonelikleri WHERE user_id = ?`).run(userId);
     db.prepare(`DELETE FROM sohbet_mesajlari WHERE user_id = ?`).run(userId);
     for (const e of db.prepare(`SELECT * FROM urun_emirleri WHERE user_id = ? AND durum = 'ACIK'`).all(userId)) require('./ekonomi').emirIptal(userId, e.id);
+    // Kişisel tercih ve ilişki kayıtları (oyun dengesine dokunmayanlar) silinir; yapay zekâ kullanım sayacı anonimleşir
+    const sil = (sql, ...p) => { try { db.prepare(sql).run(...p); } catch (e) { tabloYoksa(e); } };
+    sil(`DELETE FROM arkadasliklar WHERE isteyen = ? OR hedef = ?`, userId, userId);
+    sil(`DELETE FROM arkadas_istek_gecmisi WHERE isteyen = ? OR hedef = ?`, userId, userId);
+    sil(`DELETE FROM fiyat_alarmlari WHERE user_id = ?`, userId);
+    sil(`DELETE FROM hatirlatmalar WHERE user_id = ?`, userId);
+    sil(`DELETE FROM hava_uyarilari WHERE user_id = ?`, userId);
+    sil(`UPDATE yz_kullanim SET user_id = NULL WHERE user_id = ?`, userId);
     db.prepare(`UPDATE users SET email = NULL, password_hash = NULL, display_name = ?, ad_anahtar = NULL, avatar = NULL, dogum_yili = NULL, totp_sir = NULL, totp_aktif = 0,
                 kurtarma_kodlari = NULL, ayarlar = '{}', status = 'DELETED', rol = 'OYUNCU', silindi_at = datetime('now') WHERE id = ?`)
       .run(`Ayrılan oyuncu #${userId}`, userId);

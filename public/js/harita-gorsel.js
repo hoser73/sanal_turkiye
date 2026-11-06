@@ -184,7 +184,8 @@ export function yagisKur(kap) {
   const yeni = () => ({ x: Math.random() * c.width, y: Math.random() * c.height, h: 0.6 + Math.random() * 0.8, s: Math.random() });
   function ciz() {
     kare = requestAnimationFrame(ciz);
-    if (document.hidden) return;
+    // Sekme arkadayken ya da tam sayfa çiftlik açıkken (harita gizli) yağış çizilmez: telefonda boşuna kare harcanmasın
+    if (document.hidden || kap.style.visibility === 'hidden') return;
     g.clearRect(0, 0, c.width, c.height);
     if (!tur) return;
     // Yağışlı havanın tonu: yağmurda gri-mavi kasvet, karda soğuk beyazlık

@@ -1,6 +1,6 @@
 // Moderasyon ve denetim paneli: şikâyetler, işaretli mesajlar, iki kişi kuralıyla işlemler, ekonomi gözlemi,
 // sistem ve sponsorlar. Yalnızca yetkili roller (2FA zorunlu) erişir; tüm kararlar denetim kaydına yazılır.
-import { api, esc, zamanOnce } from './yardimci.js';
+import { api, esc, zamanOnce, akce } from './yardimci.js';
 
 const $ = (s) => document.querySelector(s);
 let veri = null, sekme = 'sikayet', ekonomi = null;
@@ -144,14 +144,16 @@ function ekonomiCiz() {
 // Ekonomi gözlemi (para arzı, giriş/çıkış dengesi, ürün fiyatları) — ayrıntısı sunucudaki /api/yonetim/ekonomi'de
 function ekonomiHTML(e) {
   const k = e.ozet;
-  return `<div class="karolar">${[['Dolaşımdaki para (oyun birimi)', k.arz], ['Basılan (7 gün)', k.basilan7], ['Yakılan (7 gün)', k.yakilan7], ['Net akış (7 gün)', k.net7, k.net7 > k.arz * 0.1],
-      ['Kişi başı (oyun birimi)', k.kisiBasi], ['Gini (servet)', k.gini, k.gini > 0.6]].map(([a, b, d]) => `<div class="karo ${d ? 'dikkat' : ''}"><b>${esc(b)}</b><span>${a}</span></div>`).join('')}</div>
-    <div class="kart"><h2 style="margin-top:0">Günlük para akışı (oyun birimi)</h2><table><thead><tr><th>Gün</th><th>Basılan</th><th>Yakılan</th><th>Net</th><th>İşlem</th></tr></thead><tbody>
-      ${e.gunluk.map((g) => `<tr><td>${esc(g.gun)}</td><td>${g.basilan}</td><td>${g.yakilan}</td><td>${g.basilan - g.yakilan}</td><td>${g.islem}</td></tr>`).join('')}</tbody></table></div>
+  // Tutarlar sunucuda oyun birimindedir; oyundaki gibi TL gösterilir (akce)
+  const tl = (x) => (x == null ? '—' : akce(x));
+  return `<div class="karolar">${[['Dolaşımdaki para', tl(k.arz)], ['Basılan (7 gün)', tl(k.basilan7)], ['Yakılan (7 gün)', tl(k.yakilan7)], ['Net akış (7 gün)', tl(k.net7), k.net7 > k.arz * 0.1],
+      ['Kişi başı', tl(k.kisiBasi)], ['Gini (servet)', k.gini, k.gini > 0.6]].map(([a, b, d]) => `<div class="karo ${d ? 'dikkat' : ''}"><b>${esc(b)}</b><span>${a}</span></div>`).join('')}</div>
+    <div class="kart"><h2 style="margin-top:0">Günlük para akışı</h2><table><thead><tr><th>Gün</th><th>Basılan</th><th>Yakılan</th><th>Net</th><th>İşlem</th></tr></thead><tbody>
+      ${e.gunluk.map((g) => `<tr><td>${esc(g.gun)}</td><td>${tl(g.basilan)}</td><td>${tl(g.yakilan)}</td><td>${tl(g.basilan - g.yakilan)}</td><td>${g.islem}</td></tr>`).join('')}</tbody></table></div>
     <div class="kart"><h2 style="margin-top:0">Akış kaynakları (7 gün)</h2><table><thead><tr><th>Sebep</th><th>Yön</th><th>Tutar</th></tr></thead><tbody>
-      ${e.kaynaklar.map((x) => `<tr><td>${esc(x.sebep)}</td><td>${x.yon === 'BASIM' ? '⬆️ basım' : '⬇️ yakım'}</td><td>${x.tutar}</td></tr>`).join('')}</tbody></table></div>
-    ${e.urunler ? `<div class="kart"><h2 style="margin-top:0">Ürün piyasası</h2><table><thead><tr><th>Ürün</th><th>NPC fiyatı</th><th>Son işlem</th><th>Alış emri</th><th>Satış emri</th></tr></thead><tbody>
-      ${e.urunler.map((u) => `<tr><td>${esc(u.ad)}</td><td>${u.npc}</td><td>${u.son ?? '—'}</td><td>${u.alis ?? '—'}</td><td>${u.satis ?? '—'}</td></tr>`).join('')}</tbody></table></div>` : ''}`;
+      ${e.kaynaklar.map((x) => `<tr><td>${esc(x.sebep)}</td><td>${x.yon === 'BASIM' ? '⬆️ basım' : '⬇️ yakım'}</td><td>${tl(x.tutar)}</td></tr>`).join('')}</tbody></table></div>
+    ${e.urunler ? `<div class="kart"><h2 style="margin-top:0">Ürün piyasası (birim fiyat)</h2><table><thead><tr><th>Ürün</th><th>NPC fiyatı</th><th>Son işlem</th><th>Alış emri</th><th>Satış emri</th></tr></thead><tbody>
+      ${e.urunler.map((u) => `<tr><td>${esc(u.ad)}</td><td>${tl(u.npc)}</td><td>${tl(u.son)}</td><td>${tl(u.alis)}</td><td>${tl(u.satis)}</td></tr>`).join('')}</tbody></table></div>` : ''}`;
 }
 
 document.addEventListener('click', async (e) => {

@@ -1,4 +1,5 @@
 # Tek sunucu kurulumu: uygulama + Caddy (otomatik HTTPS, WebSocket vekili). Kullanım: docs/yayina-alma.md
+# Veri birimi (veri → /veri): veritabanı, gunluk/, yedekler/, karolar/ ve yukselti/ önbellekleri, ftw/ tarla kaynağı.
 services:
   uygulama:
     build: .
@@ -8,12 +9,15 @@ services:
       - veri:/veri
     expose:
       - "3400"
+    # SIGTERM'de bağlantılar kapanır ve veritabanı en çok 8 sn'de kapatılır
+    stop_grace_period: 15s
   caddy:
     image: caddy:2.8
     restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"
+      - "443:443/udp"
     environment:
       ALAN_ADI: ${ALAN_ADI:?ALAN_ADI tanımlı olmalı}
     volumes:
@@ -21,7 +25,8 @@ services:
       - caddy_veri:/data
       - caddy_ayar:/config
     depends_on:
-      - uygulama
+      uygulama:
+        condition: service_healthy
 volumes:
   veri:
   caddy_veri:
